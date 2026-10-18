@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Activity, AudioLines, Bot, ChevronDown, Command, Mic, Send, ShieldCheck, Sparkles, Volume2, VolumeX, Zap } from "lucide-react";
 import "./style.css";
+import HolographicCore from "./HolographicCore.jsx";
 
 function App() {
   const [messages, setMessages] = useState([{ role: "assistant", content: "Systems initialized. I'm NOX. What are we working on today?" }]);
@@ -13,6 +14,14 @@ function App() {
   const [status, setStatus] = useState("ALL SYSTEMS READY");
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
+  const [coreMode, setCoreMode] = useState("IDLE");
+  const micLevelRef = useRef(0);
+  const ttsLevelRef = useRef(0);
+  const audioContextRef = useRef(null);
+  const micStreamRef = useRef(null);
+  const meterFrameRef = useRef(0);
+  const listeningRef = useRef(false);
+  const ttsDecayRef = useRef(0);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
 
@@ -29,6 +38,54 @@ function App() {
     return "en-US";
   }
 
+  function stopMicMeter() {
+    if (meterFrameRef.current) cancelAnimationFrame(meterFrameRef.current);
+    meterFrameRef.current = 0;
+    micLevelRef.current = 0;
+    if (micStreamRef.current) micStreamRef.current.getTracks().forEach((track) => track.stop());
+    micStreamRef.current = null;
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  }
+
+  function startMicMeter(stream) {
+    stopMicMeter();
+    micStreamRef.current = stream;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioContext = new AudioContextClass();
+    audioContextRef.current = audioContext;
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72;
+    audioContext.createMediaStreamSource(stream).connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    const measure = () => {
+      if (audioContextRef.current !== audioContext) return;
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (let i = 0; i < samples.length; i += 1) {
+        const sample = (samples[i] - 128) / 128;
+        sum += sample * sample;
+      }
+      const rms = Math.sqrt(sum / samples.length);
+      micLevelRef.current = Math.max(0, Math.min(1, (rms - 0.012) * 8));
+      if (listeningRef.current) {
+        setCoreMode(micLevelRef.current > 0.075 ? "USER_SPEAKING" : "USER_LISTENING");
+      }
+      meterFrameRef.current = requestAnimationFrame(measure);
+    };
+    measure();
+  }
+
+  useEffect(() => () => {
+    stopMicMeter();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    window.clearTimeout(ttsDecayRef.current);
+  }, []);
+
   function speakText(text) {
     if (!("speechSynthesis" in window) || !text?.trim()) {
       setStatus("VOICE NOT SUPPORTED");
@@ -36,6 +93,8 @@ function App() {
     }
     const synth = window.speechSynthesis;
     synth.cancel();
+    window.clearTimeout(ttsDecayRef.current);
+    ttsLevelRef.current = 0;
     const utterance = new SpeechSynthesisUtterance(text);
     const lang = getSpeechLanguage(text);
     utterance.lang = lang;
@@ -47,8 +106,28 @@ function App() {
       if (matchingVoice) utterance.voice = matchingVoice;
       synth.speak(utterance);
     };
-    utterance.onerror = () => setStatus("VOICE PLAYBACK ISSUE");
-    utterance.onend = () => setStatus("AI LINK ACTIVE");
+    utterance.onstart = () => {
+      setCoreMode("VAULTAR_SPEAKING");
+      setStatus("AI VOICE ACTIVE");
+    };
+    utterance.onboundary = () => {
+      // speechSynthesis exposes events, not its rendered audio stream; this is a
+      // clearly-labelled playback pulse fallback, not true output-amplitude analysis.
+      ttsLevelRef.current = 0.42 + Math.random() * 0.28;
+      window.clearTimeout(ttsDecayRef.current);
+      ttsDecayRef.current = window.setTimeout(() => { ttsLevelRef.current = 0; }, 220);
+    };
+    utterance.onerror = () => {
+      ttsLevelRef.current = 0;
+      setCoreMode("ERROR");
+      setStatus("VOICE PLAYBACK ISSUE");
+      window.setTimeout(() => setCoreMode("IDLE"), 900);
+    };
+    utterance.onend = () => {
+      ttsLevelRef.current = 0;
+      setCoreMode("IDLE");
+      setStatus("AI LINK ACTIVE");
+    };
     const voices = synth.getVoices();
     if (voices.length) {
       const prefix = lang.toLowerCase().split("-")[0];
@@ -90,15 +169,29 @@ function App() {
     }
   }
 
-  function toggleMic() {
+  async function toggleMic() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setMessages((old) => [...old, { role: "assistant", content: "Speech recognition is not supported by this browser. Try a supported browser or type your message." }]);
       return;
     }
     if (listening) {
+      listeningRef.current = false;
       recognitionRef.current?.stop();
       setListening(false);
+      stopMicMeter();
+      setCoreMode("IDLE");
+      return;
+    }
+    let stream;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone metering is not supported in this browser.");
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      startMicMeter(stream);
+    } catch (error) {
+      setCoreMode("ERROR");
+      setStatus("MICROPHONE UNAVAILABLE");
+      setMessages((old) => [...old, { role: "assistant", content: "Microphone access is needed for voice input and live audio-reactive visuals. Check browser microphone permission, then try again." }]);
       return;
     }
     const recognition = new SpeechRecognition();
@@ -108,13 +201,35 @@ function App() {
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setInput(transcript);
+      listeningRef.current = false;
       setListening(false);
+      setCoreMode("PROCESSING");
+      window.setTimeout(() => setCoreMode("IDLE"), 500);
     };
-    recognition.onerror = () => setListening(false);
-    recognition.onend = () => setListening(false);
+    recognition.onerror = () => {
+      listeningRef.current = false;
+      setListening(false);
+      stopMicMeter();
+      setCoreMode("ERROR");
+      window.setTimeout(() => setCoreMode("IDLE"), 900);
+    };
+    recognition.onend = () => {
+      listeningRef.current = false;
+      setListening(false);
+      stopMicMeter();
+      setCoreMode((current) => current === "USER_SPEAKING" || current === "USER_LISTENING" ? "IDLE" : current);
+    };
     recognitionRef.current = recognition;
-    recognition.start();
-    setListening(true);
+    try {
+      recognition.start();
+      listeningRef.current = true;
+      setListening(true);
+      setCoreMode("USER_LISTENING");
+    } catch (error) {
+      stopMicMeter();
+      setCoreMode("ERROR");
+      setStatus("MICROPHONE START FAILED");
+    }
   }
 
   return <div className="app-shell">
@@ -128,7 +243,7 @@ function App() {
     <main className="main">
       <header className="topbar"><div className="breadcrumb">NOX / <span>COMMAND CENTER</span></div><div className="top-status"><i /> {status}</div></header>
       <section className="hero"><div className="eyebrow"><span /> PERSONAL AI INTERFACE</div><h1>Think beyond.<br /><em>Move with intent.</em></h1><p>Your space to reason, create, and get things done.</p>
-        <div className="core-wrap"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core"><div className="core-inner"><Bot size={38} /></div></div><div className="core-caption"><span className="pulse" /> NOX CORE <small>READY TO ASSIST</small></div></div>
+        <div className="core-wrap"><HolographicCore mode={busy ? "PROCESSING" : coreMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} /></div>
       </section>
       <section className="chat-panel"><div className="panel-heading"><div><span className="tiny-icon"><AudioLines size={16} /></span><b>Conversation</b><small>Encrypted transport · API keys remain server-side</small></div><label className="language">LANGUAGE <select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="auto">Auto detect</option><option value="en">English</option><option value="hi">Hindi</option><option value="ur">Urdu</option><option value="hinglish">Hinglish</option></select></label></div>
         <div className="messages">{messages.map((m, i) => <div className={"message " + m.role} key={i}><div className="avatar">{m.role === "assistant" ? <Bot size={17} /> : "YOU"}</div><div className="bubble"><div className="message-label">{m.role === "assistant" ? "NOX" : "YOU"}{m.mode === "demo" && <span className="demo-tag">DEMO</span>}</div><p>{m.content}</p>{m.role === "assistant" && <button type="button" className="message-speak" title="Play this reply aloud" aria-label="Play this reply aloud" onClick={() => speakText(m.content)}><Volume2 size={15} /> Listen</button>}</div></div>)}{busy && <div className="message assistant"><div className="avatar"><Bot size={17} /></div><div className="bubble"><div className="message-label">NOX</div><p className="typing">Processing<span>.</span><span>.</span><span>.</span></p></div></div>}<div ref={endRef} /></div>
