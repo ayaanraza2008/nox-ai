@@ -30,6 +30,12 @@ try:
 except ImportError:
     audit_project = None
 
+try:
+    from dependency_audit import audit_dependencies, write_report
+except ImportError:
+    audit_dependencies = None
+    write_report = None
+
 TOKEN = os.getenv("NOX_COMPANION_TOKEN", "").strip()
 WEB_ORIGIN = os.getenv("NOX_WEB_ORIGIN", "https://nox-ai-vcqx.onrender.com").strip()
 HOST = "127.0.0.1"
@@ -242,6 +248,20 @@ def pairing_worker():
             if audit_project is None:
                 return {"status": "unsupported", "message": "The NOX read-only project audit module is unavailable in this installation."}
             return audit_project()
+
+        if re.fullmatch(r"(?:audit project dependencies|check dependency vulnerabilities|check dependencies)", raw, re.I):
+            if audit_dependencies is None:
+                return {"status": "unsupported", "message": "The NOX dependency audit module is unavailable in this installation."}
+            return audit_dependencies()
+
+        if re.fullmatch(r"(?:generate security report|create security report|full project security audit)", raw, re.I):
+            if audit_project is None or audit_dependencies is None or write_report is None:
+                return {"status": "unsupported", "message": "One or more NOX security audit modules are unavailable in this installation."}
+            static_result = audit_project()
+            dependency_result = audit_dependencies()
+            report_result = write_report(static_result, dependency_result)
+            return {"status": report_result.get("status", "error"), "static_analysis": static_result,
+                    "dependency_audit": dependency_result, "report_files": report_result}
 
         search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google par|google|find online|internet par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
         if search:
