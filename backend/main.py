@@ -44,6 +44,18 @@ class PairJoinRequest(BaseModel):
     device_name: str = Field(default="NOX device", min_length=1, max_length=80)
 
 
+class SharedChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=12000)
+
+
+class SharedChatPayload(BaseModel):
+    chat_id: str = Field(min_length=1, max_length=100)
+    title: str = Field(default="New conversation", max_length=120)
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    messages: list[SharedChatMessage] = Field(min_length=1, max_length=300)
+
+
 PAIR_DB = Path(os.getenv("NOX_PAIRING_DB", str(ROOT / "nox_pairing.sqlite3")))
 
 
@@ -64,6 +76,10 @@ def pair_db():
             command_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, source_device TEXT NOT NULL,
             target_device TEXT NOT NULL, command TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
             created_at TEXT NOT NULL, result TEXT)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS pair_chat_history (
+            session_id TEXT NOT NULL, chat_id TEXT NOT NULL, title TEXT NOT NULL,
+            updated_at TEXT NOT NULL, messages TEXT NOT NULL,
+            PRIMARY KEY(session_id, chat_id))""")
         conn.commit()
         yield conn
         conn.commit()
@@ -264,6 +280,58 @@ async def pairing_disconnect(session_id: str, x_nox_device_token: str | None = N
         if remaining == 0:
             conn.execute("UPDATE pair_sessions SET revoked=1 WHERE session_id=?", (session_id,))
     return {"status": "disconnected", "message": "This device has been disconnected from the pairing session."}
+
+
+@app.get("/api/pairing/history")
+async def pairing_history(session_id: str, x_nox_device_token: str | None = None):
+    """Return conversations shared only by devices in this authenticated pairing session."""
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        if current["session_id"] != session_id:
+            raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
+        rows = conn.execute(
+            "SELECT chat_id,title,updated_at,messages FROM pair_chat_history WHERE session_id=? ORDER BY updated_at DESC LIMIT 30",
+            (session_id,),
+        ).fetchall()
+        return {"chats": [
+            {"id": row["chat_id"], "title": row["title"], "updatedAt": row["updated_at"],
+             "messages": json.loads(row["messages"])} for row in rows
+        ]}
+
+
+@app.put("/api/pairing/history")
+async def save_pairing_chat(payload: SharedChatPayload, session_id: str, x_nox_device_token: str | None = None):
+    """Save one conversation to the authenticated pairing session."""
+    messages = [{"role": item.role, "content": item.content} for item in payload.messages[-300:]]
+    serialized = json.dumps(messages, ensure_ascii=False)
+    if len(serialized) > 1_000_000:
+        raise HTTPException(status_code=413, detail="Conversation is too large to sync.")
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        if current["session_id"] != session_id:
+            raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
+        conn.execute(
+            """INSERT INTO pair_chat_history(session_id,chat_id,title,updated_at,messages)
+               VALUES(?,?,?,?,?) ON CONFLICT(session_id,chat_id) DO UPDATE SET
+               title=excluded.title,updated_at=excluded.updated_at,messages=excluded.messages""",
+            (session_id, payload.chat_id, payload.title[:120], payload.updated_at[:80], serialized),
+        )
+        conn.execute(
+            """DELETE FROM pair_chat_history WHERE session_id=? AND chat_id NOT IN
+               (SELECT chat_id FROM pair_chat_history WHERE session_id=? ORDER BY updated_at DESC LIMIT 30)""",
+            (session_id, session_id),
+        )
+    return {"status": "saved", "chat_id": payload.chat_id}
+
+
+@app.delete("/api/pairing/history/{chat_id}")
+async def delete_pairing_chat(chat_id: str, session_id: str, x_nox_device_token: str | None = None):
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        if current["session_id"] != session_id:
+            raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
+        conn.execute("DELETE FROM pair_chat_history WHERE session_id=? AND chat_id=?", (session_id, chat_id))
+    return {"status": "deleted", "chat_id": chat_id}
 
 
 @app.post("/api/pairing/commands")
