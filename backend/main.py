@@ -307,6 +307,19 @@ async def pairing_command_result(command_id: str, result: str, x_nox_device_toke
     return {"status": "recorded"}
 
 
+@app.get("/api/pairing/commands/{command_id}")
+async def pairing_command_status(command_id: str, session_id: str, x_nox_device_token: str | None = None):
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        row = conn.execute(
+            "SELECT command_id, target_device, command, status, created_at, result FROM pair_commands WHERE command_id=? AND session_id=? AND source_device=?",
+            (command_id, session_id, current["device_id"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Command not found for this paired source device.")
+        return {"command": dict(row)}
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "NOX AI", "ai_configured": bool(os.getenv("OPENROUTER_API_KEY"))}
