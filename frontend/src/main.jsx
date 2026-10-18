@@ -560,7 +560,7 @@ function App() {
     // Route explicit action/search commands from chat through the same real command handler as Task Orchestrator.
     // Ordinary conversational messages continue to the AI chat endpoint.
     const commandLike = /^(?:please\s+)?(?:open|launch|start|visit|go to|browse to|search(?:\s+the\s+web)?(?:\s+for)?|google|find online|internet par|khol|kholo|khul|chalao|chalu karo|खोलो|खोल|चलाओ)\b/i.test(value)
-      || /^(?:youtube|google|gmail|github|instagram|facebook|whatsapp web|wikipedia|reddit|linkedin|chatgpt|render|google drive|bing)\s+(?:kholo|open|launch)$/i.test(value);
+      || /^.+\s+(?:kholo|open|launch|chalao|खोलो|चलाओ)$/i.test(value);
     if (commandLike) {
       setInput("");
       setMessages((old) => [...old, { role: "user", content: value }]);
