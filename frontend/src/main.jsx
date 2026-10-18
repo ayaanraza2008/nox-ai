@@ -110,79 +110,88 @@ function App() {
     const goal = taskGoal.trim();
     if (!goal || taskBusy) return;
 
-    // Device app launch is restricted to explicit allowlists and requires confirmation.
-    const openVerb = /\\b(open|launch|start|khol|kholo|khul|chalao|chalu karo)\\b|खोल|चला/i.test(goal);
+    // Discover installed Windows apps through the opt-in local companion.
+    const openVerb = /\b(open|launch|start|khol|kholo|khul|chalao|chalu karo)\b|खोल|चला/i.test(goal);
     const normalizedGoal = goal.toLowerCase().replace(/[.!?]+$/, "").trim();
     const commandTarget = normalizedGoal
-      .replace(/^(please\\s+)?(open|launch|start|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)\\s+/i, "")
-      .replace(/\\s+(please|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)$/i, "")
-      .replace(/^the\\s+/i, "")
-      .replace(/\\s+app$/i, "")
+      .replace(/^(please\s+)?(open|launch|start|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)\s+/i, "")
+      .replace(/\s+(please|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)$/i, "")
+      .replace(/^the\s+/i, "")
+      .replace(/\s+app$/i, "")
       .trim();
-    const appAliases = [
-      { names: ["instagram"], target: "instagram", pkg: "com.instagram.android", url: "https://www.instagram.com/" },
-      { names: ["youtube", "youtube app"], target: "youtube", pkg: "com.google.android.youtube", url: "https://www.youtube.com/" },
-      { names: ["whatsapp", "whatsapp app"], target: "whatsapp", pkg: "com.whatsapp", url: "https://www.whatsapp.com/" },
-      { names: ["gmail"], target: "gmail", pkg: "com.google.android.gm", url: "https://mail.google.com/" },
-      { names: ["google maps", "maps"], target: "maps", pkg: "com.google.android.apps.maps", url: "https://maps.google.com/" },
-      { names: ["spotify"], target: "spotify", pkg: "com.spotify.music", url: "https://open.spotify.com/" },
-      { names: ["telegram"], target: "telegram", pkg: "org.telegram.messenger", url: "https://telegram.org/" }
+    const normalizeAppName = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const androidApps = [
+      { names: ["instagram"], pkg: "com.instagram.android", url: "https://www.instagram.com/" },
+      { names: ["youtube"], pkg: "com.google.android.youtube", url: "https://www.youtube.com/" },
+      { names: ["whatsapp"], pkg: "com.whatsapp", url: "https://www.whatsapp.com/" },
+      { names: ["gmail"], pkg: "com.google.android.gm", url: "https://mail.google.com/" },
+      { names: ["google maps", "maps"], pkg: "com.google.android.apps.maps", url: "https://maps.google.com/" },
+      { names: ["spotify"], pkg: "com.spotify.music", url: "https://open.spotify.com/" },
+      { names: ["telegram"], pkg: "org.telegram.messenger", url: "https://telegram.org/" }
     ];
-    const requestedApp = openVerb
-      ? appAliases.find((app) => app.names.some((name) => commandTarget === name))
+    const requestedAndroidApp = openVerb
+      ? androidApps.find((app) => app.names.some((name) => normalizeAppName(name) === normalizeAppName(commandTarget)))
       : null;
 
-    if (/Android/i.test(navigator.userAgent) && requestedApp) {
-      const confirmed = window.confirm(`NOX wants to open ${requestedApp.target} or its official website. Continue?`);
-      if (!confirmed) {
-        setTaskNotice(`${requestedApp.target} launch cancelled.`);
+    if (/Android/i.test(navigator.userAgent) && requestedAndroidApp) {
+      if (!window.confirm("NOX wants to open " + commandTarget + " or its official website. Continue?")) {
+        setTaskNotice(commandTarget + " launch cancelled.");
         return;
       }
       setTaskGoal("");
-      setTaskNotice(`Requesting ${requestedApp.target}. Android may open the installed app; otherwise its official website will open.`);
-      const fallback = encodeURIComponent(requestedApp.url);
-      const appHost = new URL(requestedApp.url).hostname;
-      const intentUrl = `intent://${appHost}/#Intent;scheme=https;package=${requestedApp.pkg};S.browser_fallback_url=${fallback};end`;
-      window.location.href = intentUrl;
+      setTaskNotice("Requesting " + commandTarget + ". Android/browser settings decide whether the app or website opens.");
+      const fallback = encodeURIComponent(requestedAndroidApp.url);
+      const appHost = new URL(requestedAndroidApp.url).hostname;
+      window.location.href = "intent://" + appHost + "/#Intent;scheme=https;package=" + requestedAndroidApp.pkg + ";S.browser_fallback_url=" + fallback + ";end";
       return;
     }
 
-    const windowsApps = [
-      { names: ["calculator", "calc"], target: "calculator" },
-      { names: ["notepad"], target: "notepad" },
-      { names: ["paint", "mspaint"], target: "paint" },
-      { names: ["file explorer", "explorer"], target: "file explorer" },
-      { names: ["task manager"], target: "task manager" },
-      { names: ["instagram", "youtube", "google", "whatsapp web", "github", "chatgpt"], target: null }
-    ];
-    const requestedWindowsApp = openVerb && /Windows/i.test(navigator.userAgent)
-      ? windowsApps.slice(0, 5).find((app) => app.names.some((name) => commandTarget === name))
-      : null;
-    if (requestedWindowsApp) {
-      const confirmed = window.confirm(`NOX wants to open ${requestedWindowsApp.target} on this PC. Continue?`);
-      if (!confirmed) {
-        setTaskNotice("App launch cancelled.");
-        return;
-      }
+    if (openVerb && /Windows/i.test(navigator.userAgent)) {
       const token = window.prompt("Enter your local NOX companion token. It is not saved by this page:");
       if (!token) {
-        setTaskNotice("Local app launch cancelled: companion token not provided.");
+        setTaskNotice("App launch cancelled: companion token not provided.");
         return;
       }
       setTaskBusy(true);
-      setTaskNotice("Connecting to the local NOX companion…");
+      setTaskNotice("Finding installed apps from your Windows Start Menu…");
       try {
-        const response = await fetch("http://127.0.0.1:8765/v1/actions/open", {
+        const response = await fetch("http://127.0.0.1:8765/v1/apps", { headers: { "X-NOX-Token": token } });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Could not list local apps");
+        const requestedName = normalizeAppName(commandTarget);
+        const aliases = { vscode: "visualstudiocode", code: "visualstudiocode", chrome: "googlechrome", edge: "microsoftedge", explorer: "fileexplorer", calc: "calculator" };
+        const query = aliases[requestedName] || requestedName;
+        const matches = (data.apps || []).filter((app) => {
+          const name = normalizeAppName(app.name);
+          return name === query || name.startsWith(query) || query.startsWith(name);
+        }).slice(0, 12);
+        if (!matches.length) throw new Error('No Start Menu shortcut matched "' + commandTarget + '". Check the app name or install its Start Menu shortcut.');
+        let selected = matches[0];
+        if (matches.length > 1) {
+          const choices = matches.map((app, index) => (index + 1) + ". " + app.name).join("\n");
+          const answer = window.prompt("Which app should NOX open?\n" + choices + "\n\nEnter a number:", "1");
+          const index = Number(answer) - 1;
+          if (answer === null || !Number.isInteger(index) || index < 0 || index >= matches.length) {
+            setTaskNotice("App launch cancelled.");
+            return;
+          }
+          selected = matches[index];
+        }
+        if (!window.confirm('NOX wants to open "' + selected.name + '" on this PC. Continue?')) {
+          setTaskNotice("App launch cancelled.");
+          return;
+        }
+        const launch = await fetch("http://127.0.0.1:8765/v1/actions/open", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-NOX-Token": token },
-          body: JSON.stringify({ target: requestedWindowsApp.target, confirmed: true })
+          body: JSON.stringify({ target: selected.id, confirmed: true })
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "Local companion request failed");
+        const result = await launch.json();
+        if (!launch.ok) throw new Error(result.detail || "App launch request failed");
         setTaskGoal("");
-        setTaskNotice(`Launch request sent for ${requestedWindowsApp.target}. Check the PC window.`);
+        setTaskNotice("Launch request sent for " + selected.name + ". Check the PC window.");
       } catch (error) {
-        setTaskNotice(`Could not reach local companion: ${error.message}. Ensure it is running on this PC and browser local-network access is allowed.`);
+        setTaskNotice("Could not launch app: " + error.message + ". Companion/browser local-network policies may block the connection.");
       } finally {
         setTaskBusy(false);
       }
