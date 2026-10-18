@@ -3,6 +3,7 @@ import os
 import secrets
 import sqlite3
 import string
+from urllib.parse import urlparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,13 +59,47 @@ class SharedChatPayload(BaseModel):
 
 
 PAIR_DB = Path(os.getenv("NOX_PAIRING_DB", str(ROOT / "nox_pairing.sqlite3")))
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+
+class PairDBConnection:
+    """Small SQLite/Postgres compatibility layer for NOX pairing storage."""
+    def __init__(self, connection, postgres=False):
+        self.connection = connection
+        self.postgres = postgres
+
+    def execute(self, query, params=()):
+        if self.postgres:
+            query = query.replace("?", "%s")
+            return self.connection.execute(query, params)
+        return self.connection.execute(query, params)
+
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
+
+    def close(self):
+        self.connection.close()
 
 
 @contextmanager
 def pair_db():
-    PAIR_DB.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(PAIR_DB, timeout=10)
-    conn.row_factory = sqlite3.Row
+    postgres = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+    if postgres:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError("DATABASE_URL is set but psycopg is not installed.") from exc
+        raw_conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, connect_timeout=10)
+        conn = PairDBConnection(raw_conn, postgres=True)
+    else:
+        PAIR_DB.parent.mkdir(parents=True, exist_ok=True)
+        raw_conn = sqlite3.connect(PAIR_DB, timeout=10)
+        raw_conn.row_factory = sqlite3.Row
+        conn = PairDBConnection(raw_conn)
     try:
         conn.execute("""CREATE TABLE IF NOT EXISTS pair_sessions (
             session_id TEXT PRIMARY KEY, code TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL,
