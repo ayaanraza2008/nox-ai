@@ -14,7 +14,7 @@
 .holo-caption{position:absolute;left:50%;bottom:17px;transform:translateX(-50%);white-space:nowrap;font:10px 'DM Mono',monospace;letter-spacing:1px;color:#d8e8ff;text-shadow:0 0 12px #56c9ff44}
 .holo-caption i{display:inline-block;width:5px;height:5px;border-radius:50%;background:#70e3ff;margin:0 7px 1px 0;box-shadow:0 0 9px #70e3ff}
 .holo-caption small{display:block;text-align:center;color:#7c8ba8;font-size:8px;margin-top:5px;letter-spacing:.8px}
-.holo-userspeaking .holo-caption i,.holo-vaultarspeaking .holo-caption i{background:#a78bfa;box-shadow:0 0 12px #a78bfa}
+.holo-userspeaking .holo-caption i,.holo-nox-speaking .holo-caption i{background:#a78bfa;box-shadow:0 0 12px #a78bfa}
 .holo-error .holo-caption i{background:#ff6674;box-shadow:0 0 10px #ff6674}
 .holo-processing .holo-center-mark span{animation-duration:1s}
 @keyframes holoCoreBreath{0%,100%{transform:scale(.8);opacity:.45}50%{transform:scale(1.4);opacity:.95}}
