@@ -100,4 +100,18 @@ NOX also includes a heuristic static analyzer in `security_audit.py`. It reads P
    ```
 2. Send the paired command: `audit project security` (also accepts `security audit project` or `scan my project code`).
 
-It checks for suspicious dynamic execution, shell=True, unsafe pickle/YAML use, possible hard-coded secrets, weak hashes, disabled TLS verification, and debug mode. The report includes severity, file, line, evidence, and suggested fixes. It scans at most 500 Python files and skips common generated/dependency directories and oversized files. Findings are heuristic, can be false positives, and are not proof of exploitability. Configure the directory carefully: results may include short snippets from source lines. This does not yet audit JavaScript, dependencies, live servers, or network services.
+It checks for suspicious dynamic execution, shell=True, unsafe pickle/YAML use, possible hard-coded secrets, weak hashes, disabled TLS verification, and debug mode. The report includes severity, file, line, evidence, and suggested fixes. It scans at most 500 Python files and skips common generated/dependency directories and oversized files. Findings are heuristic, can be false positives, and are not proof of exploitability. Configure the directory carefully: results may include short snippets from source lines. This source checker does not audit JavaScript, dependencies, live servers, or network services by itself.
+
+### Dependency advisory checks and reports
+
+NOX can check exact-pinned Python dependencies in `requirements.txt` and npm packages in `package-lock.json` against the public OSV vulnerability database. It sends package names and versions (not project source code or credentials) to OSV. It checks up to 80 unique packages and reports any network/database errors rather than treating incomplete results as clean.
+
+- `audit project dependencies` — check dependency advisories.
+- `generate security report` — run the Python static review and dependency check, then write `nox-security-reports/security-report.json` and `nox-security-reports/security-report.md` inside the configured project folder.
+- `full project security audit` — alias for generating the combined report.
+
+Review advisory matches before acting; they do not alone prove runtime exploitability. A clean report is not a guarantee of security. The report folder may contain source-line snippets from static findings, so keep the project folder private. These checks are read-only with respect to inspected code and do not install, upgrade, or modify packages.
+
+### Authorized lab workflow
+
+For hands-on learning, use an intentionally vulnerable local training app or a lab you control. Keep the target inventory, permission, test window, and allowed test types written down; isolate the lab from production and real user data; take a backup; and stop if the target differs from the approved scope. NOX's current feature set does not automatically exploit targets or perform active penetration tests.
