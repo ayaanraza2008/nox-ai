@@ -1,6 +1,12 @@
-"""Minimal local NOX companion. Only opens allow-listed web destinations; no shell execution."""
+"""Permissioned local Windows companion for NOX AI.
+
+Only fixed, allow-listed applications and HTTPS destinations can be opened.
+No arbitrary shell commands, file reads, or general remote-control endpoint.
+"""
 import hmac
 import os
+import shutil
+import subprocess
 import webbrowser
 from typing import Literal
 
@@ -13,7 +19,7 @@ WEB_ORIGIN = os.getenv("NOX_WEB_ORIGIN", "https://nox-ai-vcqx.onrender.com").str
 HOST = "127.0.0.1"
 PORT = int(os.getenv("NOX_COMPANION_PORT", "8765"))
 
-app = FastAPI(title="NOX Local Desktop Companion", version="0.1.0")
+app = FastAPI(title="NOX Local Desktop Companion", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[WEB_ORIGIN],
@@ -22,13 +28,28 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-NOX-Token"],
 )
 
+# Fixed commands only. Never accept an executable path or arguments from a request.
+WINDOWS_APPS = {
+    "calculator": ["calc.exe"],
+    "notepad": ["notepad.exe"],
+    "paint": ["mspaint.exe"],
+    "file explorer": ["explorer.exe"],
+    "task manager": ["taskmgr.exe"],
+}
 DESTINATIONS = {
     "instagram": "https://www.instagram.com/",
+    "youtube": "https://www.youtube.com/",
+    "google": "https://www.google.com/",
+    "whatsapp web": "https://web.whatsapp.com/",
+    "github": "https://github.com/",
+    "chatgpt": "https://chatgpt.com/",
 }
 
-
 class OpenRequest(BaseModel):
-    target: Literal["instagram"]
+    target: Literal[
+        "calculator", "notepad", "paint", "file explorer", "task manager",
+        "instagram", "youtube", "google", "whatsapp web", "github", "chatgpt"
+    ]
     confirmed: bool = False
 
 
@@ -41,22 +62,45 @@ def authorize(token: str | None):
 
 @app.get("/health")
 def health():
-    return {"service": "NOX Local Desktop Companion", "status": "ok", "host": HOST, "actions": ["open instagram website"]}
+    return {
+        "service": "NOX Local Desktop Companion",
+        "status": "ok",
+        "host": HOST,
+        "actions": sorted([*WINDOWS_APPS.keys(), *DESTINATIONS.keys()]),
+        "platform": os.name,
+    }
 
 
 @app.post("/v1/actions/open")
-def open_destination(payload: OpenRequest, x_nox_token: str | None = Header(default=None)):
+def open_target(payload: OpenRequest, x_nox_token: str | None = Header(default=None)):
     authorize(x_nox_token)
     if not payload.confirmed:
-        raise HTTPException(status_code=400, detail="User confirmation is required before opening a destination.")
-    url = DESTINATIONS[payload.target]
+        raise HTTPException(status_code=400, detail="User confirmation is required before opening an app or website.")
+
+    if payload.target in WINDOWS_APPS:
+        if os.name != "nt":
+            raise HTTPException(status_code=501, detail="Installed-app launching is currently supported on Windows only.")
+        command = WINDOWS_APPS[payload.target]
+        if not shutil.which(command[0]):
+            raise HTTPException(status_code=404, detail=f"{payload.target} was not found on this PC.")
+        try:
+            subprocess.Popen(command, shell=False, close_fds=True)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"Could not launch {payload.target}: {exc}") from exc
+        return {"status": "launch_requested", "target": payload.target,
+                "message": "Launch request sent. Verify the app window on this PC."}
+
+    url = DESTINATIONS.get(payload.target)
+    if not url:
+        raise HTTPException(status_code=400, detail="Target is not on the allowlist.")
     try:
         opened = webbrowser.open(url, new=2, autoraise=True)
     except Exception:
         opened = False
     if not opened:
         raise HTTPException(status_code=500, detail="The default browser did not confirm opening the destination.")
-    return {"status": "requested", "target": payload.target, "url": url, "message": "Open request sent to the default browser. Verify the browser window on this PC."}
+    return {"status": "launch_requested", "target": payload.target, "url": url,
+            "message": "Browser-open request sent. Verify the browser window on this PC."}
 
 
 if __name__ == "__main__":
@@ -64,5 +108,5 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("Set NOX_COMPANION_TOKEN to a long random secret before running.")
     print(f"Starting NOX local companion on http://{HOST}:{PORT}")
-    print("This service binds to loopback only and exposes an allow-listed Instagram website action.")
+    print("Loopback only; fixed allowlist; confirmation and token required.")
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
