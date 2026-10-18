@@ -7,6 +7,7 @@ A futuristic, multilingual personal AI assistant starter built with React, Vite,
 - Chat UI with Hindi, Urdu, English, and Hinglish language selection
 - Browser speech input/output where supported
 - FastAPI backend with optional OpenRouter-compatible AI provider
+- Bounded autonomous task worker with tool-calling public-web search and page reading
 - Demo fallback when no AI API key is configured
 - Render deployment configuration
 
@@ -28,11 +29,12 @@ Create a **Web Service** from this repository. The included `render.yaml` define
 Never commit API keys or passwords. Configure secrets in Render environment variables.
 
 
-## Single-command agent roadmap and current limits
+## Autonomous task worker and current limits
 
-- The command panel can open recognized websites (for example, YouTube, Google, GitHub, Instagram, WhatsApp Web, ChatGPT, and Render) or an explicit HTTP(S) URL in a new tab after asking for confirmation.
-- This is navigation only. It does not claim to have logged in, clicked buttons, sent messages, purchased anything, or completed other site actions.
-- Multi-step website automation needs a browser automation worker with per-task permissions, confirmation before consequential actions, timeouts, and an auditable action log.
+- Tasks submitted to the task panel now run through a bounded tool-using agent. With OPENROUTER_API_KEY configured, it can search the public web, read public HTML/text pages, use those results to reason, and return a result with source URLs.
+- The agent has a maximum of five tool-call rounds per task. It blocks local/private IP targets and only reads public HTTP/HTTPS HTML or plain-text pages. Web page content is treated as untrusted input.
+- The command panel can also open recognized websites (for example, YouTube, Google, GitHub, Instagram, WhatsApp Web, ChatGPT, and Render) or an explicit HTTP(S) URL in a new tab after asking for confirmation. That opens the page in the user's browser; it does not automate the page.
+- The current worker does not log in, submit forms, send messages, purchase items, execute shell commands, or control the user's local device. Those capabilities require separate permissioned integrations and explicit confirmations for consequential actions.
 - Opening installed apps, controlling windows, and accessing files on the user's own phone/PC requires a separately installed local companion with narrowly scoped permissions. A Render-hosted backend cannot directly operate the user's device.
 - Never store API keys in frontend code or commit them to Git. Configure provider credentials as Render environment secrets.
 - A hosted AI provider key is required for provider-backed chat; free tiers and hosting quotas may change.
