@@ -323,10 +323,15 @@ function App() {
     }
 
     if (openVerb && (explicitAppCommand || !websiteCommand) && /Windows/i.test(navigator.userAgent)) {
-      const token = window.prompt("Enter your local NOX companion token. It is not saved by this page:");
+      let token = "";
+      try { token = sessionStorage.getItem("nox-companion-token") || ""; } catch {}
       if (!token) {
-        setTaskNotice("App launch cancelled: companion token not provided.");
-        return;
+        token = window.prompt("First-time setup: enter your local NOX companion token. It will be kept only for this browser session.");
+        if (!token) {
+          setTaskNotice("App launch needs the local companion token once per browser session.");
+          return;
+        }
+        try { sessionStorage.setItem("nox-companion-token", token); } catch {}
       }
       setTaskBusy(true);
       setTaskNotice("Finding installed apps from your Windows Start Menu…");
@@ -342,17 +347,8 @@ function App() {
           return name === query || name.startsWith(query) || query.startsWith(name);
         }).slice(0, 12);
         if (!matches.length) throw new Error('No Start Menu shortcut matched "' + commandTarget + '". Check the app name or install its Start Menu shortcut.');
-        let selected = matches[0];
-        if (matches.length > 1) {
-          const choices = matches.map((app, index) => (index + 1) + ". " + app.name).join("\n");
-          const answer = window.prompt("Which app should NOX open?\n" + choices + "\n\nEnter a number:", "1");
-          const index = Number(answer) - 1;
-          if (answer === null || !Number.isInteger(index) || index < 0 || index >= matches.length) {
-            setTaskNotice("App launch cancelled.");
-            return;
-          }
-          selected = matches[index];
-        }
+        // Keep routine app launches one-command: prefer an exact match, else the best first match.
+        const selected = matches.find((app) => normalizeAppName(app.name) === query) || matches[0];
         const launch = await fetch("http://127.0.0.1:8765/v1/actions/open", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-NOX-Token": token },
