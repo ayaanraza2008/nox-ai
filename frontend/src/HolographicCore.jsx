@@ -23,6 +23,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
     let smoothed = 0;
     let time = 0;
     let particles = [];
+    let lastFrame = 0;
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -32,7 +33,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = reducedMotion ? 220 : (width < 420 ? 340 : 650);
+      const count = reducedMotion ? 160 : (width < 420 ? 280 : 520);
       particles = Array.from({ length: count }, (_, i) => {
         const z = Math.random() * 2 - 1;
         const a = Math.random() * Math.PI * 2;
@@ -48,7 +49,14 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       });
     };
 
-    const draw = () => {
+    const draw = (timestamp = 0) => {
+      // Cap expensive canvas work on high-refresh displays; animation remains smooth.
+      if (timestamp - lastFrame < 1000 / (reducedMotion ? 18 : 50)) {
+        raf = window.requestAnimationFrame(draw);
+        return;
+      }
+      const delta = lastFrame ? Math.min(2, (timestamp - lastFrame) / 16.67) : 1;
+      lastFrame = timestamp;
       const sourceLevel = mode === "USER_SPEAKING"
         ? (micLevelRef.current || 0)
         : mode === "NOX_SPEAKING"
@@ -67,8 +75,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       const energy = Math.max(smoothed, statePulse);
       const idleMotion = reducedMotion ? 0.15 : 1;
       const speed = (0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : 0)) * idleMotion;
-      rotation += speed;
-      time += reducedMotion ? 0.004 : 0.012 + energy * 0.035;
+      rotation += speed * delta;
+      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta;
       ctx.clearRect(0, 0, width, height);
 
       const cx = width / 2;
@@ -118,23 +126,29 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       }).sort((a, b) => a.z - b.z);
 
       const linkDistance = width < 420 ? 20 : 24;
+      // Connect nearby particles in screen space for a more convincing 3D lattice.
       for (let i = 0; i < projected.length; i += 1) {
         const a = projected[i];
         if (a.z < -0.35) continue;
-        for (let j = i + 1; j < Math.min(i + 7, projected.length); j += 1) {
+        const nearby = [];
+        for (let j = 0; j < projected.length; j += 1) {
+          if (i === j) continue;
           const b = projected[j];
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist < linkDistance && b.z > -0.2) {
-            ctx.strokeStyle = `rgba(91, 174, 255, ${(1 - dist / linkDistance) * (0.08 + energy * 0.22)})`;
-            ctx.lineWidth = 0.45 + energy * 0.35;
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.stroke();
-          }
+          if (b.z < -0.2) continue;
+          const dist = Math.hypot(a.x - b.x, a.y - b.y);
+          if (dist < linkDistance) nearby.push({ b, dist });
         }
+        nearby.sort((u, v) => u.dist - v.dist);
+        nearby.slice(0, 3).forEach(({ b, dist }) => {
+          // Draw each undirected edge only once.
+          if (projected.indexOf(b) <= i) return;
+          ctx.strokeStyle = `rgba(91, 174, 255, ${(1 - dist / linkDistance) * (0.08 + energy * 0.22)})`;
+          ctx.lineWidth = 0.45 + energy * 0.35;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        });
       }
 
       projected.forEach((p) => {
@@ -177,6 +191,16 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       ctx.beginPath();
       ctx.ellipse(0, 0, radius * 1.12, radius * 0.22, -0.32, 0.25, Math.PI * 1.65);
       ctx.stroke();
+      // Tiny orbiting nodes create depth cues without obscuring the central particle sphere.
+      for (let i = 0; i < 4; i += 1) {
+        const angle = time * (0.32 + i * 0.055) + i * Math.PI / 2;
+        const ox = Math.cos(angle) * radius * (0.9 + i * 0.045);
+        const oy = Math.sin(angle * 0.8 + i) * radius * (0.24 + i * 0.035);
+        ctx.beginPath();
+        ctx.arc(ox, oy, 1.1 + energy * 1.4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(145, 224, 255, ${0.38 + energy * 0.35})`;
+        ctx.fill();
+      }
       ctx.restore();
 
       // The equalizer remains nearly still in silence and follows the same energy.
