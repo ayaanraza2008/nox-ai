@@ -99,10 +99,23 @@ class PairingService : Service() {
                     if (item != null) {
                         val commandId = item.optString("command_id")
                         val command = item.optString("command")
+                        // Execute the action once. If reporting fails, retry only the
+                        // result upload; never rerun a potentially side-effecting action.
                         val result = runCommand(command).first
                         val resultQuery = URLEncoder.encode(result.toString(), "UTF-8")
                         val resultPath = "/api/pairing/commands/" + URLEncoder.encode(commandId, "UTF-8") + "/result?result=" + resultQuery
-                        api(resultPath, "POST", token = token)
+                        var reported = false
+                        for (attempt in 0 until 3) {
+                            try {
+                                api(resultPath, "POST", token = token)
+                                reported = true
+                                break
+                            } catch (e: Exception) {
+                                if (attempt == 2) throw e
+                                Thread.sleep(1000L * (attempt + 1))
+                            }
+                        }
+                        if (!reported) throw IllegalStateException("Action ran but result could not be reported after retries.")
                     }
                 }
             } catch (_: Exception) {
