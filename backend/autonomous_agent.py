@@ -92,7 +92,7 @@ async def _get_public(url: str) -> tuple[str, str, str]:
 async def web_search(query: str) -> str:
     if not query.strip() or len(query) > 300:
         raise ValueError("Search query must be between 1 and 300 characters.")
-    url = "https://html.duckduckgo.com/html/?q=" + httpx.QueryParams({"q": query})["q"]
+    url = str(httpx.URL("https://html.duckduckgo.com/html/").copy_add_param("q", query))
     _, _, html = await _get_public(url)
     parser = _SearchResults()
     parser.feed(html)
