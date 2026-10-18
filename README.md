@@ -55,3 +55,14 @@ Never commit API keys or passwords. Configure secrets in Render environment vari
 - The hosted HTTPS-to-local HTTP bridge may be blocked by browser local-network/mixed-content policy; this has not been verified on the user's browser. General desktop automation, file access, and silent/unconfirmed app control are not implemented.
 - Never store API keys in frontend code or commit them to Git. Configure provider credentials as Render environment secrets.
 - A hosted AI provider key is required for provider-backed chat; free tiers and hosting quotas may change.
+
+
+## Cross-device chat history (paired devices)
+
+The latest frontend/backend adds an authenticated shared conversation store for devices in the same NOX pairing session. The browser requests history using its paired-device token; the API checks that the token belongs to the requested session. It supports listing, saving, and deleting conversations and keeps up to 30 conversations per session. Unpaired devices cannot read that session's history through these endpoints.
+
+**Persistence note:** the current default uses SQLite at `nox_pairing.sqlite3`. On hosting platforms with an ephemeral filesystem, stored pairings, commands, and shared chat history can be lost when the service restarts or redeploys. For durable production use, configure a persistent disk or migrate the store to a managed database. Cross-device sync also requires the same active pairing session on each device.
+
+## What “from anywhere” requires
+
+NOX is a growing, permissioned assistant, not yet a universal remote-control layer. The hosted web app can chat and route supported commands; local app/device actions require the appropriate companion to be installed, paired, running, and granted OS permissions. Browsers and mobile operating systems intentionally block unrestricted background access. Purchases, sending messages, destructive edits, and other consequential actions should keep explicit confirmation. Do not put API keys or device tokens in public repositories.
