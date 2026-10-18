@@ -71,6 +71,8 @@ The website currently uses Android intents for a small supported set (Instagram,
 
 The relay never passes chat text to PowerShell or a shell. Without Home Assistant settings, it accepts only app-opening, fixed website, HTTP(S) URL, and web-search requests.
 
+If the network drops after a local command finishes, the companion retries reporting that command's result up to three times for transient network/server failures. It does **not** rerun the command to recover, avoiding duplicate installs or repeated side effects.
+
 ## Optional smart-home control with Home Assistant
 
 NOX can control compatible home devices through [Home Assistant](https://www.home-assistant.io/), which acts as the local integration hub. This is an adapter, not automatic discovery of every device in the house.
