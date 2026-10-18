@@ -155,9 +155,16 @@ def write_report(static_result=None, dependency_result=None):
     }
     out_dir = root / "nox-security-reports"
     try:
+        # Never follow pre-existing symlinks while writing reports.
+        if out_dir.is_symlink():
+            return {"status": "error", "message": "Report directory must not be a symlink."}
         out_dir.mkdir(mode=0o700, exist_ok=True)
+        if not out_dir.resolve().is_relative_to(root):
+            return {"status": "error", "message": "Report directory must remain inside the configured project."}
         json_path = out_dir / "security-report.json"
         md_path = out_dir / "security-report.md"
+        if json_path.is_symlink() or md_path.is_symlink():
+            return {"status": "error", "message": "Report output files must not be symlinks."}
         json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
         lines = [
             "# NOX Security Report", "",
