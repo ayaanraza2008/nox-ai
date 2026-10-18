@@ -109,7 +109,7 @@ function App() {
       synth.speak(utterance);
     };
     utterance.onstart = () => {
-      setCoreMode("VAULTAR_SPEAKING");
+      setCoreMode("NOX_SPEAKING");
       setStatus("AI VOICE ACTIVE");
     };
     utterance.onboundary = () => {
