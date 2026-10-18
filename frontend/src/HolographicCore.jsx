@@ -7,6 +7,8 @@ import React, { useEffect, useRef } from "react";
  */
 export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
   const canvasRef = useRef(null);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const reducedMotion = typeof window !== "undefined" &&
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
@@ -21,6 +23,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
     let dpr = 1;
     let rotation = 0;
     let smoothed = 0;
+    let statePulse = 0;
     let time = 0;
     let particles = [];
     let lastFrame = 0;
@@ -50,6 +53,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
     };
 
     const draw = (timestamp = 0) => {
+      const activeMode = modeRef.current;
       // Cap expensive canvas work on high-refresh displays; animation remains smooth.
       if (timestamp - lastFrame < 1000 / (reducedMotion ? 18 : 50)) {
         raf = window.requestAnimationFrame(draw);
@@ -57,21 +61,23 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       }
       const delta = lastFrame ? Math.min(2, (timestamp - lastFrame) / 16.67) : 1;
       lastFrame = timestamp;
-      const sourceLevel = mode === "USER_SPEAKING"
+      const sourceLevel = activeMode === "USER_SPEAKING"
         ? (micLevelRef.current || 0)
-        : mode === "NOX_SPEAKING"
+        : activeMode === "NOX_SPEAKING"
           ? (ttsLevelRef.current || 0)
           : 0;
-      const listening = mode === "USER_LISTENING";
-      const thinking = mode === "PROCESSING" || mode === "THINKING";
-      const working = mode === "WORKING";
-      const error = mode === "ERROR";
+      const listening = activeMode === "USER_LISTENING";
+      const thinking = activeMode === "PROCESSING" || activeMode === "THINKING";
+      const working = activeMode === "WORKING";
+      const error = activeMode === "ERROR";
       const target = Math.max(0, Math.min(1, sourceLevel));
       smoothed += (target - smoothed) * (target > smoothed ? 0.24 : 0.075);
       // Quiet, restrained motion while thinking; a stronger orbit while executing.
-      const statePulse = thinking ? (0.12 + 0.08 * (0.5 + 0.5 * Math.sin(time * 2.2)))
+      const targetStatePulse = thinking ? (0.12 + 0.08 * (0.5 + 0.5 * Math.sin(time * 2.2)))
         : working ? (0.22 + 0.12 * (0.5 + 0.5 * Math.sin(time * 3.1)))
           : error ? 0.06 : 0;
+      // Ease state changes in and out instead of snapping between visual presets.
+      statePulse += (targetStatePulse - statePulse) * (targetStatePulse > statePulse ? 0.045 : 0.025);
       const energy = Math.max(smoothed, statePulse);
       const idleMotion = reducedMotion ? 0.15 : 1;
       const speed = (0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : 0)) * idleMotion;
@@ -233,9 +239,9 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
         ctx.fill();
       }
 
-      canvas.dataset.mode = mode;
-      canvas.dataset.audioSource = mode === "USER_SPEAKING" ? "microphone-amplitude"
-        : mode === "NOX_SPEAKING" ? "tts-playback-fallback" : "none";
+      canvas.dataset.mode = activeMode;
+      canvas.dataset.audioSource = activeMode === "USER_SPEAKING" ? "microphone-amplitude"
+        : activeMode === "NOX_SPEAKING" ? "tts-playback-fallback" : "none";
       canvas.dataset.activity = thinking ? "thinking-animation" : working ? "working-animation"
         : error ? "error-state" : listening ? "listening" : "idle";
       raf = window.requestAnimationFrame(draw);
@@ -249,7 +255,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       window.cancelAnimationFrame(raf);
       observer.disconnect();
     };
-  }, [mode, micLevelRef, ttsLevelRef, reducedMotion]);
+  }, [micLevelRef, ttsLevelRef, reducedMotion]);
 
   const label = mode === "USER_SPEAKING" ? "MIC AUDIO REACTIVE"
     : mode === "NOX_SPEAKING" ? "VOICE PLAYBACK · ESTIMATED"
