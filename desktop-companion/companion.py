@@ -224,7 +224,7 @@ def pairing_worker():
 
         # Passive website-security checks only; no scanning or exploitation.
         security_check = re.fullmatch(
-            r"(?:security check|check security of|check headers for)\\s+(https://\\S+)",
+            r"(?:security check|check security of|check headers for)\s+(https://\S+)",
             raw,
             re.I,
         )
