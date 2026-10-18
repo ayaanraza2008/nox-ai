@@ -88,3 +88,16 @@ NOX includes an opt-in, low-impact website header checker in `ethical_hacking.py
 It makes one HTTPS request and reports whether common headers (HSTS, CSP, nosniff, Referrer-Policy, and Permissions-Policy) are present, while validating the TLS certificate. It blocks private/local IP addresses, non-standard ports, and redirects. It does **not** crawl, scan ports, brute-force, exploit vulnerabilities, attempt logins, or test cameras/devices. A missing header is only a review suggestion, not proof of a vulnerability. This is an initial passive checker, not a full penetration-testing suite.
 
 For deeper authorized testing, use a dedicated lab or staging environment and review findings manually before making changes. Never test systems without the owner's permission.
+
+### Read-only Python project audit
+
+NOX also includes a heuristic static analyzer in `security_audit.py`. It reads Python source only and never executes inspected files or accesses the network.
+
+1. Set the folder you own and want to review before starting the companion:
+   ```powershell
+   $env:NOX_SECURITY_PROJECT_DIR = "C:\\path\\to\\your\\project"
+   python companion.py
+   ```
+2. Send the paired command: `audit project security` (also accepts `security audit project` or `scan my project code`).
+
+It checks for suspicious dynamic execution, shell=True, unsafe pickle/YAML use, possible hard-coded secrets, weak hashes, disabled TLS verification, and debug mode. The report includes severity, file, line, evidence, and suggested fixes. It scans at most 500 Python files and skips common generated/dependency directories and oversized files. Findings are heuristic, can be false positives, and are not proof of exploitability. Configure the directory carefully: results may include short snippets from source lines. This does not yet audit JavaScript, dependencies, live servers, or network services.
