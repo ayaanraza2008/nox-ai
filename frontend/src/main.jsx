@@ -68,7 +68,7 @@ function App() {
   }, []);
 
   function resolveWebsiteCommand(rawGoal) {
-    const match = rawGoal.trim().match(/^(?:please\\s+)?(?:open|launch|visit|go to|browse to|khol|kholo|khul)\\s+(.+?)\\s*[.!?]*$/i);
+    const match = rawGoal.trim().match(/^(?:please\s+)?(?:open|launch|visit|go to|browse to|khol|kholo|khul)\s+(.+?)\s*[.!?]*$/i);
     if (!match) return null;
     const target = match[1].trim().replace(/[.!?]+$/, "");
     const knownSites = {
@@ -88,7 +88,7 @@ function App() {
     };
     const key = target.toLowerCase();
     if (knownSites[key]) return { url: knownSites[key], label: target };
-    if (/^https?:\\/\\//i.test(target)) {
+    if (/^https?:\/\//i.test(target)) {
       try {
         const url = new URL(target);
         if (url.protocol !== "https:" && url.protocol !== "http:") return null;
@@ -96,7 +96,7 @@ function App() {
       } catch { return null; }
     }
     // Accept an explicit domain only; do not guess URLs for arbitrary app names.
-    if (/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}(?::\\d{1,5})?(?:[/?#][^\\s]*)?$/i.test(target)) {
+    if (/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{1,5})?(?:[/?#][^\s]*)?$/i.test(target)) {
       try {
         const url = new URL("https://" + target);
         return { url: url.href, label: url.hostname };
