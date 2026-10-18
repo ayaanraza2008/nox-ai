@@ -258,10 +258,17 @@ def install_known_software(raw: str):
     query = match.group(1).strip().casefold()
     package = WINGET_PACKAGES.get(query)
     if not package:
+        search_url = "https://www.google.com/search?q=" + __import__("urllib.parse", fromlist=["quote_plus"]).quote_plus(query + " official download winget package id")
+        opened = False
+        try:
+            opened = webbrowser.open(search_url, new=2, autoraise=True)
+        except Exception:
+            pass
         return {
             "status": "needs_review",
-            "message": "This software is not in NOX's verified package-ID allowlist. NOX will not blindly run commands copied from Google. Search the official publisher or add a reviewed WinGet package ID.",
-            "search_url": "https://www.google.com/search?q=" + __import__("urllib.parse", fromlist=["quote_plus"]).quote_plus(query + " official download winget package id"),
+            "message": "Opened a search for the official download/package details. This package is not in NOX's verified package-ID allowlist, so NOX will not blindly execute a command copied from a web page.",
+            "search_url": search_url,
+            "search_opened": bool(opened),
         }
     if os.name != "nt":
         return {"status": "unsupported", "message": "Automatic software installation is currently supported on Windows only."}
