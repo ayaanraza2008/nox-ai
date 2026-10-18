@@ -231,17 +231,21 @@ function App() {
           if (statusData.command?.status === "completed") {
             let result = {};
             try { result = JSON.parse(statusData.command.result || "{}"); } catch {}
-            setTaskNotice(pairedTarget.name + ": " + (result.message || result.status || "Command completed."));
-            return;
+            const outcome = pairedTarget.name + ": " + (result.message || result.status || "Command completed.");
+            setTaskNotice(outcome);
+            return outcome;
           }
         }
-        setTaskNotice("Command is still queued or running on " + pairedTarget.name + ". Check that its companion is online and paired.");
+        const pendingOutcome = "Command is still queued or running on " + pairedTarget.name + ". Check that its companion is online and paired.";
+        setTaskNotice(pendingOutcome);
+        return pendingOutcome;
       } catch (error) {
-        setTaskNotice("Could not reach paired device: " + error.message);
+        const failure = "Could not reach paired device: " + error.message;
+        setTaskNotice(failure);
+        return failure;
       } finally {
         setTaskBusy(false);
       }
-      return;
     }
     if (/Android/i.test(navigator.userAgent) && openVerb && (explicitAppCommand || !websiteCommand)) {
       if (!window.confirm("NOX wants to find and open an app matching: " + commandTarget + ". Continue?")) {
@@ -514,10 +518,11 @@ function App() {
       || /^(?:youtube|google|gmail|github|instagram|facebook|whatsapp web|wikipedia|reddit|linkedin|chatgpt|render|google drive|bing)\s+(?:kholo|open|launch)$/i.test(value);
     if (commandLike) {
       setInput("");
-      setMessages((old) => [...old, { role: "user", content: value }, { role: "assistant", content: "Command received. I’m routing it through NOX’s action handler now. Check the task status for the actual result." }]);
+      setMessages((old) => [...old, { role: "user", content: value }]);
       setBusy(true);
       try {
-        await submitTask(null, value);
+        const outcome = await submitTask(null, value);
+        setMessages((old) => [...old, { role: "assistant", content: typeof outcome === "string" ? outcome : "Command handled. Check the task status for details." }]);
       } catch (error) {
         setMessages((old) => [...old, { role: "assistant", content: "Command failed: " + error.message }]);
       } finally {
