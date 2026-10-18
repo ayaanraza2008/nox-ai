@@ -25,6 +25,12 @@ Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed r
 ## Deploy on Render
 Create a **Web Service** from this repository. The included `render.yaml` defines the build and start commands. Add `OPENROUTER_API_KEY` as a secret environment variable in Render if you have one. Free hosting and third-party AI free tiers may have usage limits or sleep.
 
+## NOX device pairing (early implementation)
+
+The UI now includes **Pair devices**. On the first browser, create a pairing code; on the second browser, enter that code within five minutes. The pairing API stores per-device bearer tokens, lists devices in the same session, supports explicit per-device disconnect, and exposes an authenticated command queue for companion clients. The browser saves its token in local storage and retries the status check while the page is open.
+
+**Important:** this is the pairing/relay foundation, not complete remote device control yet. The current Windows and Android companion apps have not yet been wired to poll the relay queue and execute cross-device commands. Pairing two browser tabs alone does not grant operating-system app control. Do not share pairing codes or device tokens. The SQLite database defaults to `nox_pairing.sqlite3` in the service directory; on hosting platforms with ephemeral filesystems, pairing records can be lost after redeploy/restart unless `NOX_PAIRING_DB` points to a persistent mounted disk/database.
+
 ## Security
 Never commit API keys or passwords. Configure secrets in Render environment variables.
 
