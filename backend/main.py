@@ -417,8 +417,24 @@ async def pairing_command_result(command_id: str, result: str, x_nox_device_toke
                            (command_id, current["device_id"], current["session_id"])).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Command not found for this device.")
-        conn.execute("UPDATE pair_commands SET status='completed',result=? WHERE command_id=?", (result[:2000], command_id))
-    return {"status": "recorded"}
+        # Report execution truthfully. A delivered command is not the same as a
+        # successful action; preserve the companion's actual result status.
+        try:
+            result_data = json.loads(result)
+        except (TypeError, ValueError):
+            result_data = {"status": "error", "message": "Companion returned an unreadable result."}
+        action_status = str(result_data.get("status", "error")).lower()
+        if action_status == "success":
+            command_status = "completed"
+        elif action_status in ("launch_requested", "notification_sent"):
+            # The OS accepted a launch request, but the companion cannot prove
+            # the app became visible or remained open.
+            command_status = "reported"
+        else:
+            command_status = "failed"
+        conn.execute("UPDATE pair_commands SET status=?,result=? WHERE command_id=?",
+                     (command_status, json.dumps(result_data, ensure_ascii=False)[:2000], command_id))
+    return {"status": "recorded", "command_status": command_status}
 
 
 @app.get("/api/pairing/commands/{command_id}")
