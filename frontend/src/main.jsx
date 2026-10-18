@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, AudioLines, Bot, ChevronDown, Command, Mic, Send, ShieldCheck, Sparkles, Volume2, VolumeX, Zap } from "lucide-react";
+import { Activity, AudioLines, Bot, ChevronDown, Command, Mic, Pause, Play, Send, ShieldCheck, Sparkles, Volume2, VolumeX, XCircle, Zap } from "lucide-react";
 import "./style.css";
 import HolographicCore from "./HolographicCore.jsx";
 
@@ -14,6 +14,10 @@ function App() {
   const [status, setStatus] = useState("ALL SYSTEMS READY");
   const [capabilities, setCapabilities] = useState(null);
   const [capabilityError, setCapabilityError] = useState(false);
+  const [tasks, setTasks] = useState([]);
+  const [taskGoal, setTaskGoal] = useState("");
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskNotice, setTaskNotice] = useState("");
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
   const [coreMode, setCoreMode] = useState("IDLE");
@@ -37,6 +41,59 @@ function App() {
   }, []);
 
   const statusLabel = (value) => ({ ready: "READY", running: "RUNNING", setup_required: "SETUP REQUIRED", limited: "LIMITED", unavailable: "UNAVAILABLE", error: "ERROR" }[value] || "UNKNOWN");
+  async function refreshTasks() {
+    try {
+      const response = await fetch("/api/tasks?limit=20");
+      if (!response.ok) throw new Error("Task list unavailable");
+      const data = await response.json();
+      setTasks(data.tasks || []);
+    } catch {
+      setTaskNotice("Task API unavailable. Make sure the latest Render deployment is active.");
+    }
+  }
+
+  useEffect(() => {
+    refreshTasks();
+    const timer = window.setInterval(refreshTasks, 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  async function submitTask(event) {
+    event.preventDefault();
+    const goal = taskGoal.trim();
+    if (!goal || taskBusy) return;
+    setTaskBusy(true);
+    setTaskNotice("");
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal, language })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Could not create task");
+      setTaskGoal("");
+      setTaskNotice("Task added to the queue.");
+      await refreshTasks();
+    } catch (error) {
+      setTaskNotice(error.message);
+    } finally {
+      setTaskBusy(false);
+    }
+  }
+
+  async function controlTask(taskId, action) {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/${action}`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Task action failed");
+      setTaskNotice(action === "cancel" ? "Cancellation requested." : action === "pause" ? "Pause requested." : "Task resumed.");
+      await refreshTasks();
+    } catch (error) {
+      setTaskNotice(error.message);
+    }
+  }
+
 
   function getSpeechLanguage(text) {
     if (language === "ur") return "ur-PK";
@@ -281,6 +338,13 @@ function App() {
         <div className="core-wrap"><HolographicCore mode={coreMode === "NOX_SPEAKING" ? coreMode : busy ? "PROCESSING" : coreMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} /></div>
       </section>
       <section className="capability-panel"><div className="capability-heading"><div><span className="tiny-icon"><ShieldCheck size={16} /></span><b>System Capabilities</b><small>Live backend-reported status · no simulated completion</small></div><button type="button" className="refresh-status" onClick={() => { setCapabilities(null); setCapabilityError(false); fetch("/api/capabilities").then((response) => { if (!response.ok) throw new Error("Status unavailable"); return response.json(); }).then(setCapabilities).catch(() => setCapabilityError(true)); }}>Refresh</button></div>{capabilityError ? <p className="capability-message">Capability status is unavailable. Check that the latest backend deployment has finished.</p> : !capabilities ? <p className="capability-message">Loading verified module status…</p> : <><div className="capability-summary"><span>{capabilities.modules.filter((module) => module.status === "ready").length} READY</span><span>{capabilities.modules.filter((module) => module.status === "limited").length} LIMITED</span><span>{capabilities.modules.filter((module) => module.status === "setup_required").length} SETUP REQUIRED</span></div><div className="capability-grid">{capabilities.modules.map((module) => <article className={"capability-card status-" + module.status} key={module.id}><div className="capability-card-top"><b>{module.name}</b><span>{statusLabel(module.status)}</span></div><p>{module.detail}</p></article>)}</div></>}</section>
+
+      <section className="task-panel"><div className="task-panel-heading"><div><span className="tiny-icon"><Activity size={16} /></span><b>Task Orchestrator</b><small>Queued AI tasks · progress, events and controls</small></div><button type="button" className="refresh-status" onClick={refreshTasks}>Refresh</button></div>
+        <form className="task-create" onSubmit={submitTask}><textarea value={taskGoal} onChange={(e) => setTaskGoal(e.target.value)} maxLength={6000} placeholder="Describe a task for NOX… e.g. create a step-by-step plan for my project" aria-label="Task goal" /><button type="submit" disabled={taskBusy || taskGoal.trim().length < 3}><Play size={15} /> {taskBusy ? "Adding…" : "Run task"}</button></form>
+        <p className="task-safety-note">Current worker generates an AI result only. It does not run shell commands, modify files, browse the web, or control your device.</p>
+        {taskNotice && <p className="task-notice" role="status">{taskNotice}</p>}
+        <div className="task-list">{tasks.length === 0 ? <p className="capability-message">No tasks yet. Create one above to test the queue.</p> : tasks.slice(0,8).map((task) => <article className="task-row" key={task.id}><div className="task-row-main"><div className="task-row-title"><b>{task.goal}</b><span className={"task-status task-" + task.status}>{task.status.replace("_"," ").toUpperCase()}</span></div><div className="task-progress"><span style={{width: task.progress + "%"}} /></div><div className="task-meta"><span>{task.progress}% · {task.attempts} attempt(s)</span><span>{new Date(task.updated_at).toLocaleTimeString()}</span></div>{task.error && <p className="task-error">{task.error}</p>}{task.result && <details className="task-result"><summary>View result</summary><p>{task.result}</p></details>}{task.events?.length > 0 && <details className="task-events"><summary>Execution log ({task.events.length})</summary>{task.events.slice(-5).map((entry,index)=><p key={index}><time>{new Date(entry.at).toLocaleTimeString()}</time> {entry.message}</p>)}</details>}</div><div className="task-actions">{task.status === "paused" ? <button title="Resume task" aria-label="Resume task" onClick={() => controlTask(task.id,"resume")}><Play size={14}/></button> : ["queued","running"].includes(task.status) ? <button title="Pause task" aria-label="Pause task" onClick={() => controlTask(task.id,"pause")}><Pause size={14}/></button> : null}{["queued","running","paused"].includes(task.status) && <button title="Cancel task" aria-label="Cancel task" onClick={() => controlTask(task.id,"cancel")}><XCircle size={14}/></button>}</div></article>)}</div>
+      </section>
       <section className="chat-panel"><div className="panel-heading"><div><span className="tiny-icon"><AudioLines size={16} /></span><b>Conversation</b><small>Encrypted transport · API keys remain server-side</small></div><label className="language">LANGUAGE <select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="auto">Auto detect</option><option value="en">English</option><option value="hi">Hindi</option><option value="ur">Urdu</option><option value="hinglish">Hinglish</option></select></label></div>
         <div className="messages">{messages.map((m, i) => <div className={"message " + m.role} key={i}><div className="avatar">{m.role === "assistant" ? <Bot size={17} /> : "YOU"}</div><div className="bubble"><div className="message-label">{m.role === "assistant" ? "NOX" : "YOU"}{m.mode === "demo" && <span className="demo-tag">DEMO</span>}</div><p>{m.content}</p>{m.role === "assistant" && <button type="button" className="message-speak" title="Play this reply aloud" aria-label="Play this reply aloud" onClick={() => speakText(m.content)}><Volume2 size={15} /> Listen</button>}</div></div>)}{busy && <div className="message assistant"><div className="avatar"><Bot size={17} /></div><div className="bubble"><div className="message-label">NOX</div><p className="typing">Processing<span>.</span><span>.</span><span>.</span></p></div></div>}<div ref={endRef} /></div>
         <form className="composer" onSubmit={(e) => { e.preventDefault(); sendMessage(); }}><button type="button" className={"icon-button mic " + (listening ? "recording" : "")} title="Voice input" onClick={toggleMic}><Mic size={18} /></button><input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message NOX... / NOX से कुछ पूछें" /><button type="button" className={"icon-button voice " + (speakReplies ? "enabled" : "")} title="Toggle voice replies" onClick={() => setSpeakReplies(!speakReplies)}>{speakReplies ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="send-button" type="submit" disabled={busy || !input.trim()}><Send size={17} /><span>Send</span></button></form>
