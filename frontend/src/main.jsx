@@ -12,6 +12,15 @@ function App() {
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(true);
   const [status, setStatus] = useState("ALL SYSTEMS READY");
+  const [accentColor, setAccentColor] = useState(() => {
+    try { return localStorage.getItem("nox-accent-color") || "#ff3e4d"; }
+    catch { return "#ff3e4d"; }
+  });
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--red", accentColor);
+    try { localStorage.setItem("nox-accent-color", accentColor); } catch {}
+  }, [accentColor]);
   const [capabilities, setCapabilities] = useState(null);
   const [capabilityError, setCapabilityError] = useState(false);
   const [tasks, setTasks] = useState([]);
@@ -354,7 +363,7 @@ function App() {
       <div className="side-bottom"><div className="secure"><ShieldCheck size={17} /><div><b>Private by design</b><small>Keys stay on the server</small></div></div><div className="version">NOX CORE <span>v0.1.0</span></div></div>
     </aside>
     <main className="main">
-      <header className="topbar"><div className="breadcrumb">NOX / <span>COMMAND CENTER</span></div><div className="top-status"><i /> {status}</div></header>
+      <header className="topbar"><div className="breadcrumb">NOX / <span>COMMAND CENTER</span></div><div className="topbar-tools"><label className="accent-picker">ACCENT <select aria-label="Interface accent color" value={accentColor} onChange={(event) => setAccentColor(event.target.value)}><option value="#ff3e4d">Crimson</option><option value="#a78bfa">Violet</option><option value="#38bdf8">Ice blue</option><option value="#34d399">Emerald</option><option value="#fbbf24">Amber</option></select></label><div className="top-status"><i /> {status}</div></div></header>
       <section className="hero"><div className="eyebrow"><span /> PERSONAL AI INTERFACE</div><h1>Think beyond.<br /><em>Move with intent.</em></h1><p>Your space to reason, create, and get things done.</p>
         <div className="core-wrap"><HolographicCore mode={coreMode === "NOX_SPEAKING" ? coreMode : busy ? "PROCESSING" : coreMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} /></div>
       </section>
