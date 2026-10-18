@@ -81,6 +81,8 @@ function App() {
   }
 
   useEffect(() => () => {
+    listeningRef.current = false;
+    recognitionRef.current?.stop();
     stopMicMeter();
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     window.clearTimeout(ttsDecayRef.current);
@@ -136,9 +138,19 @@ function App() {
         || null;
       synth.speak(utterance);
     } else {
-      // Some mobile browsers load their voice list asynchronously.
-      synth.addEventListener("voiceschanged", chooseVoice, { once: true });
-      chooseVoice();
+      // Some mobile browsers load voices asynchronously. Speak only once when
+      // the list arrives, with a guarded fallback for browsers that omit the event.
+      let spoken = false;
+      const speakWhenReady = () => {
+        if (spoken) return;
+        spoken = true;
+        synth.removeEventListener("voiceschanged", speakWhenReady);
+        chooseVoice();
+      };
+      synth.addEventListener("voiceschanged", speakWhenReady, { once: true });
+      window.setTimeout(() => {
+        if (!synth.getVoices().length) speakWhenReady();
+      }, 900);
     }
   }
 
