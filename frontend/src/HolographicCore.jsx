@@ -126,22 +126,36 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       }).sort((a, b) => a.z - b.z);
 
       const linkDistance = width < 420 ? 20 : 24;
-      // Connect nearby particles in screen space for a more convincing 3D lattice.
-      for (let i = 0; i < projected.length; i += 1) {
-        const a = projected[i];
+      // Spatial buckets avoid comparing every particle with every other particle.
+      // This keeps the lattice detailed without making canvas work quadratic.
+      const cellSize = linkDistance;
+      const buckets = new Map();
+      projected.forEach((point, index) => {
+        point.index = index;
+        if (point.z < -0.2) return;
+        const gx = Math.floor(point.x / cellSize);
+        const gy = Math.floor(point.y / cellSize);
+        const key = `${gx},${gy}`;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(point);
+      });
+      for (const a of projected) {
         if (a.z < -0.35) continue;
+        const gx = Math.floor(a.x / cellSize);
+        const gy = Math.floor(a.y / cellSize);
         const nearby = [];
-        for (let j = 0; j < projected.length; j += 1) {
-          if (i === j) continue;
-          const b = projected[j];
-          if (b.z < -0.2) continue;
-          const dist = Math.hypot(a.x - b.x, a.y - b.y);
-          if (dist < linkDistance) nearby.push({ b, dist });
+        for (let ox = -1; ox <= 1; ox += 1) {
+          for (let oy = -1; oy <= 1; oy += 1) {
+            const cell = buckets.get(`${gx + ox},${gy + oy}`) || [];
+            for (const b of cell) {
+              if (b.index <= a.index) continue;
+              const dist = Math.hypot(a.x - b.x, a.y - b.y);
+              if (dist < linkDistance) nearby.push({ b, dist });
+            }
+          }
         }
         nearby.sort((u, v) => u.dist - v.dist);
         nearby.slice(0, 3).forEach(({ b, dist }) => {
-          // Draw each undirected edge only once.
-          if (projected.indexOf(b) <= i) return;
           ctx.strokeStyle = `rgba(91, 174, 255, ${(1 - dist / linkDistance) * (0.08 + energy * 0.22)})`;
           ctx.lineWidth = 0.45 + energy * 0.35;
           ctx.beginPath();
