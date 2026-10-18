@@ -6,6 +6,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from backend.task_manager import TaskManager
 
 app = FastAPI(title="NOX AI API", version="0.1.0")
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,6 +22,12 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     mode: str
+
+
+class TaskCreateRequest(BaseModel):
+    goal: str = Field(min_length=3, max_length=6000)
+    language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
 
 
 async def provider_reply(message: str, language: str, history: list[dict]) -> str | None:
@@ -100,6 +107,7 @@ async def capabilities():
     ai_configured = bool(os.getenv("OPENROUTER_API_KEY"))
     modules = [
         {"id": "chat", "name": "AI Chat", "status": "ready" if ai_configured else "setup_required", "detail": "Provider-backed chat configured." if ai_configured else "Add OPENROUTER_API_KEY in the hosting environment for real AI responses."},
+        {"id": "tasks", "name": "Task Orchestration", "status": "ready", "detail": "SQLite-backed task queue with status, progress, event history, pause/resume/cancel, and one bounded retry. AI tasks return text results; external actions are not executed."},
         {"id": "voice", "name": "Browser Voice", "status": "limited", "detail": "Uses browser speech recognition/synthesis where supported; availability depends on the device and browser."},
         {"id": "hologram", "name": "Holographic Interface", "status": "ready", "detail": "Animated frontend is available; animation does not imply background task execution."},
         {"id": "research", "name": "Live Web Research", "status": "setup_required", "detail": "A live search/browser provider is not connected in this build."},
