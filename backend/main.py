@@ -261,16 +261,20 @@ async def pairing_create(payload: PairCreateRequest):
     expires = (now.replace(microsecond=0)).isoformat()
     expires_at = (now.replace(microsecond=0) + __import__("datetime").timedelta(minutes=5)).isoformat()
     with pair_db() as conn:
+        session_created = False
         for _ in range(5):
             try:
                 conn.execute("INSERT INTO pair_sessions(session_id,code,created_at,expires_at) VALUES(?,?,?,?)",
                              (session_id, code, expires, expires_at))
+                session_created = True
                 break
             except Exception as exc:
                 if not isinstance(exc, sqlite3.IntegrityError) and exc.__class__.__name__ != "UniqueViolation":
                     raise
                 conn.rollback()
                 code = "".join(secrets.choice(string.digits) for _ in range(6))
+        if not session_created:
+            raise HTTPException(status_code=503, detail="Could not allocate a unique pairing code. Please retry.")
         conn.execute("INSERT INTO pair_devices(device_id,session_id,name,token,created_at,last_seen) VALUES(?,?,?,?,?,?)",
                      (device_id, session_id, payload.device_name.strip(), token, expires, expires))
     return {"session_id": session_id, "device_id": device_id, "device_token": token,
