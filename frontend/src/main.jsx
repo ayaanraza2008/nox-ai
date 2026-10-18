@@ -103,9 +103,9 @@ function App() {
     return null;
   }
 
-  async function submitTask(event) {
-    event.preventDefault();
-    const goal = taskGoal.trim();
+  async function submitTask(event, directGoal = taskGoal) {
+    event?.preventDefault();
+    const goal = directGoal.trim();
     if (!goal || taskBusy) return;
 
     // Discover installed Windows apps through the opt-in local companion.
@@ -385,6 +385,25 @@ function App() {
   async function sendMessage(text = input) {
     const value = text.trim();
     if (!value || busy) return;
+
+    // Route explicit action/search commands from chat through the same real command handler as Task Orchestrator.
+    // Ordinary conversational messages continue to the AI chat endpoint.
+    const commandLike = /^(?:please\\s+)?(?:open|launch|start|visit|go to|browse to|search(?:\\s+the\\s+web)?(?:\\s+for)?|google|find online|internet par|khol|kholo|khul|chalao|chalu karo|खोलो|खोल|चलाओ)\\b/i.test(value)
+      || /^(?:youtube|google|gmail|github|instagram|facebook|whatsapp web|wikipedia|reddit|linkedin|chatgpt|render|google drive|bing)\\s+(?:kholo|open|launch)$/i.test(value);
+    if (commandLike) {
+      setInput("");
+      setMessages((old) => [...old, { role: "user", content: value }, { role: "assistant", content: "Command received. I’m routing it through NOX’s action handler now. Check the task status for the actual result." }]);
+      setBusy(true);
+      try {
+        await submitTask(null, value);
+      } catch (error) {
+        setMessages((old) => [...old, { role: "assistant", content: "Command failed: " + error.message }]);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     const history = messages.slice(-12).map(({ role, content }) => ({ role, content }));
     setMessages((old) => [...old, { role: "user", content: value }]);
     setInput("");
