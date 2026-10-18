@@ -470,8 +470,21 @@ def pairing_worker():
         q = re.sub(r"[^a-z0-9]", "", target.casefold())
         q = {"vscode":"visualstudiocode","code":"visualstudiocode","chrome":"googlechrome","edge":"microsoftedge","explorer":"fileexplorer","calc":"calculator"}.get(q,q)
         matches = [app for app in discover_apps() if (lambda name: name == q or name.startswith(q) or q.startswith(name))(re.sub(r"[^a-z0-9]", "", app["name"].casefold()))]
-        if len(matches) != 1:
-            return {"status":"needs_choice" if matches else "not_found","message":("Multiple apps match; use a more specific name. " if matches else "No Start Menu shortcut matched: ") + target,"matches":[x["name"] for x in matches[:10]]}
+        if len(matches) > 1:
+            return {"status":"needs_choice","message":"Multiple apps match; use a more specific name.","matches":[x["name"] for x in matches[:10]]}
+        if not matches:
+            from urllib.parse import quote_plus
+            search_url = "https://www.google.com/search?q=" + quote_plus(target + " official Windows app download")
+            try:
+                opened = webbrowser.open(search_url, new=2, autoraise=True)
+            except Exception:
+                opened = False
+            return {
+                "status": "not_found",
+                "message": "No matching Start Menu app was found. Opened a search for the official download so you can check whether it needs installing.",
+                "search_url": search_url,
+                "search_opened": bool(opened),
+            }
         shortcut = find_shortcut(matches[0]["id"])
         if not shortcut:
             return {"status":"not_found","message":"App shortcut not found; retry after refreshing."}
