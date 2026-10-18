@@ -66,8 +66,8 @@ function App() {
     // Mobile browser companion v1: handle only an explicit, allowlisted
     // Instagram-open request on Android. This opens the official HTTPS URL;
     // Android/browser settings may route it to the installed app.
-    const openInstagramRequest = /\\b(open|launch|start)\\b/i.test(goal)
-      && /\\binstagram\\b/i.test(goal);
+    const openInstagramRequest = /\b(open|launch|start)\b/i.test(goal)
+      && /\binstagram\b/i.test(goal);
     if (/Android/i.test(navigator.userAgent) && openInstagramRequest) {
       const confirmed = window.confirm("NOX wants to open Instagram. Continue?");
       if (!confirmed) {
