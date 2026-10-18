@@ -135,7 +135,8 @@ function App() {
       setTaskGoal("");
       setTaskNotice(`Requesting ${requestedApp.target}. Android may open the installed app; otherwise its official website will open.`);
       const fallback = encodeURIComponent(requestedApp.url);
-      const intentUrl = `intent://launch/#Intent;scheme=${requestedApp.target === "maps" ? "https" : "https"};package=${requestedApp.pkg};S.browser_fallback_url=${fallback};end`;
+      const appHost = new URL(requestedApp.url).hostname;
+      const intentUrl = `intent://${appHost}/#Intent;scheme=https;package=${requestedApp.pkg};S.browser_fallback_url=${fallback};end`;
       window.location.href = intentUrl;
       return;
     }
