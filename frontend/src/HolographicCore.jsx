@@ -51,7 +51,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
     const draw = () => {
       const sourceLevel = mode === "USER_SPEAKING"
         ? (micLevelRef.current || 0)
-        : mode === "VAULTAR_SPEAKING"
+        : mode === "NOX_SPEAKING"
           ? (ttsLevelRef.current || 0)
           : 0;
       const listening = mode === "USER_LISTENING";
@@ -75,6 +75,23 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       ctx.beginPath();
       ctx.arc(cx, cy, radius * 1.32, 0, Math.PI * 2);
       ctx.fill();
+
+      // Soft radial energy filaments extend from the core and intensify with audio.
+      ctx.save();
+      ctx.translate(cx, cy);
+      const filamentCount = reducedMotion ? 12 : 24;
+      for (let i = 0; i < filamentCount; i += 1) {
+        const angle = (i / filamentCount) * Math.PI * 2 + rotation * (i % 2 ? 0.28 : -0.18);
+        const inner = radius * (0.72 + 0.025 * Math.sin(time + i));
+        const outer = radius * (1.03 + energy * (0.18 + 0.12 * Math.sin(time * 1.4 + i)));
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+        ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+        ctx.strokeStyle = `rgba(104, 198, 255, ${0.035 + energy * 0.16})`;
+        ctx.lineWidth = 0.45 + energy * 0.7;
+        ctx.stroke();
+      }
+      ctx.restore();
 
       const projected = particles.map((p) => {
         const wobble = Math.sin(time + p.phase) * (0.025 + energy * 0.09);
@@ -136,6 +153,11 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       ctx.beginPath();
       ctx.ellipse(0, 0, radius * 0.88, radius * 0.37, 0.95, 0.3, Math.PI * 1.82);
       ctx.stroke();
+      ctx.rotate(rotation * 0.82);
+      ctx.strokeStyle = `rgba(105, 226, 255, ${0.07 + energy * 0.17})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * 1.12, radius * 0.22, -0.32, 0.25, Math.PI * 1.65);
+      ctx.stroke();
       ctx.restore();
 
       // The equalizer remains nearly still in silence and follows the same energy.
@@ -156,7 +178,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
 
       canvas.dataset.mode = mode;
       canvas.dataset.audioSource = mode === "USER_SPEAKING" ? "microphone-amplitude"
-        : mode === "VAULTAR_SPEAKING" ? "tts-playback-fallback" : "none";
+        : mode === "NOX_SPEAKING" ? "tts-playback-fallback" : "none";
       raf = window.requestAnimationFrame(draw);
     };
 
@@ -171,7 +193,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
   }, [mode, micLevelRef, ttsLevelRef, reducedMotion]);
 
   const label = mode === "USER_SPEAKING" ? "MIC AUDIO REACTIVE"
-    : mode === "VAULTAR_SPEAKING" ? "VOICE PLAYBACK · ESTIMATED"
+    : mode === "NOX_SPEAKING" ? "VOICE PLAYBACK · ESTIMATED"
       : mode === "USER_LISTENING" ? "LISTENING"
         : mode === "PROCESSING" ? "PROCESSING"
           : mode === "ERROR" ? "VOICE ISSUE" : "CORE IDLE";
