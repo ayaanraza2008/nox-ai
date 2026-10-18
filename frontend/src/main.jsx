@@ -117,6 +117,11 @@ function App() {
   }, []);
 
   const statusLabel = (value) => ({ ready: "READY", running: "RUNNING", setup_required: "SETUP REQUIRED", limited: "LIMITED", unavailable: "UNAVAILABLE", error: "ERROR" }[value] || "UNKNOWN");
+  // A paired record is not proof that a companion is currently reachable.
+  const isDeviceOnline = (device) => {
+    const seen = Date.parse(device?.last_seen || "");
+    return Number.isFinite(seen) && Date.now() - seen >= 0 && Date.now() - seen < 30000 && !device?.disconnected;
+  };
   async function refreshTasks() {
     try {
       const response = await fetch("/api/tasks?limit=20");
@@ -151,7 +156,7 @@ function App() {
         }
         const data = await response.json();
         if (active) {
-          const companionDevices = (data.devices || []).filter((device) => /companion/i.test(device.name) && !device.disconnected);
+          const companionDevices = (data.devices || []).filter((device) => /companion/i.test(device.name) && isDeviceOnline(device));
           setPairing((current) => current ? { ...current, devices: data.devices || [], current_device_id: data.current_device_id } : current);
           setPairTargetDevice((current) => current && companionDevices.some((device) => device.device_id === current) ? current : (companionDevices[0]?.device_id || ""));
         }
@@ -746,7 +751,7 @@ function App() {
         {pairing ? <div className="pairing-active">
           <div><span className="pair-label">PAIRING SESSION</span><code>{pairing.session_id}</code></div>
           {pairing.pair_code && <div><span className="pair-label">PAIR CODE · SHARE ONLY WITH YOUR DEVICE</span><strong className="pair-code">{pairing.pair_code}</strong><small>Code expires at {new Date(pairing.expires_at).toLocaleTimeString()}.</small></div>}
-          <div className="paired-devices"><b>Known devices</b>{(pairing.devices || []).map((device) => <div className="paired-device" key={device.device_id}><span className="pair-online-dot" />{device.name}<small>{device.device_id === pairing.current_device_id || device.device_id === pairing.device_id ? "This device" : "Paired session"}</small></div>)}</div>
+          <div className="paired-devices"><b>Known devices</b>{(pairing.devices || []).map((device) => <div className="paired-device" key={device.device_id}><span className={"pair-online-dot " + (isDeviceOnline(device) ? "online" : "offline")} />{device.name}<small>{isDeviceOnline(device) ? "ONLINE · heartbeat received" : "OFFLINE · no recent heartbeat"}{device.device_id === pairing.current_device_id || device.device_id === pairing.device_id ? " · This device" : ""}</small></div>)}</div>
           <label className="pair-target-label">SEND CHAT COMMANDS TO<select value={pairTargetDevice} onChange={(e) => setPairTargetDevice(e.target.value)}><option value="">This browser / this device</option>{(pairing.devices || []).filter((device) => /companion/i.test(device.name) && !device.disconnected).map((device) => <option key={device.device_id} value={device.device_id}>{device.name}</option>)}</select></label>
           <p className="pairing-note">Choose a paired companion to route commands from the main chat to that device. The Windows companion supports app shortcuts and web searches only; it reconnects to the relay automatically while running. Pairing does not enable arbitrary shell commands or hidden remote control.</p>
           <button className="pair-disconnect" type="button" onClick={disconnectPairing} disabled={pairBusy}>Disconnect this device</button>
