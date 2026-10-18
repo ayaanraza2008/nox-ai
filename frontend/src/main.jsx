@@ -110,26 +110,77 @@ function App() {
     const goal = taskGoal.trim();
     if (!goal || taskBusy) return;
 
-    // Android browser companion v2: allowlist Instagram only. Prefer the
-    // official Android package intent, with the official HTTPS site as fallback.
-    // This requests app launch; Android/browser policy still decides the outcome.
-    const openInstagramRequest = /\b(open|launch|start|khol|kholo|khul|chalao)\b|खोल|चला/i.test(goal)
-      && /\binstagram\b/i.test(goal);
-    if (/Android/i.test(navigator.userAgent) && openInstagramRequest) {
-      const confirmed = window.confirm("NOX wants to open the Instagram app or its official website. Continue?");
+    // Device app launch is restricted to explicit allowlists and requires confirmation.
+    const openVerb = /\\b(open|launch|start|khol|kholo|khul|chalao|chalu karo)\\b|खोल|चला/i.test(goal);
+    const normalizedGoal = goal.toLowerCase().replace(/[.!?]+$/, "").trim();
+    const appAliases = [
+      { names: ["instagram"], target: "instagram", pkg: "com.instagram.android", url: "https://www.instagram.com/" },
+      { names: ["youtube", "youtube app"], target: "youtube", pkg: "com.google.android.youtube", url: "https://www.youtube.com/" },
+      { names: ["whatsapp", "whatsapp app"], target: "whatsapp", pkg: "com.whatsapp", url: "https://www.whatsapp.com/" },
+      { names: ["gmail"], target: "gmail", pkg: "com.google.android.gm", url: "https://mail.google.com/" },
+      { names: ["google maps", "maps"], target: "maps", pkg: "com.google.android.apps.maps", url: "https://maps.google.com/" },
+      { names: ["spotify"], target: "spotify", pkg: "com.spotify.music", url: "https://open.spotify.com/" },
+      { names: ["telegram"], target: "telegram", pkg: "org.telegram.messenger", url: "https://telegram.org/" }
+    ];
+    const requestedApp = openVerb
+      ? appAliases.find((app) => app.names.some((name) => normalizedGoal === "open " + name || normalizedGoal === "launch " + name || normalizedGoal === "start " + name || normalizedGoal === "khol " + name || normalizedGoal === "kholo " + name || normalizedGoal === "open the " + name))
+      : null;
+
+    if (/Android/i.test(navigator.userAgent) && requestedApp) {
+      const confirmed = window.confirm(`NOX wants to open ${requestedApp.target} or its official website. Continue?`);
       if (!confirmed) {
-        setTaskNotice("Instagram launch cancelled.");
+        setTaskNotice(`${requestedApp.target} launch cancelled.`);
         return;
       }
       setTaskGoal("");
-      setTaskNotice("Requesting Instagram. If the app is installed, Android may open it; otherwise the official website will open.");
-      const fallback = encodeURIComponent("https://www.instagram.com/");
-      const intentUrl = `intent://instagram.com/#Intent;scheme=https;package=com.instagram.android;S.browser_fallback_url=${fallback};end`;
-      // Navigation is initiated directly from the user's confirmed submit action.
+      setTaskNotice(`Requesting ${requestedApp.target}. Android may open the installed app; otherwise its official website will open.`);
+      const fallback = encodeURIComponent(requestedApp.url);
+      const intentUrl = `intent://launch/#Intent;scheme=${requestedApp.target === "maps" ? "https" : "https"};package=${requestedApp.pkg};S.browser_fallback_url=${fallback};end`;
       window.location.href = intentUrl;
       return;
     }
 
+    const windowsApps = [
+      { names: ["calculator", "calc"], target: "calculator" },
+      { names: ["notepad"], target: "notepad" },
+      { names: ["paint", "mspaint"], target: "paint" },
+      { names: ["file explorer", "explorer"], target: "file explorer" },
+      { names: ["task manager"], target: "task manager" },
+      { names: ["instagram", "youtube", "google", "whatsapp web", "github", "chatgpt"], target: null }
+    ];
+    const requestedWindowsApp = openVerb && /Windows/i.test(navigator.userAgent)
+      ? windowsApps.slice(0, 5).find((app) => app.names.some((name) => normalizedGoal === "open " + name || normalizedGoal === "launch " + name || normalizedGoal === "start " + name || normalizedGoal === "open the " + name || normalizedGoal === "khol " + name || normalizedGoal === "kholo " + name))
+      : null;
+    if (requestedWindowsApp) {
+      const confirmed = window.confirm(`NOX wants to open ${requestedWindowsApp.target} on this PC. Continue?`);
+      if (!confirmed) {
+        setTaskNotice("App launch cancelled.");
+        return;
+      }
+      const token = window.prompt("Enter your local NOX companion token. It is not saved by this page:");
+      if (!token) {
+        setTaskNotice("Local app launch cancelled: companion token not provided.");
+        return;
+      }
+      setTaskBusy(true);
+      setTaskNotice("Connecting to the local NOX companion…");
+      try {
+        const response = await fetch("http://127.0.0.1:8765/v1/actions/open", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-NOX-Token": token },
+          body: JSON.stringify({ target: requestedWindowsApp.target, confirmed: true })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Local companion request failed");
+        setTaskGoal("");
+        setTaskNotice(`Launch request sent for ${requestedWindowsApp.target}. Check the PC window.`);
+      } catch (error) {
+        setTaskNotice(`Could not reach local companion: ${error.message}. Ensure it is running on this PC and browser local-network access is allowed.`);
+      } finally {
+        setTaskBusy(false);
+      }
+      return;
+    }
 
     // Website navigation runs in the user's own browser after explicit confirmation.
     // A hosted Render worker cannot directly control the user's other apps or desktop.
@@ -430,7 +481,7 @@ function App() {
 
       <section className="task-panel"><div className="task-panel-heading"><div><span className="tiny-icon"><Activity size={16} /></span><b>Task Orchestrator</b><small>Queued AI tasks · progress, events and controls</small></div><button type="button" className="refresh-status" onClick={refreshTasks}>Refresh</button></div>
         <form className="task-create" onSubmit={submitTask}><textarea value={taskGoal} onChange={(e) => setTaskGoal(e.target.value)} maxLength={6000} placeholder="Describe a task for NOX… e.g. create a step-by-step plan for my project" aria-label="Task goal" /><button type="submit" disabled={taskBusy || taskGoal.trim().length < 3}><Play size={15} /> {taskBusy ? "Adding…" : "Run task"}</button></form>
-        <p className="task-safety-note">Website commands can open supported sites in a new tab after confirmation. Other queued tasks currently generate AI results only; desktop control and multi-step website interaction require additional connected tools and a local companion.</p>
+        <p className="task-safety-note">On Windows, supported app launches use the opt-in local companion and require confirmation plus its token. On Android, supported app links may open installed apps or official websites. Website navigation does not automate page actions.</p>
         {taskNotice && <p className="task-notice" role="status">{taskNotice}</p>}
         <div className="task-list">{tasks.length === 0 ? <p className="capability-message">No tasks yet. Create one above to test the queue.</p> : tasks.slice(0,8).map((task) => <article className="task-row" key={task.id}><div className="task-row-main"><div className="task-row-title"><b>{task.goal}</b><span className={"task-status task-" + task.status}>{task.status.replace("_"," ").toUpperCase()}</span></div><div className="task-progress"><span style={{width: task.progress + "%"}} /></div><div className="task-meta"><span>{task.progress}% · {task.attempts} attempt(s)</span><span>{new Date(task.updated_at).toLocaleTimeString()}</span></div>{task.error && <p className="task-error">{task.error}</p>}{task.result && <details className="task-result"><summary>View result</summary><p>{task.result}</p></details>}{task.events?.length > 0 && <details className="task-events"><summary>Execution log ({task.events.length})</summary>{task.events.slice(-5).map((entry,index)=><p key={index}><time>{new Date(entry.at).toLocaleTimeString()}</time> {entry.message}</p>)}</details>}</div><div className="task-actions">{task.status === "paused" ? <button title="Resume task" aria-label="Resume task" onClick={() => controlTask(task.id,"resume")}><Play size={14}/></button> : ["queued","running"].includes(task.status) ? <button title="Pause task" aria-label="Pause task" onClick={() => controlTask(task.id,"pause")}><Pause size={14}/></button> : null}{["queued","running","paused"].includes(task.status) && <button title="Cancel task" aria-label="Cancel task" onClick={() => controlTask(task.id,"cancel")}><XCircle size={14}/></button>}</div></article>)}</div>
       </section>
