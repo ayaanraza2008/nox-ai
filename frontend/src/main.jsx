@@ -119,7 +119,8 @@ function App() {
         setTaskNotice("Website navigation cancelled.");
         return;
       }
-      const opened = window.open(website.url, "_blank", "noopener,noreferrer");
+      const opened = window.open(website.url, "_blank");
+      if (opened) opened.opener = null;
       if (opened) {
         setTaskGoal("");
         setTaskNotice(`Opened ${website.label} in a new browser tab.`);
