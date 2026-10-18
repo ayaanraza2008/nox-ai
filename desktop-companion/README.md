@@ -58,4 +58,21 @@ The website currently uses Android intents for a small supported set (Instagram,
 4. Send a command from NOX chat, for example `Open Chrome`, `Open Calculator`, `Open YouTube`, or `Google par latest gaming PC search karo`. The relay worker checks for queued commands every five seconds and retries after network errors.
 5. On later starts, the saved pairing token is reused automatically. To revoke/re-pair, disconnect the device in NOX, delete the saved pairing file, and create a new code.
 
-The relay intentionally accepts only app-opening, fixed website, HTTP(S) URL, and web-search requests. It never passes chat text to PowerShell or a shell. A command can fail if the requested app has no Start Menu shortcut, the browser is unavailable, the service is offline, or Render's ephemeral database has reset. This relay is currently an opt-in Windows feature; the Android app does not yet run a persistent background relay worker.
+The relay never passes chat text to PowerShell or a shell. Without Home Assistant settings, it accepts only app-opening, fixed website, HTTP(S) URL, and web-search requests.
+
+## Optional smart-home control with Home Assistant
+
+NOX can control compatible home devices through [Home Assistant](https://www.home-assistant.io/), which acts as the local integration hub. This is an adapter, not automatic discovery of every device in the house.
+
+1. Install Home Assistant on a device that stays on at home and add your TV, lights, plugs, fans, climate devices, or supported IP cameras through its official integrations. Matter, vendor integrations, and MQTT may be available depending on the device.
+2. In Home Assistant, create a dedicated long-lived access token for NOX with the minimum permissions practical. Keep it private.
+3. On the Windows PC that runs NOX Companion, set these PowerShell environment variables before launching `companion.py`:
+   ```powershell
+   $env:NOX_HOME_ASSISTANT_URL = "http://HOME-ASSISTANT-LAN-IP:8123"
+   $env:NOX_HOME_ASSISTANT_TOKEN = "paste-the-private-token-here"
+   python companion.py
+   ```
+   Replace the example URL with your Home Assistant address on your home network. Do not put the token in the website, source code, GitHub, or Render environment. For remote access, use a properly secured VPN or Home Assistant's secure remote-access option; do not expose an unauthenticated Home Assistant port to the public internet.
+4. Keep the Windows companion running and pair it with the NOX website. Try commands such as `list lights`, `turn on living room lights`, `turn off all lights`, `TV on`, `TV off`, `list cameras`, or `set AC to 24 degrees`. Exact commands depend on Home Assistant entity names and device capabilities.
+
+The current adapter supports a narrow allowlist of light, switch/plug, fan, media-player/TV, climate-temperature, and entity-status/list actions. Camera commands only list camera entities and status; they do not expose camera feeds. Door locks, alarms, and security devices are deliberately not controlled through free-form chat. Some TVs cannot power on unless their network standby/wake feature is enabled. A command can fail if the device is unsupported, offline, or not integrated into Home Assistant.
