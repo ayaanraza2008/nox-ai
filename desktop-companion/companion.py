@@ -173,6 +173,40 @@ def open_target(payload: OpenRequest, x_nox_token: str | None = Header(default=N
             "message": "Launch request sent. Verify the app window on this PC."}
 
 
+def handle_security_command(raw: str):
+    """Dispatch the supported defensive security commands without starting the relay."""
+    command = raw.strip()
+    if re.fullmatch(r"(?:security check|check security of|check headers for)\s+(https://\S+)", command, re.I):
+        match = re.fullmatch(r"(?:security check|check security of|check headers for)\s+(https://\S+)", command, re.I)
+        if check_website_security is None:
+            return {"status": "unsupported", "message": "The NOX passive security module is unavailable in this installation."}
+        return check_website_security(match.group(1))
+
+    if re.fullmatch(r"(?:audit project security|security audit project|scan my project code)", command, re.I):
+        if audit_project is None:
+            return {"status": "unsupported", "message": "The NOX read-only project audit module is unavailable in this installation."}
+        return audit_project()
+
+    if re.fullmatch(r"(?:audit project dependencies|check dependency vulnerabilities|check dependencies)", command, re.I):
+        if audit_dependencies is None:
+            return {"status": "unsupported", "message": "The NOX dependency audit module is unavailable in this installation."}
+        return audit_dependencies()
+
+    if re.fullmatch(r"(?:generate security report|create security report|full project security audit)", command, re.I):
+        if audit_project is None or audit_dependencies is None or write_report is None:
+            return {"status": "unsupported", "message": "One or more NOX security audit modules are unavailable in this installation."}
+        static_result = audit_project()
+        dependency_result = audit_dependencies()
+        report_result = write_report(static_result, dependency_result)
+        return {
+            "status": report_result.get("status", "error"),
+            "static_analysis": static_result,
+            "dependency_audit": dependency_result,
+            "report_files": report_result,
+        }
+    return None
+
+
 def pairing_worker():
     """Poll the paired command queue; reconnect automatically after transient network failures."""
     import json
@@ -233,35 +267,9 @@ def pairing_worker():
             if ha_result is not None:
                 return ha_result
 
-        # Passive website-security checks only; no scanning or exploitation.
-        security_check = re.fullmatch(
-            r"(?:security check|check security of|check headers for)\s+(https://\S+)",
-            raw,
-            re.I,
-        )
-        if security_check:
-            if check_website_security is None:
-                return {"status": "unsupported", "message": "The NOX passive security module is unavailable in this installation."}
-            return check_website_security(security_check.group(1))
-
-        if re.fullmatch(r"(?:audit project security|security audit project|scan my project code)", raw, re.I):
-            if audit_project is None:
-                return {"status": "unsupported", "message": "The NOX read-only project audit module is unavailable in this installation."}
-            return audit_project()
-
-        if re.fullmatch(r"(?:audit project dependencies|check dependency vulnerabilities|check dependencies)", raw, re.I):
-            if audit_dependencies is None:
-                return {"status": "unsupported", "message": "The NOX dependency audit module is unavailable in this installation."}
-            return audit_dependencies()
-
-        if re.fullmatch(r"(?:generate security report|create security report|full project security audit)", raw, re.I):
-            if audit_project is None or audit_dependencies is None or write_report is None:
-                return {"status": "unsupported", "message": "One or more NOX security audit modules are unavailable in this installation."}
-            static_result = audit_project()
-            dependency_result = audit_dependencies()
-            report_result = write_report(static_result, dependency_result)
-            return {"status": report_result.get("status", "error"), "static_analysis": static_result,
-                    "dependency_audit": dependency_result, "report_files": report_result}
+        security_result = handle_security_command(raw)
+        if security_result is not None:
+            return security_result
 
         search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google par|google|find online|internet par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
         if search:
