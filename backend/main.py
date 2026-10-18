@@ -2,6 +2,7 @@ import os
 import secrets
 import sqlite3
 import string
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -46,22 +47,31 @@ class PairJoinRequest(BaseModel):
 PAIR_DB = Path(os.getenv("NOX_PAIRING_DB", str(ROOT / "nox_pairing.sqlite3")))
 
 
+@contextmanager
 def pair_db():
+    PAIR_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(PAIR_DB, timeout=10)
     conn.row_factory = sqlite3.Row
-    conn.execute("""CREATE TABLE IF NOT EXISTS pair_sessions (
-        session_id TEXT PRIMARY KEY, code TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS pair_devices (
-        device_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, name TEXT NOT NULL,
-        token TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, last_seen TEXT NOT NULL,
-        disconnected INTEGER NOT NULL DEFAULT 0)""")
-    conn.execute("""CREATE TABLE IF NOT EXISTS pair_commands (
-        command_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, source_device TEXT NOT NULL,
-        target_device TEXT NOT NULL, command TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
-        created_at TEXT NOT NULL, result TEXT)""")
-    conn.commit()
-    return conn
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS pair_sessions (
+            session_id TEXT PRIMARY KEY, code TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS pair_devices (
+            device_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, name TEXT NOT NULL,
+            token TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, last_seen TEXT NOT NULL,
+            disconnected INTEGER NOT NULL DEFAULT 0)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS pair_commands (
+            command_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, source_device TEXT NOT NULL,
+            target_device TEXT NOT NULL, command TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+            created_at TEXT NOT NULL, result TEXT)""")
+        conn.commit()
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def utc_now():
