@@ -94,5 +94,26 @@ async def chat(payload: ChatRequest):
     )
 
 
+@app.get("/api/capabilities")
+async def capabilities():
+    """Return truthful implementation/setup status for the current NOX build."""
+    ai_configured = bool(os.getenv("OPENROUTER_API_KEY"))
+    modules = [
+        {"id": "chat", "name": "AI Chat", "status": "ready" if ai_configured else "setup_required", "detail": "Provider-backed chat configured." if ai_configured else "Add OPENROUTER_API_KEY in the hosting environment for real AI responses."},
+        {"id": "voice", "name": "Browser Voice", "status": "limited", "detail": "Uses browser speech recognition/synthesis where supported; availability depends on the device and browser."},
+        {"id": "hologram", "name": "Holographic Interface", "status": "ready", "detail": "Animated frontend is available; animation does not imply background task execution."},
+        {"id": "research", "name": "Live Web Research", "status": "setup_required", "detail": "A live search/browser provider is not connected in this build."},
+        {"id": "coding", "name": "Coding Agent", "status": "setup_required", "detail": "Repository editing and isolated code execution are not exposed as a production tool yet."},
+        {"id": "creative", "name": "Image & Video Studio", "status": "setup_required", "detail": "Generation/editing providers and media-processing workflows are not connected yet."},
+        {"id": "vision", "name": "Camera & Media Analysis", "status": "setup_required", "detail": "No backend vision-analysis provider is connected in this build."},
+        {"id": "desktop", "name": "Windows Companion", "status": "unavailable", "detail": "No local desktop companion is installed or connected."},
+        {"id": "security", "name": "Cybersecurity Lab", "status": "setup_required", "detail": "Security checks must be implemented and scoped to authorized targets before use."},
+        {"id": "files", "name": "Files & Knowledge Base", "status": "setup_required", "detail": "A persistent indexed file store is not configured yet."},
+        {"id": "memory", "name": "Persistent Memory", "status": "setup_required", "detail": "Conversation history is currently request-provided; persistent user-approved memory is not configured."},
+        {"id": "analytics", "name": "Accounts & Analytics", "status": "setup_required", "detail": "Authentication, database-backed usage metrics, and admin analytics are not configured."},
+    ]
+    return {"service": "NOX AI", "version": app.version, "ai_configured": ai_configured, "modules": modules}
+
+
 if FRONTEND_DIST.exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
