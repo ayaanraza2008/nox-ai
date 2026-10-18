@@ -120,7 +120,7 @@ function App() {
       .replace(/\s+app$/i, "")
       .trim();
     const normalizeAppName = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (/Android/i.test(navigator.userAgent) && openVerb && (!websiteCommand || (!/\bwebsite\b/i.test(goal) && !/\b[a-z0-9-]+\.[a-z]{2,}\b/i.test(commandTarget)))) {
+    const explicitAppCommand = /\b(app|application)\b/i.test(goal) || /\b(app|application)\s*$/i.test(goal);\n    if (/Android/i.test(navigator.userAgent) && openVerb && (explicitAppCommand || !websiteCommand)) {
       if (!window.confirm("NOX wants to find and open an app matching: " + commandTarget + ". Continue?")) {
         setTaskNotice("App launch cancelled.");
         return;
@@ -137,7 +137,7 @@ function App() {
       return;
     }
 
-    if (openVerb && (!websiteCommand || (!/\bwebsite\b/i.test(goal) && !/\b[a-z0-9-]+\.[a-z]{2,}\b/i.test(commandTarget))) && /Windows/i.test(navigator.userAgent)) {
+    if (openVerb && (explicitAppCommand || !websiteCommand) && /Windows/i.test(navigator.userAgent)) {
       const token = window.prompt("Enter your local NOX companion token. It is not saved by this page:");
       if (!token) {
         setTaskNotice("App launch cancelled: companion token not provided.");
