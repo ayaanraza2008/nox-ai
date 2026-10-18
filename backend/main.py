@@ -74,6 +74,66 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
         raise HTTPException(status_code=502, detail="AI provider returned an unexpected response.")
 
 
+task_manager = TaskManager(provider_reply)
+
+
+@app.on_event("startup")
+async def start_task_worker():
+    await task_manager.start()
+
+
+@app.on_event("shutdown")
+async def stop_task_worker():
+    await task_manager.stop()
+
+
+@app.post("/api/tasks", status_code=202)
+async def create_task(payload: TaskCreateRequest):
+    goal = payload.goal.strip()
+    if len(goal) < 3:
+        raise HTTPException(status_code=400, detail="Task goal must contain at least 3 characters.")
+    return {"task": await task_manager.create(goal, payload.language)}
+
+
+@app.get("/api/tasks")
+async def list_tasks(limit: int = 20):
+    limit = max(1, min(limit, 50))
+    return {"tasks": task_manager.list(limit=limit)}
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task(task_id: str):
+    task = task_manager.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    return {"task": task}
+
+
+async def _task_action(task_id: str, action: str):
+    try:
+        task = await getattr(task_manager, action)(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    return {"task": task}
+
+
+@app.post("/api/tasks/{task_id}/pause")
+async def pause_task(task_id: str):
+    return await _task_action(task_id, "pause")
+
+
+@app.post("/api/tasks/{task_id}/resume")
+async def resume_task(task_id: str):
+    return await _task_action(task_id, "resume")
+
+
+@app.post("/api/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    return await _task_action(task_id, "cancel")
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "NOX AI", "ai_configured": bool(os.getenv("OPENROUTER_API_KEY"))}
