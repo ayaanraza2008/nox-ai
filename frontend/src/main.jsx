@@ -113,6 +113,12 @@ function App() {
     // Device app launch is restricted to explicit allowlists and requires confirmation.
     const openVerb = /\\b(open|launch|start|khol|kholo|khul|chalao|chalu karo)\\b|खोल|चला/i.test(goal);
     const normalizedGoal = goal.toLowerCase().replace(/[.!?]+$/, "").trim();
+    const commandTarget = normalizedGoal
+      .replace(/^(please\\s+)?(open|launch|start|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)\\s+/i, "")
+      .replace(/\\s+(please|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)$/i, "")
+      .replace(/^the\\s+/i, "")
+      .replace(/\\s+app$/i, "")
+      .trim();
     const appAliases = [
       { names: ["instagram"], target: "instagram", pkg: "com.instagram.android", url: "https://www.instagram.com/" },
       { names: ["youtube", "youtube app"], target: "youtube", pkg: "com.google.android.youtube", url: "https://www.youtube.com/" },
@@ -123,7 +129,7 @@ function App() {
       { names: ["telegram"], target: "telegram", pkg: "org.telegram.messenger", url: "https://telegram.org/" }
     ];
     const requestedApp = openVerb
-      ? appAliases.find((app) => app.names.some((name) => normalizedGoal === "open " + name || normalizedGoal === "launch " + name || normalizedGoal === "start " + name || normalizedGoal === "khol " + name || normalizedGoal === "kholo " + name || normalizedGoal === "open the " + name))
+      ? appAliases.find((app) => app.names.some((name) => commandTarget === name))
       : null;
 
     if (/Android/i.test(navigator.userAgent) && requestedApp) {
@@ -150,7 +156,7 @@ function App() {
       { names: ["instagram", "youtube", "google", "whatsapp web", "github", "chatgpt"], target: null }
     ];
     const requestedWindowsApp = openVerb && /Windows/i.test(navigator.userAgent)
-      ? windowsApps.slice(0, 5).find((app) => app.names.some((name) => normalizedGoal === "open " + name || normalizedGoal === "launch " + name || normalizedGoal === "start " + name || normalizedGoal === "open the " + name || normalizedGoal === "khol " + name || normalizedGoal === "kholo " + name))
+      ? windowsApps.slice(0, 5).find((app) => app.names.some((name) => commandTarget === name))
       : null;
     if (requestedWindowsApp) {
       const confirmed = window.confirm(`NOX wants to open ${requestedWindowsApp.target} on this PC. Continue?`);
