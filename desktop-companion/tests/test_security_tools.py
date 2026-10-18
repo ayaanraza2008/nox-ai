@@ -82,7 +82,7 @@ class DependencyAuditTests(unittest.TestCase):
     def test_osv_timeout_is_reported_as_partial_not_clean(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            (root / "requirements.txt").write_text("demo-package==1.0.0\\n", encoding="utf-8")
+            (root / "requirements.txt").write_text("demo-package==1.0.0\n", encoding="utf-8")
             with patch.dict(os.environ, {"NOX_SECURITY_PROJECT_DIR": temp}), patch.object(
                 dependency_audit, "_query_osv", side_effect=TimeoutError("simulated timeout")
             ):
