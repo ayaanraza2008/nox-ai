@@ -174,6 +174,119 @@ def open_target(payload: OpenRequest, x_nox_token: str | None = Header(default=N
             "message": "Launch request sent. Verify the app window on this PC."}
 
 
+# Commands are deliberately mapped to fixed argument lists; user text is never passed to a shell.
+SAFE_TERMINAL_COMMANDS = {
+    "python --version": ["python", "--version"],
+    "py --version": ["py", "--version"],
+    "node --version": ["node", "--version"],
+    "npm --version": ["npm", "--version"],
+    "git --version": ["git", "--version"],
+    "git status": ["git", "status", "--short"],
+    "pip --version": ["python", "-m", "pip", "--version"],
+    "winget --version": ["winget", "--version"],
+}
+# Stable WinGet package IDs only; no package names or commands are interpolated into a shell.
+WINGET_PACKAGES = {
+    "vscode": ("Microsoft.VisualStudioCode", "Visual Studio Code"),
+    "visual studio code": ("Microsoft.VisualStudioCode", "Visual Studio Code"),
+    "git": ("Git.Git", "Git"),
+    "python": ("Python.Python.3.12", "Python 3.12"),
+    "node": ("OpenJS.NodeJS.LTS", "Node.js LTS"),
+    "nodejs": ("OpenJS.NodeJS.LTS", "Node.js LTS"),
+    "7zip": ("7zip.7zip", "7-Zip"),
+    "7-zip": ("7zip.7zip", "7-Zip"),
+    "vlc": ("VideoLAN.VLC", "VLC media player"),
+    "firefox": ("Mozilla.Firefox", "Mozilla Firefox"),
+    "chrome": ("Google.Chrome", "Google Chrome"),
+    "obs": ("OBSProject.OBSStudio", "OBS Studio"),
+    "obs studio": ("OBSProject.OBSStudio", "OBS Studio"),
+}
+
+
+def execute_safe_terminal_command(raw: str):
+    """Run a small, fixed set of diagnostic/build commands; never invoke a shell."""
+    command = raw.strip().casefold()
+    args = SAFE_TERMINAL_COMMANDS.get(command)
+    workspace_commands = {
+        "npm install": ["npm", "install", "--no-audit", "--no-fund"],
+        "npm run build": ["npm", "run", "build"],
+        "npm test": ["npm", "test", "--", "--runInBand"],
+        "python -m pytest": ["python", "-m", "pytest"],
+    }
+    if args is None and command in workspace_commands:
+        workspace = os.getenv("NOX_WORKSPACE_DIR", "").strip()
+        if not workspace:
+            return {"status": "setup_required", "message": "Set NOX_WORKSPACE_DIR to the specific project folder before running project commands."}
+        root = Path(workspace).expanduser().resolve()
+        if not root.is_dir():
+            return {"status": "error", "message": "Configured NOX_WORKSPACE_DIR is not an existing directory."}
+        if command.startswith("npm ") and not (root / "package.json").is_file():
+            return {"status": "rejected", "message": "The configured workspace has no package.json; npm command was not run."}
+        args = workspace_commands[command]
+        cwd = str(root)
+    else:
+        cwd = None
+    if args is None:
+        return None
+    if os.name != "nt":
+        return {"status": "unsupported", "message": "Local terminal commands are supported only on Windows in this companion."}
+    try:
+        completed = subprocess.run(
+            args, cwd=cwd, shell=False, capture_output=True, text=True,
+            timeout=180, check=False, stdin=subprocess.DEVNULL,
+        )
+        output = (completed.stdout or "") + (completed.stderr or "")
+        return {
+            "status": "success" if completed.returncode == 0 else "error",
+            "command": command,
+            "returncode": completed.returncode,
+            "output": output[-5000:] or "(no output)",
+        }
+    except FileNotFoundError:
+        return {"status": "not_found", "message": "Required program is not installed or is not available on PATH: " + args[0]}
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "message": "Command exceeded the 180-second time limit."}
+    except OSError as exc:
+        return {"status": "error", "message": "Could not run approved command: " + str(exc)[:300]}
+
+
+def install_known_software(raw: str):
+    """Install only a known package ID through WinGet; never execute internet snippets."""
+    match = re.fullmatch(r"(?:install|download and install|install software)\\s+(.+)", raw.strip(), re.I)
+    if not match:
+        return None
+    query = match.group(1).strip().casefold()
+    package = WINGET_PACKAGES.get(query)
+    if not package:
+        return {
+            "status": "needs_review",
+            "message": "This software is not in NOX's verified package-ID allowlist. NOX will not blindly run commands copied from Google. Search the official publisher or add a reviewed WinGet package ID.",
+            "search_url": "https://www.google.com/search?q=" + __import__("urllib.parse", fromlist=["quote_plus"]).quote_plus(query + " official download winget package id"),
+        }
+    if os.name != "nt":
+        return {"status": "unsupported", "message": "Automatic software installation is currently supported on Windows only."}
+    package_id, display_name = package
+    try:
+        completed = subprocess.run(
+            ["winget", "install", "--id", package_id, "--exact", "--source", "winget",
+             "--accept-source-agreements", "--accept-package-agreements"],
+            shell=False, capture_output=True, text=True, timeout=900, check=False,
+            stdin=subprocess.DEVNULL,
+        )
+        output = ((completed.stdout or "") + (completed.stderr or ""))[-5000:]
+        return {
+            "status": "success" if completed.returncode == 0 else "error",
+            "software": display_name, "package_id": package_id,
+            "returncode": completed.returncode, "output": output or "(no output)",
+        }
+    except FileNotFoundError:
+        return {"status": "setup_required", "message": "WinGet is not installed or unavailable. Install/update Microsoft's App Installer from Microsoft Store, then retry."}
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "message": "Installation exceeded the 15-minute time limit."}
+    except OSError as exc:
+        return {"status": "error", "message": "Installer could not start: " + str(exc)[:300]}
+
+
 def handle_security_command(raw: str):
     """Dispatch the supported defensive security commands without starting the relay."""
     command = raw.strip()
@@ -271,6 +384,17 @@ def pairing_worker():
         security_result = handle_security_command(raw)
         if security_result is not None:
             return security_result
+
+        install_result = install_known_software(raw)
+        if install_result is not None:
+            return install_result
+
+        terminal_match = re.fullmatch(r"(?:run terminal|terminal|run command)\\s*:?\\s*(.+)", raw, re.I)
+        if terminal_match:
+            terminal_result = execute_safe_terminal_command(terminal_match.group(1))
+            if terminal_result is not None:
+                return terminal_result
+            return {"status": "rejected", "message": "That terminal command is not in NOX's safe command allowlist. Arbitrary shell commands are disabled."}
 
         search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google par|google|find online|internet par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
         if search:
