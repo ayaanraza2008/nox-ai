@@ -176,7 +176,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
         : mode === "PROCESSING" ? "PROCESSING"
           : mode === "ERROR" ? "VOICE ISSUE" : "CORE IDLE";
 
-  return <div className={`holo-stage holo-${mode.toLowerCase()}`} aria-label={`NOX holographic core: ${label}`}>
+  return <div className={`holo-stage holo-${mode.toLowerCase().replaceAll("_", "-")}`} aria-label={`NOX holographic core: ${label}`}>
     <canvas className="holo-canvas" ref={canvasRef} aria-hidden="true" />
     <div className="holo-center-mark"><span /></div>
     <div className="holo-caption"><i /> NOX CORE <small>{label}</small></div>
