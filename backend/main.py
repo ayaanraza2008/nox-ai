@@ -432,7 +432,14 @@ async def pairing_command_status(command_id: str, session_id: str, x_nox_device_
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "NOX AI", "ai_configured": bool(os.getenv("OPENROUTER_API_KEY"))}
+    database_configured = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+    return {
+        "status": "ok",
+        "service": "NOX AI",
+        "ai_configured": bool(os.getenv("OPENROUTER_API_KEY")),
+        "storage_backend": "postgresql" if database_configured else "sqlite",
+        "durable_storage_configured": database_configured,
+    }
 
 
 @app.post("/api/chat", response_model=ChatResponse)
