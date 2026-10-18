@@ -14,6 +14,7 @@ sys.path.insert(0, str(COMPANION_DIR))
 import security_audit
 import dependency_audit
 import ethical_hacking
+import companion
 
 
 class StaticAuditTests(unittest.TestCase):
@@ -90,6 +91,50 @@ class DependencyAuditTests(unittest.TestCase):
             self.assertTrue(Path(result["markdown_report"]).is_file())
             report = json.loads(Path(result["json_report"]).read_text(encoding="utf-8"))
             self.assertEqual(report["project"], Path(temp).name)
+
+
+class CompanionSecurityCommandTests(unittest.TestCase):
+    def test_static_audit_command_is_dispatched(self):
+        expected = {"status": "success", "finding_count": 0}
+        with patch.object(companion, "audit_project", return_value=expected) as audit:
+            result = companion.handle_security_command("AUDIT PROJECT SECURITY")
+        self.assertEqual(result, expected)
+        audit.assert_called_once_with()
+
+    def test_dependency_aliases_are_dispatched(self):
+        expected = {"status": "success", "dependencies_checked": 2}
+        with patch.object(companion, "audit_dependencies", return_value=expected) as audit:
+            result = companion.handle_security_command("check dependency vulnerabilities")
+        self.assertEqual(result, expected)
+        audit.assert_called_once_with()
+
+    def test_report_command_runs_both_audits_and_writer(self):
+        static_result = {"status": "success", "finding_count": 1}
+        dependency_result = {"status": "success", "dependencies_checked": 2}
+        report_result = {"status": "success", "json_report": "/tmp/security-report.json"}
+        with patch.object(companion, "audit_project", return_value=static_result) as static_audit, \
+             patch.object(companion, "audit_dependencies", return_value=dependency_result) as dependency_audit, \
+             patch.object(companion, "write_report", return_value=report_result) as writer:
+            result = companion.handle_security_command("generate security report")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["static_analysis"], static_result)
+        self.assertEqual(result["dependency_audit"], dependency_result)
+        self.assertEqual(result["report_files"], report_result)
+        static_audit.assert_called_once_with()
+        dependency_audit.assert_called_once_with()
+        writer.assert_called_once_with(static_result, dependency_result)
+
+    def test_website_command_only_accepts_supported_https_phrase(self):
+        expected = {"status": "success", "summary": "headers checked"}
+        with patch.object(companion, "check_website_security", return_value=expected) as checker:
+            result = companion.handle_security_command("security check https://example.com")
+            self.assertEqual(result, expected)
+            checker.assert_called_once_with("https://example.com")
+            self.assertIsNone(companion.handle_security_command("security check http://example.com"))
+            self.assertIsNone(companion.handle_security_command("run exploit https://example.com"))
+
+    def test_unrelated_commands_are_not_consumed(self):
+        self.assertIsNone(companion.handle_security_command("open youtube"))
 
 
 class WebsiteCheckSafetyTests(unittest.TestCase):
