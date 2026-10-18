@@ -8,6 +8,7 @@ persistent disk or external database for survival across redeploys.
 import asyncio
 import json
 import os
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -198,6 +199,30 @@ class TaskManager:
         try:
             await pause_event.wait()
             if cancel_event.is_set():
+                return
+            # A hosted worker cannot launch apps on the user's personal device.
+            # Fail desktop-action requests clearly instead of reporting fake success.
+            goal = item["goal"].strip()
+            desktop_action = re.search(
+                r"\b(open|launch|start|close|quit|kill)\b.{0,50}\b(instagram|chrome|browser|notepad|calculator|spotify|discord|whatsapp|file explorer|settings|camera|vs code|vscode)\b",
+                goal,
+                re.IGNORECASE,
+            ) or re.search(
+                r"\b(instagram|chrome|browser|notepad|calculator|spotify|discord|whatsapp|file explorer|settings|camera|vs code|vscode)\b.{0,50}\b(open|launch|start|close|quit|kill)\b",
+                goal,
+                re.IGNORECASE,
+            )
+            if desktop_action:
+                item = self._get(task_id)
+                if item and item["status"] != "cancelled":
+                    item["status"] = "failed"
+                    item["error"] = (
+                        "This is a device action, but NOX is running on a hosted server and "
+                        "cannot control your computer. A local desktop companion with explicit "
+                        "user permission is required."
+                    )
+                    self._event(item, "Action not executed: a local desktop companion is required.", "warning")
+                    self._save(item)
                 return
             item = self._get(task_id)
             if not item or item["status"] == "cancelled":
