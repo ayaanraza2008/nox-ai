@@ -79,6 +79,35 @@ class DependencyAuditTests(unittest.TestCase):
             self.assertEqual(result["advisory_matches"], 1)
             self.assertEqual(result["findings"][0]["advisory"]["id"], "OSV-TEST")
 
+    def test_osv_timeout_is_reported_as_partial_not_clean(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "requirements.txt").write_text("demo-package==1.0.0\\n", encoding="utf-8")
+            with patch.dict(os.environ, {"NOX_SECURITY_PROJECT_DIR": temp}), patch.object(
+                dependency_audit, "_query_osv", side_effect=TimeoutError("simulated timeout")
+            ):
+                result = dependency_audit.audit_dependencies()
+            self.assertEqual(result["status"], "partial")
+            self.assertEqual(result["dependencies_checked"], 0)
+            self.assertEqual(len(result["query_errors"]), 1)
+            self.assertIn("timeout", result["query_errors"][0]["error"])
+
+    def test_report_refuses_symlinked_output_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            out_dir = root / "nox-security-reports"
+            out_dir.mkdir()
+            outside = root / "outside.txt"
+            outside.write_text("leave unchanged", encoding="utf-8")
+            try:
+                (out_dir / "security-report.json").symlink_to(outside)
+            except (OSError, NotImplementedError):
+                self.skipTest("Symlink creation is not supported in this environment")
+            with patch.dict(os.environ, {"NOX_SECURITY_PROJECT_DIR": temp}):
+                result = dependency_audit.write_report({"status": "success"}, {"status": "success"})
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(outside.read_text(encoding="utf-8"), "leave unchanged")
+
     def test_report_writes_json_and_markdown(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch.dict(os.environ, {"NOX_SECURITY_PROJECT_DIR": temp}):
