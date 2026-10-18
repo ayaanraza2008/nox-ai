@@ -210,7 +210,7 @@ def execute_safe_terminal_command(raw: str):
     workspace_commands = {
         "npm install": ["npm", "install", "--no-audit", "--no-fund"],
         "npm run build": ["npm", "run", "build"],
-        "npm test": ["npm", "test", "--", "--runInBand"],
+        "npm test": ["npm", "test"],
         "python -m pytest": ["python", "-m", "pytest"],
     }
     if args is None and command in workspace_commands:
