@@ -1,13 +1,13 @@
 # NOX Local Desktop Companion
 
-This opt-in Windows/Python helper lets the hosted NOX UI request a small set of approved local actions. It is not general remote desktop access.
+This opt-in Windows helper discovers app shortcuts in the Windows Start Menu and can launch a selected shortcut after explicit confirmation. It is not general remote desktop access.
 
-## Supported actions
+## What it supports
 
-- Windows apps: Calculator, Notepad, Paint, File Explorer, Task Manager.
-- Default browser: Instagram, YouTube, Google, WhatsApp Web, GitHub, ChatGPT.
-- Every launch requires a browser confirmation and the local companion token.
-- It does not run arbitrary commands, accept executable paths, read files, or type into apps.
+- Dynamic discovery of apps that have Windows Start Menu shortcuts; this covers many installed desktop apps, not literally every portable app or every executable.
+- Launch selected apps after confirmation and token authentication.
+- A small fixed set of websites can be opened in the default browser.
+- No arbitrary shell commands, request-supplied executable paths, file reading, typing, or general window control.
 
 ## Setup on the Windows PC
 
@@ -24,21 +24,21 @@ This opt-in Windows/Python helper lets the hosted NOX UI request a small set of 
    $env:NOX_WEB_ORIGIN = "https://nox-ai-vcqx.onrender.com"
    python companion.py
    ```
-   Keep this terminal running while you use local actions. Use the exact same token when the NOX web UI asks for it. Do not share or commit the token.
+   Keep the terminal running while using local app launches. Do not share or commit the token.
 4. Test the helper in another PowerShell window:
    ```powershell
    Invoke-RestMethod http://127.0.0.1:8765/health
    ```
-5. Open the deployed NOX website on the same Windows PC and enter a supported command such as `open calculator` or `open notepad`.
+5. Open the NOX website on the same PC and submit a command such as `open chrome`, `open calculator`, or `open visual studio code`. The page asks for the token, finds matching Start Menu shortcuts, and asks for confirmation before launch.
 
-## Security
+## Security and known limitations
 
 - The API binds to `127.0.0.1` only; it is not exposed to your LAN or the public internet.
-- Actions require the `X-NOX-Token` header and `confirmed: true`.
-- CORS is restricted to `NOX_WEB_ORIGIN`.
-- The browser may block a hosted HTTPS page from reaching a local HTTP service because of browser local-network/mixed-content policy. If that happens, the web-to-companion bridge will not work in that browser until a secure local pairing/transport is implemented. Do not disable browser security to work around it.
-- A launch response means the operating system received the request, not that the app finished opening successfully. Verify on the PC.
+- Every app launch requires the local token and explicit confirmation.
+- Only shortcut files found in the user's/common Windows Start Menu are listed. Portable apps without shortcuts may not appear.
+- The browser may block an HTTPS site from accessing a local HTTP service due to mixed-content or local-network access policy. If blocked, do not disable browser security; a secure local pairing/transport is needed.
+- A launch response means Windows received the request, not that the app successfully opened. Verify the window.
 
 ## Mobile
 
-Android browser intents are supported for selected apps (Instagram, YouTube, WhatsApp, Gmail, Maps, Spotify and Telegram). Android/browser settings and app-link handling determine whether the installed app opens or the official website fallback opens. This is not a native Android companion and cannot launch arbitrary apps or control the phone.
+The website currently uses Android intents for a small supported set (Instagram, YouTube, WhatsApp, Gmail, Maps, Spotify and Telegram). This is not all-app discovery: Android browsers cannot generally enumerate and launch every installed app. Broad installed-app access needs a native Android companion with appropriate package visibility and launch intents. iPhone/iOS only permits app opening through supported URL schemes/universal links and system-approved integrations; arbitrary apps cannot be force-opened.
