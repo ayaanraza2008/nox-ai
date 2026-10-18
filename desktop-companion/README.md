@@ -42,3 +42,20 @@ This opt-in Windows helper discovers app shortcuts in the Windows Start Menu and
 ## Mobile
 
 The website currently uses Android intents for a small supported set (Instagram, YouTube, WhatsApp, Gmail, Maps, Spotify and Telegram). This is not all-app discovery: Android browsers cannot generally enumerate and launch every installed app. Broad installed-app access needs a native Android companion with appropriate package visibility and launch intents. iPhone/iOS only permits app opening through supported URL schemes/universal links and system-approved integrations; arbitrary apps cannot be force-opened.
+
+
+## Pair this Windows companion to the NOX website
+
+1. Open NOX in a browser and create a pairing code in **Device Pairing**. Use it within five minutes.
+2. In PowerShell, from this folder, set the same code and start the companion:
+   ```powershell
+   $env:NOX_PAIR_CODE = "123456"
+   $env:NOX_COMPANION_TOKEN = "choose-a-long-random-local-secret"
+   $env:NOX_WEB_ORIGIN = "https://nox-ai-vcqx.onrender.com"
+   python companion.py
+   ```
+3. The companion joins as **NOX Windows Companion** and saves its pairing token to `%USERPROFILE%\.nox-ai\paired-device.json`. Keep the terminal running. The website refreshes the device list automatically; choose this companion in **Send chat commands to**.
+4. Send a command from NOX chat, for example `Open Chrome`, `Open Calculator`, `Open YouTube`, or `Google par latest gaming PC search karo`. The relay worker checks for queued commands every five seconds and retries after network errors.
+5. On later starts, the saved pairing token is reused automatically. To revoke/re-pair, disconnect the device in NOX, delete the saved pairing file, and create a new code.
+
+The relay intentionally accepts only app-opening, fixed website, HTTP(S) URL, and web-search requests. It never passes chat text to PowerShell or a shell. A command can fail if the requested app has no Start Menu shortcut, the browser is unavailable, the service is offline, or Render's ephemeral database has reset. This relay is currently an opt-in Windows feature; the Android app does not yet run a persistent background relay worker.
