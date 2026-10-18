@@ -1,36 +1,44 @@
-# NOX Local Desktop Companion (preview)
+# NOX Local Desktop Companion
 
-This is a small, opt-in Windows/Python companion for testing one safe action: opening the Instagram website in the PC's default browser. It does **not** control the Instagram desktop/mobile app, execute shell commands, or provide general remote desktop access.
+This opt-in Windows/Python helper lets the hosted NOX UI request a small set of approved local actions. It is not general remote desktop access.
 
-## Run on the PC you want NOX to control
+## Supported actions
+
+- Windows apps: Calculator, Notepad, Paint, File Explorer, Task Manager.
+- Default browser: Instagram, YouTube, Google, WhatsApp Web, GitHub, ChatGPT.
+- Every launch requires a browser confirmation and the local companion token.
+- It does not run arbitrary commands, accept executable paths, read files, or type into apps.
+
+## Setup on the Windows PC
 
 1. Install Python 3.11+.
-2. Open PowerShell in this folder.
-3. Create and activate a virtual environment:
+2. Open PowerShell in this folder and run:
    ```powershell
    py -m venv .venv
    .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    ```
-4. Set a long random token in this PowerShell window (replace the sample):
+3. Choose a long random token and start the helper:
    ```powershell
-   $env:NOX_COMPANION_TOKEN = "replace-with-a-long-random-secret"
+   $env:NOX_COMPANION_TOKEN = "paste-a-long-random-secret-here"
    $env:NOX_WEB_ORIGIN = "https://nox-ai-vcqx.onrender.com"
    python companion.py
    ```
-5. In another PowerShell window, test health:
+   Keep this terminal running while you use local actions. Use the exact same token when the NOX web UI asks for it. Do not share or commit the token.
+4. Test the helper in another PowerShell window:
    ```powershell
    Invoke-RestMethod http://127.0.0.1:8765/health
    ```
+5. Open the deployed NOX website on the same Windows PC and enter a supported command such as `open calculator` or `open notepad`.
 
-## Safety model
+## Security
 
-- Binds to `127.0.0.1` only; it is not exposed to your LAN or the public internet.
-- Requires the secret `X-NOX-Token` header for actions.
-- Requires an explicit `confirmed: true` field.
-- Only accepts the fixed `instagram` destination; no arbitrary URL, shell, file, or process execution.
-- The action response means the browser-open request was sent, not that page load or login succeeded. Verify it visually.
+- The API binds to `127.0.0.1` only; it is not exposed to your LAN or the public internet.
+- Actions require the `X-NOX-Token` header and `confirmed: true`.
+- CORS is restricted to `NOX_WEB_ORIGIN`.
+- The browser may block a hosted HTTPS page from reaching a local HTTP service because of browser local-network/mixed-content policy. If that happens, the web-to-companion bridge will not work in that browser until a secure local pairing/transport is implemented. Do not disable browser security to work around it.
+- A launch response means the operating system received the request, not that the app finished opening successfully. Verify on the PC.
 
-## Current limitation
+## Mobile
 
-This companion is **not yet connected to the hosted Task Orchestrator UI**. It is a first local component; a later integration must use a deliberate pairing flow and keep the token out of frontend code. Never paste the token into public chats or commit it to Git.
+Android browser intents are supported for selected apps (Instagram, YouTube, WhatsApp, Gmail, Maps, Spotify and Telegram). Android/browser settings and app-link handling determine whether the installed app opens or the official website fallback opens. This is not a native Android companion and cannot launch arbitrary apps or control the phone.
