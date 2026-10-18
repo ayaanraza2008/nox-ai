@@ -15,6 +15,11 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+try:
+    from home_assistant import execute_home_assistant_command
+except ImportError:
+    execute_home_assistant_command = None
+
 TOKEN = os.getenv("NOX_COMPANION_TOKEN", "").strip()
 WEB_ORIGIN = os.getenv("NOX_WEB_ORIGIN", "https://nox-ai-vcqx.onrender.com").strip()
 HOST = "127.0.0.1"
@@ -207,6 +212,10 @@ def pairing_worker():
         raw = command.strip()
         if not raw or len(raw) > 1000:
             return {"status": "rejected", "message": "Empty or oversized command."}
+        if execute_home_assistant_command is not None:
+            ha_result = execute_home_assistant_command(raw)
+            if ha_result is not None:
+                return ha_result
         search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google par|google|find online|internet par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
         if search:
             query = re.sub(r"^(?:par|for)\s+", "", search.group(1).strip(), flags=re.I)
