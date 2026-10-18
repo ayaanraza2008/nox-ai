@@ -68,39 +68,37 @@ function App() {
   }, []);
 
   function resolveWebsiteCommand(rawGoal) {
-    const match = rawGoal.trim().match(/^(?:please\s+)?(?:open|launch|visit|go to|browse to|khol|kholo|khul)\s+(.+?)\s*[.!?]*$/i);
+    const input = rawGoal.trim().replace(/[.!?]+$/, "");
+    const search = input.match(/^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google|find\s+online|internet\s+par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$/i);
+    if (search) {
+      const query = search[1].trim();
+      if (!query) return null;
+      const engine = (search[2] || "google").toLowerCase();
+      const base = engine === "youtube" ? "https://www.youtube.com/results?search_query=" : engine === "bing" ? "https://www.bing.com/search?q=" : "https://www.google.com/search?q=";
+      return { url: base + encodeURIComponent(query), label: engine === "youtube" ? "YouTube search: " + query : "Web search: " + query };
+    }
+    const match = input.match(/^(?:please\s+)?(?:(?:open|launch|visit|go to|browse to|khol|kholo|khul)\s+)?(.+?)$/i);
     if (!match) return null;
     const target = match[1].trim().replace(/[.!?]+$/, "");
+    if (/^(?:app|application)\s+/i.test(target)) return null;
     const knownSites = {
-      youtube: "https://www.youtube.com/",
-      google: "https://www.google.com/",
-      gmail: "https://mail.google.com/",
-      github: "https://github.com/",
-      instagram: "https://www.instagram.com/",
-      facebook: "https://www.facebook.com/",
-      whatsapp: "https://web.whatsapp.com/",
-      wikipedia: "https://www.wikipedia.org/",
-      reddit: "https://www.reddit.com/",
-      linkedin: "https://www.linkedin.com/",
-      chatgpt: "https://chatgpt.com/",
-      render: "https://dashboard.render.com/",
-      "google drive": "https://drive.google.com/"
+      youtube: "https://www.youtube.com/", google: "https://www.google.com/",
+      gmail: "https://mail.google.com/", github: "https://github.com/",
+      instagram: "https://www.instagram.com/", facebook: "https://www.facebook.com/",
+      "whatsapp web": "https://web.whatsapp.com/", wikipedia: "https://www.wikipedia.org/",
+      reddit: "https://www.reddit.com/", linkedin: "https://www.linkedin.com/",
+      chatgpt: "https://chatgpt.com/", render: "https://dashboard.render.com/",
+      "google drive": "https://drive.google.com/", bing: "https://www.bing.com/"
     };
-    const key = target.toLowerCase();
+    const key = target.toLowerCase().replace(/^website\s+/i, "");
     if (knownSites[key]) return { url: knownSites[key], label: target };
     if (/^https?:\/\//i.test(target)) {
-      try {
-        const url = new URL(target);
-        if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-        return { url: url.href, label: url.hostname };
-      } catch { return null; }
+      try { const url = new URL(target); if (!["https:", "http:"].includes(url.protocol)) return null; return { url: url.href, label: url.hostname }; }
+      catch { return null; }
     }
-    // Accept an explicit domain only; do not guess URLs for arbitrary app names.
     if (/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{1,5})?(?:[/?#][^\s]*)?$/i.test(target)) {
-      try {
-        const url = new URL("https://" + target);
-        return { url: url.href, label: url.hostname };
-      } catch { return null; }
+      try { const url = new URL("https://" + target); return { url: url.href, label: url.hostname }; }
+      catch { return null; }
     }
     return null;
   }
@@ -113,20 +111,22 @@ function App() {
     // Discover installed Windows apps through the opt-in local companion.
     const openVerb = /\b(open|launch|start|khol|kholo|khul|chalao|chalu karo)\b|खोल|चला/i.test(goal);
     const normalizedGoal = goal.toLowerCase().replace(/[.!?]+$/, "").trim();
+    const websiteCommand = resolveWebsiteCommand(goal);
     const commandTarget = normalizedGoal
       .replace(/^(please\s+)?(open|launch|start|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)\s+/i, "")
       .replace(/\s+(please|khol|kholo|khul|chalao|chalu karo|खोलो|खोल)$/i, "")
+      .replace(/^(app|application)\s+/i, "")
       .replace(/^the\s+/i, "")
       .replace(/\s+app$/i, "")
       .trim();
     const normalizeAppName = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (/Android/i.test(navigator.userAgent) && openVerb) {
+    if (/Android/i.test(navigator.userAgent) && openVerb && !websiteCommand) {
       if (!window.confirm("NOX wants to find and open an app matching: " + commandTarget + ". Continue?")) {
         setTaskNotice("App launch cancelled.");
         return;
       }
       setTaskGoal("");
-      setTaskNotice("Opening NOX Android Companion. Choose the matching installed app there.");
+      setTaskNotice("Sending command to NOX Android Companion. A unique app match opens directly; ambiguous matches show a chooser.");
       const companionUrl = "nox://launch?query=" + encodeURIComponent(commandTarget);
       window.location.href = companionUrl;
       window.setTimeout(() => {
@@ -137,7 +137,7 @@ function App() {
       return;
     }
 
-    if (openVerb && /Windows/i.test(navigator.userAgent)) {
+    if (openVerb && !websiteCommand && /Windows/i.test(navigator.userAgent)) {
       const token = window.prompt("Enter your local NOX companion token. It is not saved by this page:");
       if (!token) {
         setTaskNotice("App launch cancelled: companion token not provided.");
@@ -191,7 +191,7 @@ function App() {
 
     // Website navigation runs in the user's own browser after explicit confirmation.
     // A hosted Render worker cannot directly control the user's other apps or desktop.
-    const website = resolveWebsiteCommand(goal);
+    const website = websiteCommand;
     if (website) {
       const confirmed = window.confirm(`NOX wants to open ${website.label} in a new tab. Continue?`);
       if (!confirmed) {
