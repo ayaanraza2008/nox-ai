@@ -89,3 +89,9 @@
 .task-events p{margin:7px 0 0;line-height:1.5;overflow-wrap:anywhere}
 .task-events time{color:#737582;font-family:'DM Mono',monospace}
 @media(max-width:500px){.task-create{flex-direction:column}.task-create button{align-self:stretch}.task-row{padding:12px}.task-row-title{flex-direction:column;gap:6px}.task-meta{flex-direction:column}.task-panel-heading{padding:14px}}
+
+.topbar-tools{display:flex;align-items:center;gap:18px}
+.accent-picker{display:flex;align-items:center;gap:7px;color:var(--muted);font:10px 'DM Mono',monospace;letter-spacing:1px}
+.accent-picker select{max-width:110px;border:1px solid var(--line);border-radius:7px;background:#111219;color:#f1f1f5;padding:7px 9px;font-size:11px;outline:none}
+.accent-picker select:focus{border-color:var(--red);box-shadow:0 0 0 2px color-mix(in srgb,var(--red) 20%,transparent)}
+@media(max-width:600px){.topbar-tools{gap:8px}.accent-picker{gap:4px}.accent-picker select{max-width:88px;padding:6px 5px}.top-status{font-size:8px}}
