@@ -207,15 +207,17 @@ def pairing_worker():
         raw = command.strip()
         if not raw or len(raw) > 1000:
             return {"status": "rejected", "message": "Empty or oversized command."}
-        search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google|find online|internet par|google par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
+        search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google par|google|find online|internet par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
         if search:
-            query = search.group(1).strip()
+            query = re.sub(r"^(?:par|for)\s+", "", search.group(1).strip(), flags=re.I)
+            query = re.sub(r"\s+(?:search\s*)?(?:karo|kar do|please)$", "", query, flags=re.I).strip()
             engine = (search.group(2) or "google").lower()
             base = {"google":"https://www.google.com/search?q=", "youtube":"https://www.youtube.com/results?search_query=", "bing":"https://www.bing.com/search?q="}[engine]
             opened = webbrowser.open(base + urllib.parse.quote_plus(query), new=2)
             return {"status":"launch_requested" if opened else "error","message":"Search opened for " + query if opened else "Could not open search"}
         target = re.sub(r"^(?:please\s+)?(?:open|launch|start|visit|go to|khol|kholo|khul|chalao|chalu karo|खोलो|खोल|चलाओ)\s+", "", raw, flags=re.I).strip()
         target = re.sub(r"\s+(?:please|khol|kholo|open|launch|खोलो|खोल)$", "", target, flags=re.I).strip()
+        target = re.sub(r"^(?:app|application)\s+", "", target, flags=re.I).strip()
         key = target.casefold()
         if key in DESTINATIONS:
             opened = webbrowser.open(DESTINATIONS[key], new=2, autoraise=True)
