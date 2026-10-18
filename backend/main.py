@@ -1,4 +1,8 @@
 import os
+import secrets
+import sqlite3
+import string
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -28,6 +32,53 @@ class ChatResponse(BaseModel):
 class TaskCreateRequest(BaseModel):
     goal: str = Field(min_length=3, max_length=6000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
+
+class PairCreateRequest(BaseModel):
+    device_name: str = Field(default="NOX browser", min_length=1, max_length=80)
+
+
+class PairJoinRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6)
+    device_name: str = Field(default="NOX device", min_length=1, max_length=80)
+
+
+PAIR_DB = Path(os.getenv("NOX_PAIRING_DB", str(ROOT / "nox_pairing.sqlite3")))
+
+
+def pair_db():
+    conn = sqlite3.connect(PAIR_DB, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("""CREATE TABLE IF NOT EXISTS pair_sessions (
+        session_id TEXT PRIMARY KEY, code TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS pair_devices (
+        device_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, name TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, last_seen TEXT NOT NULL,
+        disconnected INTEGER NOT NULL DEFAULT 0)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS pair_commands (
+        command_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, source_device TEXT NOT NULL,
+        target_device TEXT NOT NULL, command TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+        created_at TEXT NOT NULL, result TEXT)""")
+    conn.commit()
+    return conn
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def iso_now():
+    return utc_now().isoformat()
+
+
+def device_from_token(conn, token):
+    if not token:
+        raise HTTPException(status_code=401, detail="Device pairing token required.")
+    row = conn.execute("SELECT * FROM pair_devices WHERE token=? AND disconnected=0", (token,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid or disconnected device pairing.")
+    return row
 
 
 
@@ -133,6 +184,117 @@ async def resume_task(task_id: str):
 @app.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str):
     return await _task_action(task_id, "cancel")
+
+
+@app.post("/api/pairing/create")
+async def pairing_create(payload: PairCreateRequest):
+    now = utc_now()
+    session_id = secrets.token_urlsafe(18)
+    device_id = secrets.token_urlsafe(12)
+    token = secrets.token_urlsafe(32)
+    code = "".join(secrets.choice(string.digits) for _ in range(6))
+    expires = (now.replace(microsecond=0)).isoformat()
+    expires_at = (now.replace(microsecond=0) + __import__("datetime").timedelta(minutes=5)).isoformat()
+    with pair_db() as conn:
+        for _ in range(5):
+            try:
+                conn.execute("INSERT INTO pair_sessions(session_id,code,created_at,expires_at) VALUES(?,?,?,?)",
+                             (session_id, code, expires, expires_at))
+                break
+            except sqlite3.IntegrityError:
+                code = "".join(secrets.choice(string.digits) for _ in range(6))
+        conn.execute("INSERT INTO pair_devices(device_id,session_id,name,token,created_at,last_seen) VALUES(?,?,?,?,?,?)",
+                     (device_id, session_id, payload.device_name.strip(), token, expires, expires))
+    return {"session_id": session_id, "device_id": device_id, "device_token": token,
+            "pair_code": code, "expires_at": expires_at, "message": "Pair code expires in five minutes. Store the device token securely."}
+
+
+@app.post("/api/pairing/join")
+async def pairing_join(payload: PairJoinRequest):
+    now = utc_now()
+    with pair_db() as conn:
+        session = conn.execute("SELECT * FROM pair_sessions WHERE code=? AND revoked=0", (payload.code.strip(),)).fetchone()
+        if not session or datetime.fromisoformat(session["expires_at"]) < now:
+            raise HTTPException(status_code=404, detail="Pair code is invalid or expired. Generate a new code on the first device.")
+        device_id = secrets.token_urlsafe(12)
+        token = secrets.token_urlsafe(32)
+        conn.execute("INSERT INTO pair_devices(device_id,session_id,name,token,created_at,last_seen) VALUES(?,?,?,?,?,?)",
+                     (device_id, session["session_id"], payload.device_name.strip(), token, now.isoformat(), now.isoformat()))
+    return {"session_id": session["session_id"], "device_id": device_id, "device_token": token,
+            "message": "Device joined the pairing session. Native device control still requires a compatible companion."}
+
+
+@app.get("/api/pairing/status")
+async def pairing_status(session_id: str, x_nox_device_token: str | None = None):
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        if current["session_id"] != session_id:
+            raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
+        now = iso_now()
+        conn.execute("UPDATE pair_devices SET last_seen=? WHERE device_id=?", (now, current["device_id"]))
+        rows = conn.execute("SELECT device_id,name,created_at,last_seen,disconnected FROM pair_devices WHERE session_id=? ORDER BY created_at",
+                            (session_id,)).fetchall()
+        return {"session_id": session_id, "devices": [dict(row) for row in rows],
+                "current_device_id": current["device_id"], "connected": len([r for r in rows if not r["disconnected"]])}
+
+
+@app.post("/api/pairing/disconnect")
+async def pairing_disconnect(session_id: str, x_nox_device_token: str | None = None):
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        if current["session_id"] != session_id:
+            raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
+        conn.execute("UPDATE pair_devices SET disconnected=1 WHERE device_id=?", (current["device_id"],))
+        remaining = conn.execute("SELECT COUNT(*) FROM pair_devices WHERE session_id=? AND disconnected=0",
+                                 (session_id,)).fetchone()[0]
+        if remaining == 0:
+            conn.execute("UPDATE pair_sessions SET revoked=1 WHERE session_id=?", (session_id,))
+    return {"status": "disconnected", "message": "This device has been disconnected from the pairing session."}
+
+
+@app.post("/api/pairing/commands")
+async def pairing_send_command(session_id: str, target_device: str, command: str, x_nox_device_token: str | None = None):
+    command = command.strip()
+    if not command or len(command) > 1000:
+        raise HTTPException(status_code=400, detail="Command must contain 1–1000 characters.")
+    with pair_db() as conn:
+        source = device_from_token(conn, x_nox_device_token)
+        if source["session_id"] != session_id:
+            raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
+        target = conn.execute("SELECT device_id FROM pair_devices WHERE device_id=? AND session_id=? AND disconnected=0",
+                              (target_device, session_id)).fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Target device is not paired.")
+        command_id = secrets.token_urlsafe(14)
+        conn.execute("INSERT INTO pair_commands(command_id,session_id,source_device,target_device,command,created_at) VALUES(?,?,?,?,?,?)",
+                     (command_id, session_id, source["device_id"], target_device, command, iso_now()))
+    return {"command_id": command_id, "status": "queued", "message": "Queued for a compatible companion; queued does not mean executed."}
+
+
+@app.get("/api/pairing/commands/next")
+async def pairing_next_command(session_id: str, x_nox_device_token: str | None = None):
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        if current["session_id"] != session_id:
+            raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
+        row = conn.execute("SELECT command_id,source_device,command,created_at FROM pair_commands WHERE session_id=? AND target_device=? AND status='queued' ORDER BY created_at LIMIT 1",
+                           (session_id, current["device_id"])).fetchone()
+        if not row:
+            return {"command": None}
+        conn.execute("UPDATE pair_commands SET status='delivered' WHERE command_id=?", (row["command_id"],))
+        return {"command": dict(row)}
+
+
+@app.post("/api/pairing/commands/{command_id}/result")
+async def pairing_command_result(command_id: str, result: str, x_nox_device_token: str | None = None):
+    with pair_db() as conn:
+        current = device_from_token(conn, x_nox_device_token)
+        row = conn.execute("SELECT * FROM pair_commands WHERE command_id=? AND target_device=? AND session_id=?",
+                           (command_id, current["device_id"], current["session_id"])).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Command not found for this device.")
+        conn.execute("UPDATE pair_commands SET status='completed',result=? WHERE command_id=?", (result[:2000], command_id))
+    return {"status": "recorded"}
 
 
 @app.get("/api/health")
