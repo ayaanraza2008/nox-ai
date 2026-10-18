@@ -76,3 +76,15 @@ NOX can control compatible home devices through [Home Assistant](https://www.hom
 4. Keep the Windows companion running and pair it with the NOX website. Try commands such as `list lights`, `turn on living room lights`, `turn off all lights`, `TV on`, `TV off`, `list cameras`, or `set AC to 24 degrees`. Exact commands depend on Home Assistant entity names and device capabilities.
 
 The current adapter supports an explicit allowlist: lights, switches/plugs, fans, TV/media players (on/off/play/pause), climate setpoints, blinds/covers (open/close), robot vacuums (start/stop/pause/dock), activating a uniquely matched named scene, and entity-status/list actions. Examples include `list devices`, `list blinds`, `list vacuums`, `turn on all lights`, `open living room blinds`, `start vacuum`, and `activate scene movie night`. Camera commands only list camera entities and status; they do not expose camera feeds or recordings. Door locks, alarms, and security devices are deliberately not controlled through free-form chat. Some TVs cannot power on unless their network standby/wake feature is enabled. A command can fail if the device is unsupported, offline, or not integrated into Home Assistant.
+
+
+## Ethical hacking / passive website security checks
+
+NOX includes an opt-in, low-impact website header checker in `ethical_hacking.py`. From a paired NOX chat, use it only for a website you own or are explicitly authorized to assess:
+
+- `security check https://your-domain.example`
+- `check headers for https://your-domain.example`
+
+It makes one HTTPS request and reports whether common headers (HSTS, CSP, nosniff, Referrer-Policy, and Permissions-Policy) are present, while validating the TLS certificate. It blocks private/local IP addresses, non-standard ports, and redirects. It does **not** crawl, scan ports, brute-force, exploit vulnerabilities, attempt logins, or test cameras/devices. A missing header is only a review suggestion, not proof of a vulnerability. This is an initial passive checker, not a full penetration-testing suite.
+
+For deeper authorized testing, use a dedicated lab or staging environment and review findings manually before making changes. Never test systems without the owner's permission.
