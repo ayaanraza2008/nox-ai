@@ -434,16 +434,17 @@ async def pairing_command_result(command_id: str, result: str, x_nox_device_toke
             command_status = "failed"
         # Keep stored JSON valid even when a companion returns long terminal output.
         stored_result = {}
+        limits = {"status": 40, "message": 500, "output": 600, "command": 180, "target": 180, "software": 180}
         for key in ("status", "message", "output", "command", "target", "returncode", "software"):
             value = result_data.get(key)
             if isinstance(value, str):
-                stored_result[key] = value[:900]
+                stored_result[key] = value[:limits.get(key, 180)]
             elif isinstance(value, (int, float, bool)) or value is None:
                 if key in result_data:
                     stored_result[key] = value
         encoded_result = json.dumps(stored_result, ensure_ascii=False)
         conn.execute("UPDATE pair_commands SET status=?,result=? WHERE command_id=?",
-                     (command_status, encoded_result[:2000], command_id))
+                     (command_status, encoded_result, command_id))
     return {"status": "recorded", "command_status": command_status}
 
 
