@@ -116,7 +116,7 @@ function App() {
   }
 
   async function joinPairing() {
-    if (!/^\\d{6}$/.test(pairCode.trim())) { setPairNotice("Enter the six-digit code shown on the other device."); return; }
+    if (pairCode.trim().length !== 6 || [...pairCode.trim()].some((char) => char < "0" || char > "9")) { setPairNotice("Enter the six-digit code shown on the other device."); return; }
     setPairBusy(true); setPairNotice("");
     try {
       const response = await fetch("/api/pairing/join", {
@@ -599,7 +599,7 @@ function App() {
           <label>DEVICE NAME<input value={pairDeviceName} maxLength={80} onChange={(e) => setPairDeviceName(e.target.value)} placeholder="e.g. My PC" /></label>
           <button type="button" className="pair-primary" onClick={createPairing} disabled={pairBusy || !pairDeviceName.trim()}>{pairBusy ? "Working…" : "Create pairing code"}</button>
           <div className="pair-divider"><span>OR JOIN AN EXISTING SESSION</span></div>
-          <label>6-DIGIT PAIR CODE<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pairCode} onChange={(e) => setPairCode(e.target.value.replace(/\\D/g, "").slice(0, 6))} placeholder="123456" /></label>
+          <label>6-DIGIT PAIR CODE<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pairCode} onChange={(e) => setPairCode(e.target.value.split("").filter((char) => char >= "0" && char <= "9").join("").slice(0, 6))} placeholder="123456" /></label>
           <button type="button" className="pair-secondary" onClick={joinPairing} disabled={pairBusy || pairCode.length !== 6 || !pairDeviceName.trim()}>Pair this device</button>
         </div>}
         {pairNotice && <p className="pair-notice" role="status">{pairNotice}</p>}
