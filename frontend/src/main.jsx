@@ -220,7 +220,22 @@ function App() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.detail || "Could not send command to paired device");
         setTaskGoal("");
-        setTaskNotice("Command queued for " + pairedTarget.name + ". The companion will report the result in its terminal/log.");
+        setTaskNotice("Command queued for " + pairedTarget.name + ". Waiting for its result…");
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          const statusResponse = await fetch("/api/pairing/commands/" + encodeURIComponent(data.command_id) + "?session_id=" + encodeURIComponent(pairing.session_id), {
+            headers: { "X-NOX-Device-Token": pairing.device_token }
+          });
+          if (!statusResponse.ok) continue;
+          const statusData = await statusResponse.json();
+          if (statusData.command?.status === "completed") {
+            let result = {};
+            try { result = JSON.parse(statusData.command.result || "{}"); } catch {}
+            setTaskNotice(pairedTarget.name + ": " + (result.message || result.status || "Command completed."));
+            return;
+          }
+        }
+        setTaskNotice("Command is still queued or running on " + pairedTarget.name + ". Check that its companion is online and paired.");
       } catch (error) {
         setTaskNotice("Could not reach paired device: " + error.message);
       } finally {
