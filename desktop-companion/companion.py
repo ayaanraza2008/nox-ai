@@ -20,6 +20,11 @@ try:
 except ImportError:
     execute_home_assistant_command = None
 
+try:
+    from ethical_hacking import check_website_security
+except ImportError:
+    check_website_security = None
+
 TOKEN = os.getenv("NOX_COMPANION_TOKEN", "").strip()
 WEB_ORIGIN = os.getenv("NOX_WEB_ORIGIN", "https://nox-ai-vcqx.onrender.com").strip()
 HOST = "127.0.0.1"
@@ -216,6 +221,18 @@ def pairing_worker():
             ha_result = execute_home_assistant_command(raw)
             if ha_result is not None:
                 return ha_result
+
+        # Passive website-security checks only; no scanning or exploitation.
+        security_check = re.fullmatch(
+            r"(?:security check|check security of|check headers for)\\s+(https://\\S+)",
+            raw,
+            re.I,
+        )
+        if security_check:
+            if check_website_security is None:
+                return {"status": "unsupported", "message": "The NOX passive security module is unavailable in this installation."}
+            return check_website_security(security_check.group(1))
+
         search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google par|google|find online|internet par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
         if search:
             query = re.sub(r"^(?:par|for)\s+", "", search.group(1).strip(), flags=re.I)
