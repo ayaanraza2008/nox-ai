@@ -394,6 +394,24 @@ def pairing_worker():
         with urllib.request.urlopen(req, timeout=15) as response:
             return json.loads(response.read().decode("utf-8"))
 
+    def deliver_result(command_id, result, token):
+        """Retry result delivery only; never rerun the user's side-effecting command."""
+        encoded_id = urllib.parse.quote(command_id, safe="")
+        encoded_result = urllib.parse.quote(json.dumps(result), safe="")
+        path = "/api/pairing/commands/" + encoded_id + "/result?result=" + encoded_result
+        for attempt in range(3):
+            try:
+                return request(path, "POST", token=token)
+            except urllib.error.HTTPError as exc:
+                # Client errors require correction/re-pairing; retry only server-side failures.
+                if exc.code < 500 or attempt == 2:
+                    raise
+            except (urllib.error.URLError, TimeoutError, OSError):
+                if attempt == 2:
+                    raise
+            time.sleep(1.5 * (attempt + 1))
+        raise RuntimeError("Could not deliver command result after bounded retries")
+
     def join():
         nonlocal pairing
         if pairing and pairing.get("session_id") and pairing.get("device_token"):
@@ -504,7 +522,9 @@ def pairing_worker():
                 item = request("/api/pairing/commands/next?session_id=" + sid, token=token).get("command")
                 if item:
                     result = run_command(item.get("command", ""))
-                    request("/api/pairing/commands/" + urllib.parse.quote(item["command_id"], safe="") + "/result?result=" + urllib.parse.quote(json.dumps(result), safe=""), "POST", token=token)
+                    # The command has already run. Retry only reporting its result; never re-execute it
+                    # if the network fails, since installs and other actions may have side effects.
+                    deliver_result(item["command_id"], result, token)
                     print("NOX paired command:", result.get("status"), result.get("message"))
         except urllib.error.HTTPError as exc:
             if exc.code in (401,403,404):
