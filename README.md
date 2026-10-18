@@ -23,7 +23,18 @@ A futuristic, multilingual personal AI assistant starter built with React, Vite,
 Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed responses. Optionally set `OPENROUTER_MODEL`. Without a key, the app uses a simple demo response; it is not a full AI model.
 
 ## Deploy on Render
-Create a **Web Service** from this repository. The included `render.yaml` defines the build and start commands. Add `OPENROUTER_API_KEY` as a secret environment variable in Render if you have one. Free hosting and third-party AI free tiers may have usage limits or sleep.
+Create a **Web Service** from this repository. The included `render.yaml` defines the build/start commands and checks `/api/health` for service health. Add `OPENROUTER_API_KEY` as a secret environment variable in Render to enable provider-backed AI replies. Free hosting and third-party AI free tiers may have usage limits or sleep.
+
+### Persistent cross-device storage
+The backend supports PostgreSQL for pairing sessions, device registrations, command relay records, and shared chat history. To enable it:
+
+1. Create a PostgreSQL database with a provider you choose. Check its price, expiry, storage, and connection limits first; do not assume a free tier is permanent.
+2. Copy its **internal** connection URL if the database and web service are on the same hosting provider; otherwise use the provider's recommended external URL.
+3. In the Render web service, open **Environment** and set `DATABASE_URL` to that connection URL. Keep it private; never commit it to GitHub or share it in chat.
+4. Save the environment change and redeploy the web service.
+5. Open `https://YOUR-SERVICE.onrender.com/api/health`. Confirm `"storage_backend": "postgresql"` and `"durable_storage_configured": true`.
+
+If `DATABASE_URL` is absent, NOX falls back to SQLite. On an ephemeral host filesystem, SQLite pairing data can disappear after a restart or redeploy. The health endpoint reports which storage mode is configured, but PostgreSQL must be provisioned and the URL added by the owner; the repository cannot create a database or configure secret values automatically.
 
 ## NOX device pairing (early implementation)
 
