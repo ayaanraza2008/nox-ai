@@ -29,7 +29,7 @@ class SafeExecutionTests(unittest.TestCase):
         result = companion.install_known_software("install totally unknown app")
         self.assertEqual(result["status"], "needs_review")
         self.assertIn("search_url", result)
-        self.assertIn("will not blindly run commands", result["message"])
+        self.assertIn("will not blindly execute a command", result["message"])
 
     def test_install_alias_catalog_is_exact_and_bounded(self):
         self.assertEqual(
