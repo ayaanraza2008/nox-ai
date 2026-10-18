@@ -34,7 +34,7 @@ This opt-in Windows helper discovers app shortcuts in the Windows Start Menu and
 ## Security and known limitations
 
 - The API binds to `127.0.0.1` only; it is not exposed to your LAN or the public internet.
-- Every app launch requires the local token and explicit confirmation.
+- Requests to the local HTTP API require the local token and explicit confirmation. Separately, a valid paired relay session can issue only the documented app-opening/search actions; pair only devices you trust, and disconnect them when no longer needed.
 - Only shortcut files found in the user's/common Windows Start Menu are listed. Portable apps without shortcuts may not appear.
 - The browser may block an HTTPS site from accessing a local HTTP service due to mixed-content or local-network access policy. If blocked, do not disable browser security; a secure local pairing/transport is needed.
 - A launch response means Windows received the request, not that the app successfully opened. Verify the window.
