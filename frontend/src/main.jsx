@@ -248,10 +248,6 @@ function App() {
       }
     }
     if (/Android/i.test(navigator.userAgent) && openVerb && (explicitAppCommand || !websiteCommand)) {
-      if (!window.confirm("NOX wants to find and open an app matching: " + commandTarget + ". Continue?")) {
-        setTaskNotice("App launch cancelled.");
-        return;
-      }
       setTaskGoal("");
       setTaskNotice("Sending command to NOX Android Companion. A unique app match opens directly; ambiguous matches show a chooser.");
       const companionUrl = "nox://launch?query=" + encodeURIComponent(commandTarget);
@@ -295,10 +291,6 @@ function App() {
           }
           selected = matches[index];
         }
-        if (!window.confirm('NOX wants to open "' + selected.name + '" on this PC. Continue?')) {
-          setTaskNotice("App launch cancelled.");
-          return;
-        }
         const launch = await fetch("http://127.0.0.1:8765/v1/actions/open", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-NOX-Token": token },
@@ -316,15 +308,10 @@ function App() {
       return;
     }
 
-    // Website navigation runs in the user's own browser after explicit confirmation.
-    // A hosted Render worker cannot directly control the user's other apps or desktop.
+    // A clear user command to open a known website is sufficient intent; avoid a redundant confirmation.
+    // A hosted Render worker still cannot directly control other apps or the desktop.
     const website = websiteCommand;
     if (website) {
-      const confirmed = window.confirm(`NOX wants to open ${website.label} in a new tab. Continue?`);
-      if (!confirmed) {
-        setTaskNotice("Website navigation cancelled.");
-        return;
-      }
       const opened = window.open(website.url, "_blank");
       if (opened) opened.opener = null;
       if (opened) {
@@ -655,7 +642,7 @@ function App() {
 
       <section className="task-panel"><div className="task-panel-heading"><div><span className="tiny-icon"><Activity size={16} /></span><b>Task Orchestrator</b><small>Queued AI tasks · progress, events and controls</small></div><button type="button" className="refresh-status" onClick={refreshTasks}>Refresh</button></div>
         <form className="task-create" onSubmit={submitTask}><textarea value={taskGoal} onChange={(e) => setTaskGoal(e.target.value)} maxLength={6000} placeholder="Describe a task for NOX… e.g. create a step-by-step plan for my project" aria-label="Task goal" /><button type="submit" disabled={taskBusy || taskGoal.trim().length < 3}><Play size={15} /> {taskBusy ? "Adding…" : "Run task"}</button></form>
-        <p className="task-safety-note">On Windows, supported app launches use the opt-in local companion and require confirmation plus its token. On Android, supported app links may open installed apps or official websites. Website navigation does not automate page actions.</p>
+        <p className="task-safety-note">NOX executes clear, low-risk open/search commands without repeated confirmation. Windows app launch still requires the opt-in local companion and its token; ambiguous app matches may ask you to choose. High-impact actions still require confirmation. Website navigation opens a tab and does not automate page actions.</p>
         {taskNotice && <p className="task-notice" role="status">{taskNotice}</p>}
         <div className="task-list">{tasks.length === 0 ? <p className="capability-message">No tasks yet. Create one above to test the queue.</p> : tasks.slice(0,8).map((task) => <article className="task-row" key={task.id}><div className="task-row-main"><div className="task-row-title"><b>{task.goal}</b><span className={"task-status task-" + task.status}>{task.status.replace("_"," ").toUpperCase()}</span></div><div className="task-progress"><span style={{width: task.progress + "%"}} /></div><div className="task-meta"><span>{task.progress}% · {task.attempts} attempt(s)</span><span>{new Date(task.updated_at).toLocaleTimeString()}</span></div>{task.error && <p className="task-error">{task.error}</p>}{task.result && <details className="task-result"><summary>View result</summary><p>{task.result}</p></details>}{task.events?.length > 0 && <details className="task-events"><summary>Execution log ({task.events.length})</summary>{task.events.slice(-5).map((entry,index)=><p key={index}><time>{new Date(entry.at).toLocaleTimeString()}</time> {entry.message}</p>)}</details>}</div><div className="task-actions">{task.status === "paused" ? <button title="Resume task" aria-label="Resume task" onClick={() => controlTask(task.id,"resume")}><Play size={14}/></button> : ["queued","running"].includes(task.status) ? <button title="Pause task" aria-label="Pause task" onClick={() => controlTask(task.id,"pause")}><Pause size={14}/></button> : null}{["queued","running","paused"].includes(task.status) && <button title="Cancel task" aria-label="Cancel task" onClick={() => controlTask(task.id,"cancel")}><XCircle size={14}/></button>}</div></article>)}</div>
       </section>
