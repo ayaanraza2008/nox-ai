@@ -31,6 +31,7 @@ function App() {
     try { return JSON.parse(localStorage.getItem("nox-pairing") || "null"); } catch { return null; }
   });
   const [pairCode, setPairCode] = useState("");
+  const [pairTargetDevice, setPairTargetDevice] = useState("");
   const [pairDeviceName, setPairDeviceName] = useState(() => /Android|iPhone|iPad/i.test(navigator.userAgent) ? "NOX Mobile" : "NOX PC");
   const [pairNotice, setPairNotice] = useState("");
   const [pairBusy, setPairBusy] = useState(false);
@@ -90,7 +91,11 @@ function App() {
           return;
         }
         const data = await response.json();
-        if (active) setPairing((current) => current ? { ...current, devices: data.devices || [], current_device_id: data.current_device_id } : current);
+        if (active) {
+          const companionDevices = (data.devices || []).filter((device) => /companion/i.test(device.name) && !device.disconnected);
+          setPairing((current) => current ? { ...current, devices: data.devices || [], current_device_id: data.current_device_id } : current);
+          setPairTargetDevice((current) => current && companionDevices.some((device) => device.device_id === current) ? current : (companionDevices[0]?.device_id || ""));
+        }
       } catch { if (active) setPairNotice("Pairing server temporarily unreachable. NOX will retry automatically."); }
     };
     checkPairing();
@@ -203,6 +208,26 @@ function App() {
       .trim();
     const normalizeAppName = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
     const explicitAppCommand = /\b(app|application)\b/i.test(goal) || /\b(app|application)\s*$/i.test(goal);
+    const pairedTarget = (pairing?.devices || []).find((device) => device.device_id === pairTargetDevice && /companion/i.test(device.name) && !device.disconnected);
+    if (pairing?.session_id && pairing?.device_token && pairedTarget) {
+      setTaskBusy(true);
+      setTaskNotice("Sending command to " + pairedTarget.name + "…");
+      try {
+        const query = new URLSearchParams({ session_id: pairing.session_id, target_device: pairTargetDevice, command: goal });
+        const response = await fetch("/api/pairing/commands?" + query.toString(), {
+          method: "POST", headers: { "X-NOX-Device-Token": pairing.device_token }
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Could not send command to paired device");
+        setTaskGoal("");
+        setTaskNotice("Command queued for " + pairedTarget.name + ". The companion will report the result in its terminal/log.");
+      } catch (error) {
+        setTaskNotice("Could not reach paired device: " + error.message);
+      } finally {
+        setTaskBusy(false);
+      }
+      return;
+    }
     if (/Android/i.test(navigator.userAgent) && openVerb && (explicitAppCommand || !websiteCommand)) {
       if (!window.confirm("NOX wants to find and open an app matching: " + commandTarget + ". Continue?")) {
         setTaskNotice("App launch cancelled.");
@@ -593,7 +618,8 @@ function App() {
           <div><span className="pair-label">PAIRING SESSION</span><code>{pairing.session_id}</code></div>
           {pairing.pair_code && <div><span className="pair-label">PAIR CODE · SHARE ONLY WITH YOUR DEVICE</span><strong className="pair-code">{pairing.pair_code}</strong><small>Code expires at {new Date(pairing.expires_at).toLocaleTimeString()}.</small></div>}
           <div className="paired-devices"><b>Known devices</b>{(pairing.devices || []).map((device) => <div className="paired-device" key={device.device_id}><span className="pair-online-dot" />{device.name}<small>{device.device_id === pairing.current_device_id || device.device_id === pairing.device_id ? "This device" : "Paired session"}</small></div>)}</div>
-          <p className="pairing-note">Session credentials are saved in this browser and status auto-refreshes. The pairing API is ready, but remote native app control only works once the PC/Android companion is integrated and running. Browser pairing alone does not grant OS-level control.</p>
+          <label className="pair-target-label">SEND CHAT COMMANDS TO<select value={pairTargetDevice} onChange={(e) => setPairTargetDevice(e.target.value)}><option value="">This browser / this device</option>{(pairing.devices || []).filter((device) => /companion/i.test(device.name) && !device.disconnected).map((device) => <option key={device.device_id} value={device.device_id}>{device.name}</option>)}</select></label>
+          <p className="pairing-note">Choose a paired companion to route commands from the main chat to that device. The Windows companion supports app shortcuts and web searches only; it reconnects to the relay automatically while running. Pairing does not enable arbitrary shell commands or hidden remote control.</p>
           <button className="pair-disconnect" type="button" onClick={disconnectPairing} disabled={pairBusy}>Disconnect this device</button>
         </div> : <div className="pairing-controls">
           <label>DEVICE NAME<input value={pairDeviceName} maxLength={80} onChange={(e) => setPairDeviceName(e.target.value)} placeholder="e.g. My PC" /></label>
