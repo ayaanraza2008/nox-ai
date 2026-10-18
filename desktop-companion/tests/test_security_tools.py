@@ -17,6 +17,28 @@ import ethical_hacking
 import companion
 
 
+class SafeExecutionTests(unittest.TestCase):
+    def test_terminal_command_allowlist_does_not_accept_arbitrary_shell(self):
+        self.assertIsNone(companion.execute_safe_terminal_command("del /s /q C:\\\\"))
+        self.assertIsNone(companion.execute_safe_terminal_command("powershell -EncodedCommand abc"))
+        result = companion.execute_safe_terminal_command("python --version")
+        if os.name != "nt":
+            self.assertEqual(result["status"], "unsupported")
+
+    def test_install_unknown_package_never_executes_internet_command(self):
+        result = companion.install_known_software("install totally unknown app")
+        self.assertEqual(result["status"], "needs_review")
+        self.assertIn("search_url", result)
+        self.assertIn("will not blindly run commands", result["message"])
+
+    def test_install_alias_catalog_is_exact_and_bounded(self):
+        self.assertEqual(
+            companion.WINGET_PACKAGES["vscode"][0],
+            "Microsoft.VisualStudioCode",
+        )
+        self.assertNotIn("totally unknown app", companion.WINGET_PACKAGES)
+
+
 class StaticAuditTests(unittest.TestCase):
     def test_detects_common_patterns_and_skips_generated_dirs(self):
         with tempfile.TemporaryDirectory() as temp:
