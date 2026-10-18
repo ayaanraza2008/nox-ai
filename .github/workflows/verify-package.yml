@@ -23,14 +23,23 @@ jobs:
           python-version: "3.12"
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
-      - name: Validate backend Python syntax
-        run: python -m compileall -q backend
+      - name: Validate Python syntax
+        run: python -m compileall -q backend desktop-companion
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build Android companion
+        run: gradle -p android-companion assembleDebug
       - name: Package project source
         run: |
           zip -r nox-ai-hologram.zip . \
