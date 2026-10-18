@@ -5,7 +5,23 @@ import "./style.css";
 import HolographicCore from "./HolographicCore.jsx";
 
 function App() {
-  const [messages, setMessages] = useState([{ role: "assistant", content: "Systems initialized. I'm NOX. What are we working on today?" }]);
+  const initialGreeting = { role: "assistant", content: "Systems initialized. I'm NOX. What are we working on today?" };
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("nox-current-chat") || "null");
+      return Array.isArray(saved) && saved.length ? saved : [initialGreeting];
+    } catch { return [initialGreeting]; }
+  });
+  const [chatHistory, setChatHistory] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("nox-chat-history") || "[]");
+      return Array.isArray(saved) ? saved.slice(0, 30) : [];
+    } catch { return []; }
+  });
+  const [currentChatId, setCurrentChatId] = useState(() => {
+    try { return localStorage.getItem("nox-current-chat-id") || crypto.randomUUID(); }
+    catch { return String(Date.now()); }
+  });
   const [input, setInput] = useState("");
   const [language, setLanguage] = useState("auto");
   const [busy, setBusy] = useState(false);
@@ -16,6 +32,41 @@ function App() {
     try { return localStorage.getItem("nox-accent-color") || "#ff3e4d"; }
     catch { return "#ff3e4d"; }
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("nox-current-chat", JSON.stringify(messages.slice(-300)));
+      localStorage.setItem("nox-current-chat-id", currentChatId);
+      const titleMessage = messages.find((item) => item.role === "user")?.content || "New conversation";
+      const entry = { id: currentChatId, title: titleMessage.slice(0, 64), updatedAt: new Date().toISOString(), messages: messages.slice(-300) };
+      setChatHistory((old) => {
+        const next = [entry, ...old.filter((item) => item.id !== currentChatId)].slice(0, 30);
+        try { localStorage.setItem("nox-chat-history", JSON.stringify(next)); } catch {}
+        return next;
+      });
+    } catch {}
+  }, [messages, currentChatId]);
+
+  function startNewChat() {
+    const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+    setCurrentChatId(id);
+    setMessages([{ role: "assistant", content: "New session started. How can I help?" }]);
+    setInput("");
+  }
+
+  function openSavedChat(chat) {
+    setCurrentChatId(chat.id);
+    setMessages(Array.isArray(chat.messages) ? chat.messages : [initialGreeting]);
+  }
+
+  function deleteSavedChat(id) {
+    setChatHistory((old) => {
+      const next = old.filter((chat) => chat.id !== id);
+      try { localStorage.setItem("nox-chat-history", JSON.stringify(next)); } catch {}
+      return next;
+    });
+    if (id === currentChatId) startNewChat();
+  }
 
   useEffect(() => {
     document.documentElement.style.setProperty("--red", accentColor);
@@ -610,7 +661,9 @@ function App() {
       <div className="brand"><div className="brand-mark"><Zap size={20} fill="currentColor" /></div><div><b>NOX<span>AI</span></b><small>PERSONAL INTELLIGENCE</small></div></div>
       <div className="side-label">WORKSPACE</div>
       <button className="nav-item active"><Command size={17} /> Command Center <span className="nav-dot" /></button>
-      <button className="nav-item" onClick={() => setMessages([{ role: "assistant", content: "New session started. How can I help?" }])}><Sparkles size={17} /> New session</button>
+      <button className="nav-item" onClick={startNewChat}><Sparkles size={17} /> New chat</button>
+      <div className="side-label">CHAT HISTORY</div>
+      <div className="chat-history-list">{chatHistory.map((chat) => <div className={"chat-history-item" + (chat.id === currentChatId ? " current" : "")} key={chat.id}><button type="button" title={chat.title} onClick={() => openSavedChat(chat)}>{chat.title || "New conversation"}</button><button type="button" className="chat-history-delete" aria-label={"Delete chat " + (chat.title || "")} title="Delete chat" onClick={() => deleteSavedChat(chat.id)}>×</button></div>)}</div>
       <button className="nav-item" onClick={() => document.getElementById("pairing-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><ShieldCheck size={17} /> Pair devices <span className="nav-dot" style={{ background: pairing ? "#65d7a1" : "#777" }} /></button>
       <div className="side-bottom"><div className="secure"><ShieldCheck size={17} /><div><b>Private by design</b><small>Keys stay on the server</small></div></div><div className="version">NOX CORE <span>v0.1.0</span></div></div>
     </aside>
