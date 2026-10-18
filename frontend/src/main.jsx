@@ -316,6 +316,9 @@ function App() {
     const goal = directGoal.trim();
     if (!goal || taskBusy) return;
 
+    // Route supported device-control phrases to a live paired companion, never to the
+    // research agent where they could be mistaken for an executed action.
+    const deviceActionCommand = /^(?:(?:turn|switch)\s+(?:on|off)\s+.+|.+\s+(?:on|off)\s+(?:kar do|karo|please)|(?:lights?|all lights?|tv|television)\s+(?:on|off)|(?:list|show|status of|what are my)\s+(?:devices|lights|switches|plugs|tvs|cameras|climate|thermostats|blinds|covers|fans|vacuums|scenes)|(?:set|make)\s+(?:the\s+)?(?:ac|air conditioner|thermostat|climate).+|(?:ac|temperature|thermostat)\s+(?:ko\s+)?\d{2}(?:\.\d)?\s*(?:degree|degrees|°?c)?\s+(?:kar do|set karo)|(?:tv|television|media player)(?:\s+.+)?\s+(?:on|off|play|pause|toggle)|(?:open|close)\s+.+\b(?:blinds?|curtains?|shutters?|covers?)\b|(?:start|stop|pause|dock|return)\s+(?:the\s+)?(?:vacuum|robot vacuum|robot cleaner)|(?:activate|apply|run)\s+(?:the\s+)?scene\s+.+)$/i.test(goal);
     // Discover installed Windows apps through the opt-in local companion.
     const openVerb = /\b(open|launch|start|khol|kholo|khul|chalao|chalu karo)\b|खोल|चला/i.test(goal);
     const normalizedGoal = goal.toLowerCase().replace(/[.!?]+$/, "").trim();
@@ -376,6 +379,12 @@ function App() {
         setTaskBusy(false);
       }
     }
+    if (deviceActionCommand) {
+      const failure = "NOT EXECUTED · No online paired companion is selected. Pair and start the Windows/Android companion, then choose it under SEND CHAT COMMANDS TO. NOX did not claim the device action ran.";
+      setTaskNotice(failure);
+      return failure;
+    }
+
     if (/Android/i.test(navigator.userAgent) && openVerb && (explicitAppCommand || !websiteCommand)) {
       setTaskGoal("");
       setTaskNotice("Sending command to NOX Android Companion. A unique app match opens directly; ambiguous matches show a chooser.");
@@ -626,8 +635,9 @@ function App() {
 
     // Route explicit action/search commands from chat through the same real command handler as Task Orchestrator.
     // Ordinary conversational messages continue to the AI chat endpoint.
-    const commandLike = /^(?:please\s+)?(?:open|launch|start|visit|go to|browse to|search(?:\s+the\s+web)?(?:\s+for)?|google|find online|internet par|khol|kholo|khul|chalao|chalu karo|खोलो|खोल|चलाओ)\b/i.test(value)
-      || /^.+\s+(?:kholo|open|launch|chalao|खोलो|चलाओ)$/i.test(value);
+    const commandLike = /^(?:please\s+)?(?:open|launch|start|visit|go to|browse to|search(?:\s+the\s+web)?(?:\s+for)?|google|find online|internet par|khol|kholo|khul|chalao|chalu karo|खोलो|खोल|चलाओ|(?:turn|switch)\s+(?:on|off)|(?:lights?|all lights?|tv|television)\s+(?:on|off)|(?:list|show|status of|what are my)\s+(?:devices|lights|switches|plugs|tvs|cameras|climate|thermostats|blinds|covers|fans|vacuums|scenes)|(?:set|make)\s+(?:the\s+)?(?:ac|air conditioner|thermostat|climate)|(?:tv|television|media player).*(?:on|off|play|pause|toggle)|(?:open|close)\s+.*(?:blinds?|curtains?|shutters?|covers?)|(?:start|stop|pause|dock|return)\s+(?:the\s+)?(?:vacuum|robot vacuum|robot cleaner)|(?:activate|apply|run)\s+(?:the\s+)?scene)\b/i.test(value)
+      || /^.+\s+(?:kholo|open|launch|chalao|खोलो|चलाओ)$/i.test(value)
+      || /^.+\s+(?:on|off)\s+(?:kar do|karo|please)$/i.test(value);
     if (commandLike) {
       setInput("");
       setMessages((old) => [...old, { role: "user", content: value }]);
