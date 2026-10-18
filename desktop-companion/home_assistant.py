@@ -27,7 +27,7 @@ def execute_home_assistant_command(command: str):
     temp_match = re.fullmatch(r"(?:set|make)\s+(?:the\s+)?(?:ac|air conditioner|thermostat|climate)(?:\s+(.+?))?\s+(?:to\s+)?(\d{2}(?:\.\d)?)\s*(?:degrees?|°?c)?", text)
     temp_match_hi = re.fullmatch(r"(?:ac|temperature|thermostat)\s+(?:ko\s+)?(\d{2}(?:\.\d)?)\s*(?:degree|degrees|°?c)?\s+(?:kar do|set karo)", text)
     media_match = re.fullmatch(r"(?:tv|television|media player)(?:\s+(.+?))?\s+(on|off|play|pause|toggle)", text)
-    cover_match = re.fullmatch(r"(?:open|close)\s+(.+?)(?:\s+please)?", text)
+    cover_match = re.fullmatch(r"(?:open|close)\s+(.+?\b(?:blinds?|curtains?|shutters?|covers?)\b)(?:\s+please)?", text)
     vacuum_match = re.fullmatch(r"(?:start|stop|pause|dock|return)\s+(?:the\s+)?(?:vacuum|robot vacuum|robot cleaner)(?:\s+(.+?))?", text)
     scene_match = re.fullmatch(r"(?:activate|apply|run)\s+(?:the\s+)?scene\s+(.+)", text)
     if not any((list_match, toggle_match, toggle_match_hi, temp_match, temp_match_hi, media_match, cover_match, vacuum_match, scene_match)):
