@@ -1,9 +1,10 @@
 """Persistent, bounded task orchestration for NOX AI.
 
-Tasks currently run as AI planning/response jobs. This manager does not execute
-arbitrary shell commands, browse websites, modify repositories, or control a desktop.
-SQLite persistence can be redirected with NOX_TASK_DB; on ephemeral hosts, use a
-persistent disk or external database for survival across redeploys.
+The processor is a bounded autonomous public-web research agent. It can search
+and read public pages, but it does not log in, submit forms, purchase items,
+execute shell commands, or control the user's device. SQLite persistence can
+be redirected with NOX_TASK_DB; on ephemeral hosts, use a persistent disk or
+external database for survival across redeploys.
 """
 import asyncio
 import json
@@ -264,7 +265,7 @@ class TaskManager:
             item["result"] = answer
             item["progress"] = 100
             item["status"] = "completed"
-            self._event(item, "Task completed. This is an AI-generated result, not an external action.")
+            self._event(item, "Task completed. Result includes only actions supported by the configured research tools; no account or device actions were performed.")
             self._save(item)
         except asyncio.CancelledError:
             raise
