@@ -108,9 +108,17 @@ function App() {
       if (matchingVoice) utterance.voice = matchingVoice;
       synth.speak(utterance);
     };
+    let speechPulseTimer = 0;
+    let speechPulsePhase = 0;
     utterance.onstart = () => {
       setCoreMode("NOX_SPEAKING");
       setStatus("AI VOICE ACTIVE");
+      // Keep the hologram visibly reactive even on browsers that omit onboundary.
+      ttsLevelRef.current = 0.48;
+      speechPulseTimer = window.setInterval(() => {
+        speechPulsePhase += 0.72;
+        ttsLevelRef.current = 0.32 + (0.5 + 0.5 * Math.sin(speechPulsePhase)) * 0.48;
+      }, 90);
     };
     utterance.onboundary = () => {
       // speechSynthesis exposes events, not its rendered audio stream; this is a
@@ -120,12 +128,14 @@ function App() {
       ttsDecayRef.current = window.setTimeout(() => { ttsLevelRef.current = 0; }, 220);
     };
     utterance.onerror = () => {
+      window.clearInterval(speechPulseTimer);
       ttsLevelRef.current = 0;
       setCoreMode("ERROR");
       setStatus("VOICE PLAYBACK ISSUE");
       window.setTimeout(() => setCoreMode("IDLE"), 900);
     };
     utterance.onend = () => {
+      window.clearInterval(speechPulseTimer);
       ttsLevelRef.current = 0;
       setCoreMode("IDLE");
       setStatus("AI LINK ACTIVE");
@@ -255,7 +265,7 @@ function App() {
     <main className="main">
       <header className="topbar"><div className="breadcrumb">NOX / <span>COMMAND CENTER</span></div><div className="top-status"><i /> {status}</div></header>
       <section className="hero"><div className="eyebrow"><span /> PERSONAL AI INTERFACE</div><h1>Think beyond.<br /><em>Move with intent.</em></h1><p>Your space to reason, create, and get things done.</p>
-        <div className="core-wrap"><HolographicCore mode={busy ? "PROCESSING" : coreMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} /></div>
+        <div className="core-wrap"><HolographicCore mode={coreMode === "NOX_SPEAKING" ? coreMode : busy ? "PROCESSING" : coreMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} /></div>
       </section>
       <section className="chat-panel"><div className="panel-heading"><div><span className="tiny-icon"><AudioLines size={16} /></span><b>Conversation</b><small>Encrypted transport · API keys remain server-side</small></div><label className="language">LANGUAGE <select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="auto">Auto detect</option><option value="en">English</option><option value="hi">Hindi</option><option value="ur">Urdu</option><option value="hinglish">Hinglish</option></select></label></div>
         <div className="messages">{messages.map((m, i) => <div className={"message " + m.role} key={i}><div className="avatar">{m.role === "assistant" ? <Bot size={17} /> : "YOU"}</div><div className="bubble"><div className="message-label">{m.role === "assistant" ? "NOX" : "YOU"}{m.mode === "demo" && <span className="demo-tag">DEMO</span>}</div><p>{m.content}</p>{m.role === "assistant" && <button type="button" className="message-speak" title="Play this reply aloud" aria-label="Play this reply aloud" onClick={() => speakText(m.content)}><Volume2 size={15} /> Listen</button>}</div></div>)}{busy && <div className="message assistant"><div className="avatar"><Bot size={17} /></div><div className="bubble"><div className="message-label">NOX</div><p className="typing">Processing<span>.</span><span>.</span><span>.</span></p></div></div>}<div ref={endRef} /></div>
