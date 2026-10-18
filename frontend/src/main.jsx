@@ -59,7 +59,14 @@ function App() {
     setMessages(Array.isArray(chat.messages) ? chat.messages : [initialGreeting]);
   }
 
-  function deleteSavedChat(id) {
+  async function deleteSavedChat(id) {
+    if (pairing?.session_id && pairing?.device_token) {
+      try {
+        await fetch("/api/pairing/history/" + encodeURIComponent(id) + "?session_id=" + encodeURIComponent(pairing.session_id), {
+          method: "DELETE", headers: { "X-NOX-Device-Token": pairing.device_token }
+        });
+      } catch {}
+    }
     setChatHistory((old) => {
       const next = old.filter((chat) => chat.id !== id);
       try { localStorage.setItem("nox-chat-history", JSON.stringify(next)); } catch {}
@@ -96,6 +103,7 @@ function App() {
   const meterFrameRef = useRef(0);
   const listeningRef = useRef(false);
   const ttsDecayRef = useRef(0);
+  const sharedHistoryReadyRef = useRef(false);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
 
@@ -153,6 +161,52 @@ function App() {
     const timer = window.setInterval(checkPairing, 10000);
     return () => { active = false; window.clearInterval(timer); };
   }, [pairing?.session_id, pairing?.device_token]);
+
+  // Load shared conversations only after the paired session is authenticated.
+  useEffect(() => {
+    let active = true;
+    sharedHistoryReadyRef.current = false;
+    if (!pairing?.session_id || !pairing?.device_token) return () => { sharedHistoryReadyRef.current = false; };
+    const loadSharedHistory = async () => {
+      try {
+        const response = await fetch("/api/pairing/history?session_id=" + encodeURIComponent(pairing.session_id), {
+          headers: { "X-NOX-Device-Token": pairing.device_token }
+        });
+        if (!response.ok) throw new Error("Shared history unavailable");
+        const data = await response.json();
+        if (!active) return;
+        const remote = Array.isArray(data.chats) ? data.chats : [];
+        setChatHistory((local) => {
+          const merged = new Map();
+          [...local, ...remote].forEach((chat) => {
+            const previous = merged.get(chat.id);
+            if (!previous || String(chat.updatedAt || "") > String(previous.updatedAt || "")) merged.set(chat.id, chat);
+          });
+          const next = [...merged.values()].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""))).slice(0, 30);
+          try { localStorage.setItem("nox-chat-history", JSON.stringify(next)); } catch {}
+          return next;
+        });
+        const currentRemote = remote.find((chat) => chat.id === currentChatId);
+        if (currentRemote && Array.isArray(currentRemote.messages) && currentRemote.messages.length) setMessages(currentRemote.messages);
+        sharedHistoryReadyRef.current = true;
+      } catch {
+        if (active) setPairNotice("Cross-device chat sync is temporarily unavailable; this device will keep its local history.");
+      }
+    };
+    loadSharedHistory();
+    return () => { active = false; sharedHistoryReadyRef.current = false; };
+  }, [pairing?.session_id, pairing?.device_token]);
+
+  // Sync the active conversation to the authenticated pairing session.
+  useEffect(() => {
+    if (!sharedHistoryReadyRef.current || !pairing?.session_id || !pairing?.device_token || !messages.length) return;
+    const title = messages.find((item) => item.role === "user")?.content || "New conversation";
+    fetch("/api/pairing/history?session_id=" + encodeURIComponent(pairing.session_id), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-NOX-Device-Token": pairing.device_token },
+      body: JSON.stringify({ chat_id: currentChatId, title: title.slice(0, 120), updated_at: new Date().toISOString(), messages: messages.slice(-300) })
+    }).catch(() => {});
+  }, [messages, currentChatId, pairing?.session_id, pairing?.device_token]);
 
   async function createPairing() {
     setPairBusy(true); setPairNotice("");
