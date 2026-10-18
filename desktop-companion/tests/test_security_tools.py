@@ -38,6 +38,17 @@ class SafeExecutionTests(unittest.TestCase):
         )
         self.assertNotIn("totally unknown app", companion.WINGET_PACKAGES)
 
+    def test_common_developer_and_productivity_packages_are_available(self):
+        for name in ("discord", "blender", "docker desktop", "android studio", "cursor", "github desktop"):
+            self.assertIn(name, companion.WINGET_PACKAGES)
+            package_id, display_name = companion.WINGET_PACKAGES[name]
+            self.assertTrue(package_id and display_name)
+
+    def test_terminal_catalog_is_fixed_and_shell_text_is_not_accepted(self):
+        for command in ("whoami", "systeminfo", "ipconfig", "tasklist", "hostname"):
+            self.assertIn(command, companion.SAFE_TERMINAL_COMMANDS)
+        self.assertIsNone(companion.execute_safe_terminal_command("whoami & del important.txt"))
+
 
 class StaticAuditTests(unittest.TestCase):
     def test_detects_common_patterns_and_skips_generated_dirs(self):
