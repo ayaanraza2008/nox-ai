@@ -25,6 +25,11 @@ try:
 except ImportError:
     check_website_security = None
 
+try:
+    from security_audit import audit_project
+except ImportError:
+    audit_project = None
+
 TOKEN = os.getenv("NOX_COMPANION_TOKEN", "").strip()
 WEB_ORIGIN = os.getenv("NOX_WEB_ORIGIN", "https://nox-ai-vcqx.onrender.com").strip()
 HOST = "127.0.0.1"
@@ -232,6 +237,11 @@ def pairing_worker():
             if check_website_security is None:
                 return {"status": "unsupported", "message": "The NOX passive security module is unavailable in this installation."}
             return check_website_security(security_check.group(1))
+
+        if re.fullmatch(r"(?:audit project security|security audit project|scan my project code)", raw, re.I):
+            if audit_project is None:
+                return {"status": "unsupported", "message": "The NOX read-only project audit module is unavailable in this installation."}
+            return audit_project()
 
         search = re.match(r"^(?:please\s+)?(?:search(?:\s+the\s+web)?(?:\s+for)?|google par|google|find online|internet par)\s+(.+?)(?:\s+(?:on|using)\s+(google|youtube|bing))?$", raw, re.I)
         if search:
