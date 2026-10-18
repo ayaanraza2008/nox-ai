@@ -252,7 +252,7 @@ def execute_safe_terminal_command(raw: str):
 
 def install_known_software(raw: str):
     """Install only a known package ID through WinGet; never execute internet snippets."""
-    match = re.fullmatch(r"(?:install|download and install|install software)\\s+(.+)", raw.strip(), re.I)
+    match = re.fullmatch(r"(?:install|download and install|install software)\s+(.+)", raw.strip(), re.I)
     if not match:
         return None
     query = match.group(1).strip().casefold()
@@ -389,7 +389,7 @@ def pairing_worker():
         if install_result is not None:
             return install_result
 
-        terminal_match = re.fullmatch(r"(?:run terminal|terminal|run command)\\s*:?\\s*(.+)", raw, re.I)
+        terminal_match = re.fullmatch(r"(?:run terminal|terminal|run command)\s*:?\s*(.+)", raw, re.I)
         if terminal_match:
             terminal_result = execute_safe_terminal_command(terminal_match.group(1))
             if terminal_result is not None:
