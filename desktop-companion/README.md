@@ -31,6 +31,17 @@ This opt-in Windows helper discovers app shortcuts in the Windows Start Menu and
    ```
 5. Open the NOX website on the same PC and submit a command such as `open chrome`, `open calculator`, or `open visual studio code`. The page asks for the token, finds matching Start Menu shortcuts, and asks for confirmation before launch.
 
+## Natural-language terminal tasks and software installs
+
+The paired Windows relay accepts these patterns without passing user text to a shell:
+
+- `terminal python --version`, `terminal node --version`, `terminal npm --version`, `terminal git --version`, `terminal git status`, `terminal pip --version`, and `terminal winget --version`.
+- `terminal npm install`, `terminal npm run build`, `terminal npm test`, and `terminal python -m pytest` only when `NOX_WORKSPACE_DIR` points to a configured project folder; npm tasks also require a `package.json`.
+- `install vscode`, `install git`, `install python`, `install node`, `install 7zip`, `install vlc`, `install firefox`, `install chrome`, and `install obs` use exact package IDs from the WinGet source and run without a shell.
+- Unknown software names return a Google search URL for review. NOX does **not** copy/paste and execute arbitrary commands found on web pages.
+
+This is intentionally a small allowlist, not unrestricted terminal access. Add new package IDs or command recipes only after reviewing them. Windows, WinGet, network access, package availability, and installation permissions are required. Some installers may still show OS/UAC prompts; NOX does not bypass them. Mobile operating systems have different app-launch/install restrictions and cannot use this Windows terminal feature.
+
 ## Security and known limitations
 
 - The API binds to `127.0.0.1` only; it is not exposed to your LAN or the public internet.
