@@ -337,22 +337,30 @@ function App() {
         if (!response.ok) throw new Error(data.detail || "Could not send command to paired device");
         setTaskGoal("");
         setTaskNotice("Command queued for " + pairedTarget.name + ". Waiting for its result…");
-        for (let attempt = 0; attempt < 10; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
           const statusResponse = await fetch("/api/pairing/commands/" + encodeURIComponent(data.command_id) + "?session_id=" + encodeURIComponent(pairing.session_id), {
             headers: { "X-NOX-Device-Token": pairing.device_token }
           });
           if (!statusResponse.ok) continue;
           const statusData = await statusResponse.json();
-          if (statusData.command?.status === "completed") {
+          const commandStatus = statusData.command?.status;
+          if (["completed", "reported", "failed"].includes(commandStatus)) {
             let result = {};
             try { result = JSON.parse(statusData.command.result || "{}"); } catch {}
-            const outcome = pairedTarget.name + ": " + (result.message || result.status || "Command completed.");
+            let outcome;
+            if (commandStatus === "completed") {
+              outcome = "SUCCESS · " + pairedTarget.name + ": " + (result.message || result.output || "Action completed and companion reported success.");
+            } else if (commandStatus === "reported") {
+              outcome = "REQUEST ACCEPTED, NOT VERIFIED · " + pairedTarget.name + ": " + (result.message || "The operating system accepted the launch request, but NOX cannot confirm the app became visible.");
+            } else {
+              outcome = "ACTION FAILED · " + pairedTarget.name + ": " + (result.message || result.output || result.status || "The companion reported that it could not complete the action.") + " NOX did not report this as a success.";
+            }
             setTaskNotice(outcome);
             return outcome;
           }
         }
-        const pendingOutcome = "Command is still queued or running on " + pairedTarget.name + ". Check that its companion is online and paired.";
+        const pendingOutcome = "NO CONFIRMATION YET · The command was queued, but " + pairedTarget.name + " has not returned a result within 40 seconds. Check that its companion is running and online. NOX will not pretend the action succeeded.";
         setTaskNotice(pendingOutcome);
         return pendingOutcome;
       } catch (error) {
