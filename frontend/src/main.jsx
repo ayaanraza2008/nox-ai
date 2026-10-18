@@ -226,7 +226,18 @@ function App() {
       "whatsapp web": "https://web.whatsapp.com/", wikipedia: "https://www.wikipedia.org/",
       reddit: "https://www.reddit.com/", linkedin: "https://www.linkedin.com/",
       chatgpt: "https://chatgpt.com/", render: "https://dashboard.render.com/",
-      "google drive": "https://drive.google.com/", bing: "https://www.bing.com/"
+      "google drive": "https://drive.google.com/", bing: "https://www.bing.com/",
+      netflix: "https://www.netflix.com/", amazon: "https://www.amazon.in/",
+      "amazon prime": "https://www.primevideo.com/", "prime video": "https://www.primevideo.com/",
+      spotify: "https://open.spotify.com/", discord: "https://discord.com/app",
+      telegram: "https://web.telegram.org/", pinterest: "https://www.pinterest.com/",
+      stackoverflow: "https://stackoverflow.com/", "google docs": "https://docs.google.com/",
+      "google photos": "https://photos.google.com/", "google maps": "https://maps.google.com/",
+      "google meet": "https://meet.google.com/", "microsoft teams": "https://teams.microsoft.com/",
+      outlook: "https://outlook.live.com/", twitter: "https://x.com/", x: "https://x.com/",
+      threads: "https://www.threads.net/", twitch: "https://www.twitch.tv/",
+      "epic games": "https://store.epicgames.com/", "play store": "https://play.google.com/store",
+      "google play": "https://play.google.com/store"
     };
     const key = target.toLowerCase().replace(/^website\s+/i, "");
     if (knownSites[key]) return { url: knownSites[key], label: target };
