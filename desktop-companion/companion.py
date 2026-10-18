@@ -6,6 +6,7 @@ token-authenticated request can launch one discovered shortcut. No arbitrary she
 import hashlib
 import hmac
 import os
+import re
 import subprocess
 import webbrowser
 from pathlib import Path
