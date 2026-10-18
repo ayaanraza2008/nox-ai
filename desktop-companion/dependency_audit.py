@@ -60,6 +60,8 @@ def _read_dependencies(root):
                     data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
                     packages = data.get("packages", {})
                     for package_path, item in packages.items():
+                        if not package_path:
+                            continue
                         version = item.get("version")
                         if not version:
                             continue
