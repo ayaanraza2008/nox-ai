@@ -120,7 +120,8 @@ function App() {
       .replace(/\s+app$/i, "")
       .trim();
     const normalizeAppName = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const explicitAppCommand = /\b(app|application)\b/i.test(goal) || /\b(app|application)\s*$/i.test(goal);\n    if (/Android/i.test(navigator.userAgent) && openVerb && (explicitAppCommand || !websiteCommand)) {
+    const explicitAppCommand = /\b(app|application)\b/i.test(goal) || /\b(app|application)\s*$/i.test(goal);
+    if (/Android/i.test(navigator.userAgent) && openVerb && (explicitAppCommand || !websiteCommand)) {
       if (!window.confirm("NOX wants to find and open an app matching: " + commandTarget + ". Continue?")) {
         setTaskNotice("App launch cancelled.");
         return;
