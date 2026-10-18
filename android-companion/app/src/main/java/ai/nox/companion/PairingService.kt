@@ -120,10 +120,10 @@ class PairingService : Service() {
     private fun runCommand(raw: String): Pair<JSONObject, Intent?> {
         val command = raw.trim()
         if (command.isBlank() || command.length > 1000) return JSONObject().put("status", "rejected").put("message", "Invalid command.") to null
-        val search = Regex("^(?:please\\s+)?(?:search(?:\\s+the\\s+web)?(?:\\s+for)?|google|find online|internet par|google par)\\s+(.+?)(?:\\s+(?:on|using)\\s+(google|youtube|bing))?$", RegexOption.IGNORE_CASE).find(command)
+        val search = Regex("^(?:please\\s+)?(?:search(?:\\s+the\\s+web)?(?:\\s+for)?|google par|google|find online|internet par)\\s+(.+?)(?:\\s+(?:on|using)\\s+(google|youtube|bing))?$", RegexOption.IGNORE_CASE).find(command)
         val intent: Intent?
         if (search != null) {
-            val query = search.groupValues[1].replace(Regex("\\s+(?:search\\s*)?(?:karo|kar do|please)$", RegexOption.IGNORE_CASE), "").trim()
+            val query = search.groupValues[1].replace(Regex("^(?:par|for)\\s+", RegexOption.IGNORE_CASE), "").replace(Regex("\\s+(?:search\\s*)?(?:karo|kar do|please)$", RegexOption.IGNORE_CASE), "").trim()
             val engine = search.groupValues[2].ifBlank { "google" }.lowercase(Locale.ROOT)
             val base = when (engine) {
                 "youtube" -> "https://www.youtube.com/results?search_query="
@@ -134,6 +134,7 @@ class PairingService : Service() {
         } else {
             val target = command.replace(Regex("^(?:please\\s+)?(?:open|launch|start|visit|go to|khol|kholo|khul|chalao|chalu karo|खोलो|खोल|चलाओ)\\s+", RegexOption.IGNORE_CASE), "")
                 .replace(Regex("\\s+(?:please|khol|kholo|open|launch|खोलो|खोल)$", RegexOption.IGNORE_CASE), "").trim()
+                .replace(Regex("^(?:app|application)\\s+", RegexOption.IGNORE_CASE), "").trim()
             intent = findAppIntent(target) ?: knownWebsiteIntent(target)
         }
         if (intent == null) return JSONObject().put("status", "not_found").put("message", "No matching launchable app or supported website for: $command") to null
