@@ -55,11 +55,18 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
           ? (ttsLevelRef.current || 0)
           : 0;
       const listening = mode === "USER_LISTENING";
+      const thinking = mode === "PROCESSING" || mode === "THINKING";
+      const working = mode === "WORKING";
+      const error = mode === "ERROR";
       const target = Math.max(0, Math.min(1, sourceLevel));
       smoothed += (target - smoothed) * (target > smoothed ? 0.24 : 0.075);
-      const energy = smoothed;
+      // Quiet, restrained motion while thinking; a stronger orbit while executing.
+      const statePulse = thinking ? (0.12 + 0.08 * (0.5 + 0.5 * Math.sin(time * 2.2)))
+        : working ? (0.22 + 0.12 * (0.5 + 0.5 * Math.sin(time * 3.1)))
+          : error ? 0.06 : 0;
+      const energy = Math.max(smoothed, statePulse);
       const idleMotion = reducedMotion ? 0.15 : 1;
-      const speed = (0.0025 + energy * 0.024) * idleMotion;
+      const speed = (0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : 0)) * idleMotion;
       rotation += speed;
       time += reducedMotion ? 0.004 : 0.012 + energy * 0.035;
       ctx.clearRect(0, 0, width, height);
@@ -68,7 +75,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       const cy = height / 2;
       const radius = Math.min(width * 0.36, height * 0.42, 132) * (1 + energy * 0.11);
       const glow = ctx.createRadialGradient(cx, cy, radius * 0.04, cx, cy, radius * 1.32);
-      glow.addColorStop(0, `rgba(72, 194, 255, ${0.07 + energy * 0.13})`);
+      const coreTint = error ? "255, 86, 105" : working ? "255, 150, 92" : "72, 194, 255";
+      glow.addColorStop(0, `rgba(${coreTint}, ${0.07 + energy * 0.16})`);
       glow.addColorStop(0.55, `rgba(120, 72, 255, ${0.035 + energy * 0.07})`);
       glow.addColorStop(1, "rgba(40, 100, 255, 0)");
       ctx.fillStyle = glow;
@@ -140,11 +148,22 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       });
       ctx.shadowBlur = 0;
 
+      // A compact inner pulse makes thinking/execution visible without faking speech.
+      const corePulse = 0.72 + energy * 0.18 + (thinking || working ? 0.04 * Math.sin(time * (working ? 3.1 : 2.1)) : 0);
+      const coreGlow = ctx.createRadialGradient(cx, cy, radius * 0.025, cx, cy, radius * 0.58);
+      coreGlow.addColorStop(0, `rgba(${coreTint}, ${0.16 + energy * 0.12})`);
+      coreGlow.addColorStop(0.45, `rgba(105, 115, 255, ${0.08 + energy * 0.08})`);
+      coreGlow.addColorStop(1, "rgba(30, 40, 90, 0)");
+      ctx.fillStyle = coreGlow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * corePulse * 0.58, 0, Math.PI * 2);
+      ctx.fill();
+
       // Delicate rotating orbital arcs add depth without replacing the particle field.
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(-rotation * 0.55);
-      ctx.strokeStyle = `rgba(92, 181, 255, ${0.12 + energy * 0.2})`;
+      ctx.strokeStyle = `rgba(${coreTint}, ${0.12 + energy * 0.2})`;
       ctx.lineWidth = 0.7;
       ctx.beginPath();
       ctx.ellipse(0, 0, radius * 1.04, radius * 0.29, 0, 0.1, Math.PI * 1.9);
@@ -179,6 +198,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       canvas.dataset.mode = mode;
       canvas.dataset.audioSource = mode === "USER_SPEAKING" ? "microphone-amplitude"
         : mode === "NOX_SPEAKING" ? "tts-playback-fallback" : "none";
+      canvas.dataset.activity = thinking ? "thinking-animation" : working ? "working-animation"
+        : error ? "error-state" : listening ? "listening" : "idle";
       raf = window.requestAnimationFrame(draw);
     };
 
@@ -195,8 +216,9 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
   const label = mode === "USER_SPEAKING" ? "MIC AUDIO REACTIVE"
     : mode === "NOX_SPEAKING" ? "VOICE PLAYBACK · ESTIMATED"
       : mode === "USER_LISTENING" ? "LISTENING"
-        : mode === "PROCESSING" ? "PROCESSING"
-          : mode === "ERROR" ? "VOICE ISSUE" : "CORE IDLE";
+        : mode === "PROCESSING" || mode === "THINKING" ? "THINKING"
+          : mode === "WORKING" ? "EXECUTING TASK"
+            : mode === "ERROR" ? "VOICE ISSUE" : "CORE IDLE";
 
   return <div className={`holo-stage holo-${mode.toLowerCase().replaceAll("_", "-")}`} aria-label={`NOX holographic core: ${label}`}>
     <canvas className="holo-canvas" ref={canvasRef} aria-hidden="true" />
