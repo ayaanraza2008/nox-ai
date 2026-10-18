@@ -112,6 +112,10 @@ NOX can check exact-pinned Python dependencies in `requirements.txt` and npm pac
 
 Review advisory matches before acting; they do not alone prove runtime exploitability. A clean report is not a guarantee of security. The report folder may contain source-line snippets from static findings, so keep the project folder private. These checks are read-only with respect to inspected code and do not install, upgrade, or modify packages.
 
+### Regression tests
+
+From the repository root, run `python -m unittest discover -s desktop-companion/tests -v`. GitHub Actions now runs these tests on pushes along with Python syntax validation. The tests mock the external OSV call and DNS lookup so they do not scan a live target or require the vulnerability database to be reachable.
+
 ### Authorized lab workflow
 
 For hands-on learning, use an intentionally vulnerable local training app or a lab you control. Keep the target inventory, permission, test window, and allowed test types written down; isolate the lab from production and real user data; take a backup; and stop if the target differs from the approved scope. NOX's current feature set does not automatically exploit targets or perform active penetration tests.
