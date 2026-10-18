@@ -173,11 +173,19 @@ class PairingService : Service() {
             val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
             if (label.isBlank()) null else Triple(label, activity.packageName, normalize(label))
         }.distinctBy { it.second }
-        val aliases = mapOf("vscode" to "visualstudiocode", "chrome" to "googlechrome", "yt" to "youtube")
+        val aliases = mapOf(
+            "vscode" to "visualstudiocode", "code" to "visualstudiocode",
+            "chrome" to "googlechrome", "yt" to "youtube", "wa" to "whatsapp"
+        )
         val query = aliases[q] ?: q
         val matches = apps.filter { it.third == query || it.third.startsWith(query) || query.startsWith(it.third) }
-        if (matches.size != 1) return null
-        return packageManager.getLaunchIntentForPackage(matches.first().second)
+        // A single command should not show a chooser for routine launches: exact label first,
+        // otherwise select the closest normalized label, with a stable alphabetical fallback.
+        val selected = matches.firstOrNull { it.third == query }
+            ?: matches.minByOrNull { candidate ->
+                kotlin.math.abs(candidate.third.length - query.length)
+            }
+        return selected?.let { packageManager.getLaunchIntentForPackage(it.second) }
     }
 
     private fun knownWebsiteIntent(target: String): Intent? {
@@ -190,6 +198,24 @@ class PairingService : Service() {
             "whatsapp", "whatsapp web" -> "https://web.whatsapp.com/"
             "facebook" -> "https://www.facebook.com/"
             "chatgpt" -> "https://chatgpt.com/"
+            "netflix" -> "https://www.netflix.com/"
+            "amazon" -> "https://www.amazon.in/"
+            "prime video", "amazon prime" -> "https://www.primevideo.com/"
+            "spotify" -> "https://open.spotify.com/"
+            "discord" -> "https://discord.com/app"
+            "telegram" -> "https://web.telegram.org/"
+            "pinterest" -> "https://www.pinterest.com/"
+            "stackoverflow" -> "https://stackoverflow.com/"
+            "google docs" -> "https://docs.google.com/"
+            "google drive" -> "https://drive.google.com/"
+            "google maps" -> "https://maps.google.com/"
+            "google photos" -> "https://photos.google.com/"
+            "google meet" -> "https://meet.google.com/"
+            "outlook" -> "https://outlook.live.com/"
+            "twitter", "x" -> "https://x.com/"
+            "threads" -> "https://www.threads.net/"
+            "twitch" -> "https://www.twitch.tv/"
+            "play store", "google play" -> "https://play.google.com/store"
             else -> if (target.matches(Regex("^https?://[^\\s]+$", RegexOption.IGNORE_CASE))) target else null
         } ?: return null
         return Intent(Intent.ACTION_VIEW, Uri.parse(url))
