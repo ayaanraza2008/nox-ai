@@ -63,24 +63,23 @@ function App() {
     const goal = taskGoal.trim();
     if (!goal || taskBusy) return;
 
-    // Mobile browser companion v1: handle only an explicit, allowlisted
-    // Instagram-open request on Android. This opens the official HTTPS URL;
-    // Android/browser settings may route it to the installed app.
-    const openInstagramRequest = /\b(open|launch|start)\b/i.test(goal)
+    // Android browser companion v2: allowlist Instagram only. Prefer the
+    // official Android package intent, with the official HTTPS site as fallback.
+    // This requests app launch; Android/browser policy still decides the outcome.
+    const openInstagramRequest = /\b(open|launch|start|khol|kholo|khul|chalao)\b|खोल|चला/i.test(goal)
       && /\binstagram\b/i.test(goal);
     if (/Android/i.test(navigator.userAgent) && openInstagramRequest) {
-      const confirmed = window.confirm("NOX wants to open Instagram. Continue?");
+      const confirmed = window.confirm("NOX wants to open the Instagram app or its official website. Continue?");
       if (!confirmed) {
         setTaskNotice("Instagram launch cancelled.");
         return;
       }
-      const opened = window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
-      if (!opened) {
-        // Popup blockers may block a new tab; navigate the current tab instead.
-        window.location.assign("https://www.instagram.com/");
-      }
       setTaskGoal("");
-      setTaskNotice("Instagram open request sent. Your Android settings decide whether the app or website opens.");
+      setTaskNotice("Requesting Instagram. If the app is installed, Android may open it; otherwise the official website will open.");
+      const fallback = encodeURIComponent("https://www.instagram.com/");
+      const intentUrl = `intent://instagram.com/#Intent;scheme=https;package=com.instagram.android;S.browser_fallback_url=${fallback};end`;
+      // Navigation is initiated directly from the user's confirmed submit action.
+      window.location.href = intentUrl;
       return;
     }
 
