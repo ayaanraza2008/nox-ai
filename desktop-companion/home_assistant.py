@@ -21,13 +21,16 @@ def execute_home_assistant_command(command: str):
     raw = command.strip()
     text = re.sub(r"[.!?]+$", "", raw, flags=re.UNICODE).strip().casefold()
     # Deliberately only parse a limited command grammar.
-    list_match = re.fullmatch(r"(?:list|show|status of|what are my)\s+(devices|lights|switches|plugs|tvs|cameras|climate|thermostats)", text)
+    list_match = re.fullmatch(r"(?:list|show|status of|what are my)\s+(devices|lights|switches|plugs|tvs|cameras|climate|thermostats|blinds|covers|fans|vacuums|scenes)", text)
     toggle_match = re.fullmatch(r"(?:(?:turn|switch)\s+)?(on|off)\s+(.+?)(?:\s+please)?", text)
     toggle_match_hi = re.fullmatch(r"(.+?)\s+(on|off)\s+(?:kar do|karo|please)", text)
     temp_match = re.fullmatch(r"(?:set|make)\s+(?:the\s+)?(?:ac|air conditioner|thermostat|climate)(?:\s+(.+?))?\s+(?:to\s+)?(\d{2}(?:\.\d)?)\s*(?:degrees?|°?c)?", text)
     temp_match_hi = re.fullmatch(r"(?:ac|temperature|thermostat)\s+(?:ko\s+)?(\d{2}(?:\.\d)?)\s*(?:degree|degrees|°?c)?\s+(?:kar do|set karo)", text)
     media_match = re.fullmatch(r"(?:tv|television|media player)(?:\s+(.+?))?\s+(on|off|play|pause|toggle)", text)
-    if not any((list_match, toggle_match, toggle_match_hi, temp_match, temp_match_hi, media_match)):
+    cover_match = re.fullmatch(r"(?:open|close)\s+(.+?)(?:\s+please)?", text)
+    vacuum_match = re.fullmatch(r"(?:start|stop|pause|dock|return)\s+(?:the\s+)?(?:vacuum|robot vacuum|robot cleaner)(?:\s+(.+?))?", text)
+    scene_match = re.fullmatch(r"(?:activate|apply|run)\s+(?:the\s+)?scene\s+(.+)", text)
+    if not any((list_match, toggle_match, toggle_match_hi, temp_match, temp_match_hi, media_match, cover_match, vacuum_match, scene_match)):
         # Also recognize simple natural-language aliases for common home devices.
         if not re.fullmatch(r"(?:lights?|all lights?)\s+(?:on|off)|(?:tv|television)\s+(?:on|off)|(?:cameras?|camera status)", text):
             return None
@@ -71,7 +74,7 @@ def execute_home_assistant_command(command: str):
 
         if list_match or re.fullmatch(r"(?:cameras?|camera status)", text):
             group = list_match.group(1) if list_match else "cameras"
-            domains = {"devices": ("light", "switch", "media_player", "climate", "camera", "cover", "fan"), "lights": ("light",), "switches": ("switch",), "plugs": ("switch",), "tvs": ("media_player",), "cameras": ("camera",), "climate": ("climate",), "thermostats": ("climate",)}
+            domains = {"devices": ("light", "switch", "media_player", "climate", "camera", "cover", "fan", "vacuum"), "lights": ("light",), "switches": ("switch",), "plugs": ("switch",), "tvs": ("media_player",), "cameras": ("camera",), "climate": ("climate",), "thermostats": ("climate",), "blinds": ("cover",), "covers": ("cover",), "fans": ("fan",), "vacuums": ("vacuum",), "scenes": ("scene",)}
             result = []
             for domain in domains[group]:
                 for state in matches(domain):
@@ -96,6 +99,32 @@ def execute_home_assistant_command(command: str):
             service = {"on": "turn_on", "off": "turn_off", "play": "media_play", "pause": "media_pause", "toggle": "media_play_pause"}[action]
             api("/api/services/media_player/" + service, "POST", {"entity_id": [s["entity_id"] for s in media]})
             return {"status": "success", "message": "Sent " + action + " to " + ", ".join(friendly(s) for s in media[:5]) + "."}
+
+        if cover_match:
+            verb, hint = text.split(" ", 1)
+            covers = matches("cover", hint)
+            if not covers:
+                return {"status": "not_found", "message": "No matching Home Assistant blind/cover found: " + hint}
+            service = "open_cover" if verb == "open" else "close_cover"
+            api("/api/services/cover/" + service, "POST", {"entity_id": [s["entity_id"] for s in covers]})
+            return {"status": "success", "message": "Sent " + verb + " to " + ", ".join(friendly(s) for s in covers[:5]) + "."}
+
+        if vacuum_match:
+            action, hint = vacuum_match.groups()
+            vacuum_devices = matches("vacuum", hint or "")
+            if not vacuum_devices:
+                return {"status": "not_found", "message": "No matching Home Assistant vacuum found."}
+            service = {"start": "start", "stop": "stop", "pause": "pause", "dock": "return_to_base", "return": "return_to_base"}[action]
+            api("/api/services/vacuum/" + service, "POST", {"entity_id": [s["entity_id"] for s in vacuum_devices]})
+            return {"status": "success", "message": "Sent " + action + " to " + ", ".join(friendly(s) for s in vacuum_devices[:5]) + "."}
+
+        if scene_match:
+            hint = scene_match.group(1).strip()
+            scenes = matches("scene", hint)
+            if len(scenes) != 1:
+                return {"status": "needs_choice" if scenes else "not_found", "message": ("More than one scene matches. Use its exact name: " if scenes else "No matching scene found: ") + hint, "devices": [{"name": friendly(s), "entity_id": s.get("entity_id")} for s in scenes[:10]]}
+            api("/api/services/scene/turn_on", "POST", {"entity_id": scenes[0]["entity_id"]})
+            return {"status": "success", "message": "Activated scene " + friendly(scenes[0]) + "."}
 
         action = None
         hint = ""
