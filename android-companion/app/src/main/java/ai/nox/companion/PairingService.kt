@@ -120,9 +120,16 @@ class PairingService : Service() {
     private fun runCommand(raw: String): Pair<JSONObject, Intent?> {
         val command = raw.trim()
         if (command.isBlank() || command.length > 1000) return JSONObject().put("status", "rejected").put("message", "Invalid command.") to null
+        val install = Regex("^(?:install|download and install)\\s+(.+)$", RegexOption.IGNORE_CASE).find(command)
         val search = Regex("^(?:please\\s+)?(?:search(?:\\s+the\\s+web)?(?:\\s+for)?|google par|google|find online|internet par)\\s+(.+?)(?:\\s+(?:on|using)\\s+(google|youtube|bing))?$", RegexOption.IGNORE_CASE).find(command)
         val intent: Intent?
-        if (search != null) {
+        if (install != null) {
+            val appName = install.groupValues[1].trim()
+            intent = if (appName.isBlank()) null else Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/search?q=" + Uri.encode(appName) + "&c=apps")
+            )
+        } else if (search != null) {
             val query = search.groupValues[1].replace(Regex("^(?:par|for)\\s+", RegexOption.IGNORE_CASE), "").replace(Regex("\\s+(?:search\\s*)?(?:karo|kar do|please)$", RegexOption.IGNORE_CASE), "").trim()
             val engine = search.groupValues[2].ifBlank { "google" }.lowercase(Locale.ROOT)
             val base = when (engine) {
@@ -143,12 +150,12 @@ class PairingService : Service() {
         return try {
             if (visible) {
                 startActivity(intent)
-                JSONObject().put("status", "launch_requested").put("message", "Opened from paired NOX command.")
+                JSONObject().put("status", "launch_requested").put("message", if (install != null) "Opened Google Play search. Choose the official app and complete installation in Android." else "Opened from paired NOX command.")
             } else {
                 val pending = PendingIntent.getActivity(this, command.hashCode(), intent,
                     PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
                 getSystemService(NotificationManager::class.java).notify(command.hashCode(), notification("Tap to run: $command", pending))
-                JSONObject().put("status", "notification_sent").put("message", "Tap the notification to open this app while NOX is in the background.")
+                JSONObject().put("status", "notification_sent").put("message", if (install != null) "Tap the notification to open Google Play search; Android requires you to choose and install the app." else "Tap the notification to open this app while NOX is in the background.")
             }
         } catch (e: Exception) {
             JSONObject().put("status", "error").put("message", e.message ?: "Android could not launch the requested target.")
