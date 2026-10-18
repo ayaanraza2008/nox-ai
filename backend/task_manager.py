@@ -224,6 +224,9 @@ class TaskManager:
                     answer = await self.processor(item["goal"], item["language"], [])
                 else:
                     raise
+            # A pause cannot interrupt the provider request, but it must stop
+            # result finalization until the user resumes the task.
+            await pause_event.wait()
             if cancel_event.is_set():
                 return
             if not answer:
