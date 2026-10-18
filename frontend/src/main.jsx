@@ -27,6 +27,13 @@ function App() {
   const [taskGoal, setTaskGoal] = useState("");
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskNotice, setTaskNotice] = useState("");
+  const [pairing, setPairing] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("nox-pairing") || "null"); } catch { return null; }
+  });
+  const [pairCode, setPairCode] = useState("");
+  const [pairDeviceName, setPairDeviceName] = useState(() => /Android|iPhone|iPad/i.test(navigator.userAgent) ? "NOX Mobile" : "NOX PC");
+  const [pairNotice, setPairNotice] = useState("");
+  const [pairBusy, setPairBusy] = useState(false);
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
   const [coreMode, setCoreMode] = useState("IDLE");
@@ -66,6 +73,81 @@ function App() {
     const timer = window.setInterval(refreshTasks, 3000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!pairing?.session_id || !pairing?.device_token) return;
+    let active = true;
+    const checkPairing = async () => {
+      try {
+        const response = await fetch("/api/pairing/status?session_id=" + encodeURIComponent(pairing.session_id), {
+          headers: { "X-NOX-Device-Token": pairing.device_token }
+        });
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem("nox-pairing");
+            if (active) { setPairing(null); setPairNotice("Pairing session is no longer valid. Pair again."); }
+          }
+          return;
+        }
+        const data = await response.json();
+        if (active) setPairing((current) => current ? { ...current, devices: data.devices || [], current_device_id: data.current_device_id } : current);
+      } catch { if (active) setPairNotice("Pairing server temporarily unreachable. NOX will retry automatically."); }
+    };
+    checkPairing();
+    const timer = window.setInterval(checkPairing, 10000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [pairing?.session_id, pairing?.device_token]);
+
+  async function createPairing() {
+    setPairBusy(true); setPairNotice("");
+    try {
+      const response = await fetch("/api/pairing/create", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_name: pairDeviceName })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Could not create pairing");
+      const saved = { ...data, devices: [{ device_id: data.device_id, name: pairDeviceName, disconnected: 0 }] };
+      localStorage.setItem("nox-pairing", JSON.stringify(saved));
+      setPairing(saved);
+      setPairNotice("Pair code created. Enter it on the other device within five minutes.");
+    } catch (error) { setPairNotice("Pairing failed: " + error.message); }
+    finally { setPairBusy(false); }
+  }
+
+  async function joinPairing() {
+    if (!/^\\d{6}$/.test(pairCode.trim())) { setPairNotice("Enter the six-digit code shown on the other device."); return; }
+    setPairBusy(true); setPairNotice("");
+    try {
+      const response = await fetch("/api/pairing/join", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: pairCode.trim(), device_name: pairDeviceName })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Could not join pairing");
+      const saved = { ...data, devices: [] };
+      localStorage.setItem("nox-pairing", JSON.stringify(saved));
+      setPairing(saved); setPairCode("");
+      setPairNotice("This browser joined the session. Install and connect the native companion for device-level actions.");
+    } catch (error) { setPairNotice("Could not pair: " + error.message); }
+    finally { setPairBusy(false); }
+  }
+
+  async function disconnectPairing() {
+    if (!pairing?.session_id || !pairing?.device_token) return;
+    if (!window.confirm("Disconnect this device from the NOX pairing session?")) return;
+    setPairBusy(true);
+    try {
+      const response = await fetch("/api/pairing/disconnect?session_id=" + encodeURIComponent(pairing.session_id), {
+        method: "POST", headers: { "X-NOX-Device-Token": pairing.device_token }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Disconnect failed");
+      localStorage.removeItem("nox-pairing"); setPairing(null);
+      setPairNotice("This device has been disconnected.");
+    } catch (error) { setPairNotice("Disconnect failed: " + error.message); }
+    finally { setPairBusy(false); }
+  }
 
   function resolveWebsiteCommand(rawGoal) {
     const input = rawGoal.trim().replace(/[.!?]+$/, "");
@@ -497,6 +579,7 @@ function App() {
       <div className="side-label">WORKSPACE</div>
       <button className="nav-item active"><Command size={17} /> Command Center <span className="nav-dot" /></button>
       <button className="nav-item" onClick={() => setMessages([{ role: "assistant", content: "New session started. How can I help?" }])}><Sparkles size={17} /> New session</button>
+      <button className="nav-item" onClick={() => document.getElementById("pairing-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><ShieldCheck size={17} /> Pair devices <span className="nav-dot" style={{ background: pairing ? "#65d7a1" : "#777" }} /></button>
       <div className="side-bottom"><div className="secure"><ShieldCheck size={17} /><div><b>Private by design</b><small>Keys stay on the server</small></div></div><div className="version">NOX CORE <span>v0.1.0</span></div></div>
     </aside>
     <main className="main">
@@ -504,6 +587,24 @@ function App() {
       <section className="hero"><div className="eyebrow"><span /> PERSONAL AI INTERFACE</div><h1>Think beyond.<br /><em>Move with intent.</em></h1><p>Your space to reason, create, and get things done.</p>
         <div className="core-wrap"><HolographicCore mode={coreMode === "NOX_SPEAKING" ? coreMode : busy ? "PROCESSING" : coreMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} /></div>
       </section>
+      <section className="pairing-panel" id="pairing-panel">
+        <div className="task-panel-heading"><div><span className="tiny-icon"><ShieldCheck size={16} /></span><b>Device Pairing</b><small>Connect your PC and mobile to the same NOX session</small></div><span className={"pair-status " + (pairing ? "paired" : "")}>{pairing ? "SESSION SAVED" : "NOT PAIRED"}</span></div>
+        {pairing ? <div className="pairing-active">
+          <div><span className="pair-label">PAIRING SESSION</span><code>{pairing.session_id}</code></div>
+          {pairing.pair_code && <div><span className="pair-label">PAIR CODE · SHARE ONLY WITH YOUR DEVICE</span><strong className="pair-code">{pairing.pair_code}</strong><small>Code expires at {new Date(pairing.expires_at).toLocaleTimeString()}.</small></div>}
+          <div className="paired-devices"><b>Known devices</b>{(pairing.devices || []).map((device) => <div className="paired-device" key={device.device_id}><span className="pair-online-dot" />{device.name}<small>{device.device_id === pairing.current_device_id || device.device_id === pairing.device_id ? "This device" : "Paired session"}</small></div>)}</div>
+          <p className="pairing-note">Session credentials are saved in this browser and status auto-refreshes. The pairing API is ready, but remote native app control only works once the PC/Android companion is integrated and running. Browser pairing alone does not grant OS-level control.</p>
+          <button className="pair-disconnect" type="button" onClick={disconnectPairing} disabled={pairBusy}>Disconnect this device</button>
+        </div> : <div className="pairing-controls">
+          <label>DEVICE NAME<input value={pairDeviceName} maxLength={80} onChange={(e) => setPairDeviceName(e.target.value)} placeholder="e.g. My PC" /></label>
+          <button type="button" className="pair-primary" onClick={createPairing} disabled={pairBusy || !pairDeviceName.trim()}>{pairBusy ? "Working…" : "Create pairing code"}</button>
+          <div className="pair-divider"><span>OR JOIN AN EXISTING SESSION</span></div>
+          <label>6-DIGIT PAIR CODE<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={pairCode} onChange={(e) => setPairCode(e.target.value.replace(/\\D/g, "").slice(0, 6))} placeholder="123456" /></label>
+          <button type="button" className="pair-secondary" onClick={joinPairing} disabled={pairBusy || pairCode.length !== 6 || !pairDeviceName.trim()}>Pair this device</button>
+        </div>}
+        {pairNotice && <p className="pair-notice" role="status">{pairNotice}</p>}
+      </section>
+
       <section className="capability-panel"><div className="capability-heading"><div><span className="tiny-icon"><ShieldCheck size={16} /></span><b>System Capabilities</b><small>Live backend-reported status · no simulated completion</small></div><button type="button" className="refresh-status" onClick={() => { setCapabilities(null); setCapabilityError(false); fetch("/api/capabilities").then((response) => { if (!response.ok) throw new Error("Status unavailable"); return response.json(); }).then(setCapabilities).catch(() => setCapabilityError(true)); }}>Refresh</button></div>{capabilityError ? <p className="capability-message">Capability status is unavailable. Check that the latest backend deployment has finished.</p> : !capabilities ? <p className="capability-message">Loading verified module status…</p> : <><div className="capability-summary"><span>{capabilities.modules.filter((module) => module.status === "ready").length} READY</span><span>{capabilities.modules.filter((module) => module.status === "limited").length} LIMITED</span><span>{capabilities.modules.filter((module) => module.status === "setup_required").length} SETUP REQUIRED</span></div><div className="capability-grid">{capabilities.modules.map((module) => <article className={"capability-card status-" + module.status} key={module.id}><div className="capability-card-top"><b>{module.name}</b><span>{statusLabel(module.status)}</span></div><p>{module.detail}</p></article>)}</div></>}</section>
 
       <section className="task-panel"><div className="task-panel-heading"><div><span className="tiny-icon"><Activity size={16} /></span><b>Task Orchestrator</b><small>Queued AI tasks · progress, events and controls</small></div><button type="button" className="refresh-status" onClick={refreshTasks}>Refresh</button></div>
