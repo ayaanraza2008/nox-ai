@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
+from backend.autonomous_agent import run_autonomous_task
 
 app = FastAPI(title="NOX AI API", version="0.1.0")
 ROOT = Path(__file__).resolve().parent.parent
@@ -74,7 +75,7 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
         raise HTTPException(status_code=502, detail="AI provider returned an unexpected response.")
 
 
-task_manager = TaskManager(provider_reply)
+task_manager = TaskManager(run_autonomous_task)
 
 
 @app.on_event("startup")
@@ -167,10 +168,10 @@ async def capabilities():
     ai_configured = bool(os.getenv("OPENROUTER_API_KEY"))
     modules = [
         {"id": "chat", "name": "AI Chat", "status": "ready" if ai_configured else "setup_required", "detail": "Provider-backed chat configured." if ai_configured else "Add OPENROUTER_API_KEY in the hosting environment for real AI responses."},
-        {"id": "tasks", "name": "Task Orchestration", "status": "ready", "detail": "SQLite-backed task queue with status, progress, event history, pause/resume/cancel, and one bounded retry. AI tasks return text results; external actions are not executed."},
+        {"id": "tasks", "name": "Autonomous Task Orchestration", "status": "ready", "detail": "Persistent task queue with progress, event history, pause/resume/cancel, bounded retries, and a bounded tool-using web research loop. Public web search and page reading only; no login, form submission, purchases, or local-device control."},
         {"id": "voice", "name": "Browser Voice", "status": "limited", "detail": "Uses browser speech recognition/synthesis where supported; availability depends on the device and browser."},
         {"id": "hologram", "name": "Holographic Interface", "status": "ready", "detail": "Animated frontend is available; animation does not imply background task execution."},
-        {"id": "research", "name": "Live Web Research", "status": "setup_required", "detail": "Live search and page-reading provider is not connected in this build."},
+        {"id": "research", "name": "Live Web Research", "status": "ready" if ai_configured else "setup_required", "detail": "Bounded public-web search and page reading through the configured AI provider." if ai_configured else "Add OPENROUTER_API_KEY to enable the autonomous research worker."},
         {"id": "coding", "name": "Coding Agent", "status": "setup_required", "detail": "Repository editing and isolated code execution are not exposed as a production tool yet."},
         {"id": "creative", "name": "Image & Video Studio", "status": "setup_required", "detail": "Generation/editing providers and media-processing workflows are not connected yet."},
         {"id": "vision", "name": "Camera & Media Analysis", "status": "setup_required", "detail": "No backend vision-analysis provider is connected in this build."},
