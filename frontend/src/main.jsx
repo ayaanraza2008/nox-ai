@@ -110,26 +110,6 @@ function App() {
     const goal = taskGoal.trim();
     if (!goal || taskBusy) return;
 
-    // Website navigation runs in the user's own browser after explicit confirmation.
-    // A hosted Render worker cannot directly control the user's other apps or desktop.
-    const website = resolveWebsiteCommand(goal);
-    if (website) {
-      const confirmed = window.confirm(`NOX wants to open ${website.label} in a new tab. Continue?`);
-      if (!confirmed) {
-        setTaskNotice("Website navigation cancelled.");
-        return;
-      }
-      const opened = window.open(website.url, "_blank");
-      if (opened) opened.opener = null;
-      if (opened) {
-        setTaskGoal("");
-        setTaskNotice(`Opened ${website.label} in a new browser tab.`);
-      } else {
-        setTaskNotice("The browser blocked the new tab. Allow pop-ups for this site and try again.");
-      }
-      return;
-    }
-
     // Android browser companion v2: allowlist Instagram only. Prefer the
     // official Android package intent, with the official HTTPS site as fallback.
     // This requests app launch; Android/browser policy still decides the outcome.
@@ -147,6 +127,27 @@ function App() {
       const intentUrl = `intent://instagram.com/#Intent;scheme=https;package=com.instagram.android;S.browser_fallback_url=${fallback};end`;
       // Navigation is initiated directly from the user's confirmed submit action.
       window.location.href = intentUrl;
+      return;
+    }
+
+
+    // Website navigation runs in the user's own browser after explicit confirmation.
+    // A hosted Render worker cannot directly control the user's other apps or desktop.
+    const website = resolveWebsiteCommand(goal);
+    if (website) {
+      const confirmed = window.confirm(`NOX wants to open ${website.label} in a new tab. Continue?`);
+      if (!confirmed) {
+        setTaskNotice("Website navigation cancelled.");
+        return;
+      }
+      const opened = window.open(website.url, "_blank");
+      if (opened) opened.opener = null;
+      if (opened) {
+        setTaskGoal("");
+        setTaskNotice(`Opened ${website.label} in a new browser tab.`);
+      } else {
+        setTaskNotice("The browser blocked the new tab. Allow pop-ups for this site and try again.");
+      }
       return;
     }
 
