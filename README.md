@@ -26,3 +26,13 @@ Create a **Web Service** from this repository. The included `render.yaml` define
 
 ## Security
 Never commit API keys or passwords. Configure secrets in Render environment variables.
+
+
+## Single-command agent roadmap and current limits
+
+- The command panel can open recognized websites (for example, YouTube, Google, GitHub, Instagram, WhatsApp Web, ChatGPT, and Render) or an explicit HTTP(S) URL in a new tab after asking for confirmation.
+- This is navigation only. It does not claim to have logged in, clicked buttons, sent messages, purchased anything, or completed other site actions.
+- Multi-step website automation needs a browser automation worker with per-task permissions, confirmation before consequential actions, timeouts, and an auditable action log.
+- Opening installed apps, controlling windows, and accessing files on the user's own phone/PC requires a separately installed local companion with narrowly scoped permissions. A Render-hosted backend cannot directly operate the user's device.
+- Never store API keys in frontend code or commit them to Git. Configure provider credentials as Render environment secrets.
+- A hosted AI provider key is required for provider-backed chat; free tiers and hosting quotas may change.
