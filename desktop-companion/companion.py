@@ -184,6 +184,14 @@ SAFE_TERMINAL_COMMANDS = {
     "git status": ["git", "status", "--short"],
     "pip --version": ["python", "-m", "pip", "--version"],
     "winget --version": ["winget", "--version"],
+    "whoami": ["whoami"],
+    "systeminfo": ["systeminfo"],
+    "ipconfig": ["ipconfig"],
+    "tasklist": ["tasklist"],
+    "hostname": ["hostname"],
+    "where python": ["where", "python"],
+    "where node": ["where", "node"],
+    "where git": ["where", "git"],
 }
 # Stable WinGet package IDs only; no package names or commands are interpolated into a shell.
 WINGET_PACKAGES = {
@@ -200,6 +208,30 @@ WINGET_PACKAGES = {
     "chrome": ("Google.Chrome", "Google Chrome"),
     "obs": ("OBSProject.OBSStudio", "OBS Studio"),
     "obs studio": ("OBSProject.OBSStudio", "OBS Studio"),
+    "discord": ("Discord.Discord", "Discord"),
+    "steam": ("Valve.Steam", "Steam"),
+    "spotify": ("Spotify.Spotify", "Spotify"),
+    "zoom": ("Zoom.Zoom", "Zoom Workplace"),
+    "slack": ("SlackTechnologies.Slack", "Slack"),
+    "blender": ("BlenderFoundation.Blender", "Blender"),
+    "gimp": ("GIMP.GIMP.3", "GIMP"),
+    "libreoffice": ("TheDocumentFoundation.LibreOffice", "LibreOffice"),
+    "notepad++": ("Notepad++.Notepad++", "Notepad++"),
+    "docker desktop": ("Docker.DockerDesktop", "Docker Desktop"),
+    "android studio": ("Google.AndroidStudio", "Android Studio"),
+    "brave": ("Brave.Brave", "Brave Browser"),
+    "opera": ("Opera.Opera", "Opera Browser"),
+    "telegram": ("Telegram.TelegramDesktop", "Telegram Desktop"),
+    "github desktop": ("GitHub.GitHubDesktop", "GitHub Desktop"),
+    "powertoys": ("Microsoft.PowerToys", "Microsoft PowerToys"),
+    "audacity": ("Audacity.Audacity", "Audacity"),
+    "inkscape": ("Inkscape.Inkscape", "Inkscape"),
+    "postman": ("Postman.Postman", "Postman"),
+    "obsidian": ("Obsidian.Obsidian", "Obsidian"),
+    "notion": ("Notion.Notion", "Notion"),
+    "cursor": ("Anysphere.Cursor", "Cursor"),
+    "intellij": ("JetBrains.IntelliJIDEA.Community", "IntelliJ IDEA Community"),
+    "pycharm": ("JetBrains.PyCharm.Community", "PyCharm Community"),
 }
 
 
@@ -212,6 +244,10 @@ def execute_safe_terminal_command(raw: str):
         "npm run build": ["npm", "run", "build"],
         "npm test": ["npm", "test"],
         "python -m pytest": ["python", "-m", "pytest"],
+        "npm run lint": ["npm", "run", "lint"],
+        "git log -1 --oneline": ["git", "log", "-1", "--oneline"],
+        "python -m compileall .": ["python", "-m", "compileall", "."],
+        "dir": ["cmd", "/c", "dir"],
     }
     if args is None and command in workspace_commands:
         workspace = os.getenv("NOX_WORKSPACE_DIR", "").strip()
@@ -222,6 +258,10 @@ def execute_safe_terminal_command(raw: str):
             return {"status": "error", "message": "Configured NOX_WORKSPACE_DIR is not an existing directory."}
         if command.startswith("npm ") and not (root / "package.json").is_file():
             return {"status": "rejected", "message": "The configured workspace has no package.json; npm command was not run."}
+        if command.startswith("git ") and not (root / ".git").exists():
+            return {"status": "rejected", "message": "The configured workspace is not a Git repository; git command was not run."}
+        if command.startswith("python -m pytest") and not any((root / name).exists() for name in ("tests", "test")):
+            return {"status": "rejected", "message": "No tests/ or test/ folder was found in the configured workspace."}
         args = workspace_commands[command]
         cwd = str(root)
     else:
