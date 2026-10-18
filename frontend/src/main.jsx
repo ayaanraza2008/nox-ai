@@ -67,10 +67,67 @@ function App() {
     return () => window.clearInterval(timer);
   }, []);
 
+  function resolveWebsiteCommand(rawGoal) {
+    const match = rawGoal.trim().match(/^(?:please\\s+)?(?:open|launch|visit|go to|browse to|khol|kholo|khul)\\s+(.+?)\\s*[.!?]*$/i);
+    if (!match) return null;
+    const target = match[1].trim().replace(/[.!?]+$/, "");
+    const knownSites = {
+      youtube: "https://www.youtube.com/",
+      google: "https://www.google.com/",
+      gmail: "https://mail.google.com/",
+      github: "https://github.com/",
+      instagram: "https://www.instagram.com/",
+      facebook: "https://www.facebook.com/",
+      whatsapp: "https://web.whatsapp.com/",
+      wikipedia: "https://www.wikipedia.org/",
+      reddit: "https://www.reddit.com/",
+      linkedin: "https://www.linkedin.com/",
+      chatgpt: "https://chatgpt.com/",
+      render: "https://dashboard.render.com/",
+      "google drive": "https://drive.google.com/"
+    };
+    const key = target.toLowerCase();
+    if (knownSites[key]) return { url: knownSites[key], label: target };
+    if (/^https?:\\/\\//i.test(target)) {
+      try {
+        const url = new URL(target);
+        if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+        return { url: url.href, label: url.hostname };
+      } catch { return null; }
+    }
+    // Accept an explicit domain only; do not guess URLs for arbitrary app names.
+    if (/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}(?::\\d{1,5})?(?:[/?#][^\\s]*)?$/i.test(target)) {
+      try {
+        const url = new URL("https://" + target);
+        return { url: url.href, label: url.hostname };
+      } catch { return null; }
+    }
+    return null;
+  }
+
   async function submitTask(event) {
     event.preventDefault();
     const goal = taskGoal.trim();
     if (!goal || taskBusy) return;
+
+    // Website navigation runs in the user's own browser after explicit confirmation.
+    // A hosted Render worker cannot directly control the user's other apps or desktop.
+    const website = resolveWebsiteCommand(goal);
+    if (website) {
+      const confirmed = window.confirm(`NOX wants to open ${website.label} in a new tab. Continue?`);
+      if (!confirmed) {
+        setTaskNotice("Website navigation cancelled.");
+        return;
+      }
+      const opened = window.open(website.url, "_blank", "noopener,noreferrer");
+      if (opened) {
+        setTaskGoal("");
+        setTaskNotice(`Opened ${website.label} in a new browser tab.`);
+      } else {
+        setTaskNotice("The browser blocked the new tab. Allow pop-ups for this site and try again.");
+      }
+      return;
+    }
 
     // Android browser companion v2: allowlist Instagram only. Prefer the
     // official Android package intent, with the official HTTPS site as fallback.
@@ -371,7 +428,7 @@ function App() {
 
       <section className="task-panel"><div className="task-panel-heading"><div><span className="tiny-icon"><Activity size={16} /></span><b>Task Orchestrator</b><small>Queued AI tasks · progress, events and controls</small></div><button type="button" className="refresh-status" onClick={refreshTasks}>Refresh</button></div>
         <form className="task-create" onSubmit={submitTask}><textarea value={taskGoal} onChange={(e) => setTaskGoal(e.target.value)} maxLength={6000} placeholder="Describe a task for NOX… e.g. create a step-by-step plan for my project" aria-label="Task goal" /><button type="submit" disabled={taskBusy || taskGoal.trim().length < 3}><Play size={15} /> {taskBusy ? "Adding…" : "Run task"}</button></form>
-        <p className="task-safety-note">Current worker generates an AI result only. It does not run shell commands, modify files, browse the web, or control your device.</p>
+        <p className="task-safety-note">Website commands can open supported sites in a new tab after confirmation. Other queued tasks currently generate AI results only; desktop control and multi-step website interaction require additional connected tools and a local companion.</p>
         {taskNotice && <p className="task-notice" role="status">{taskNotice}</p>}
         <div className="task-list">{tasks.length === 0 ? <p className="capability-message">No tasks yet. Create one above to test the queue.</p> : tasks.slice(0,8).map((task) => <article className="task-row" key={task.id}><div className="task-row-main"><div className="task-row-title"><b>{task.goal}</b><span className={"task-status task-" + task.status}>{task.status.replace("_"," ").toUpperCase()}</span></div><div className="task-progress"><span style={{width: task.progress + "%"}} /></div><div className="task-meta"><span>{task.progress}% · {task.attempts} attempt(s)</span><span>{new Date(task.updated_at).toLocaleTimeString()}</span></div>{task.error && <p className="task-error">{task.error}</p>}{task.result && <details className="task-result"><summary>View result</summary><p>{task.result}</p></details>}{task.events?.length > 0 && <details className="task-events"><summary>Execution log ({task.events.length})</summary>{task.events.slice(-5).map((entry,index)=><p key={index}><time>{new Date(entry.at).toLocaleTimeString()}</time> {entry.message}</p>)}</details>}</div><div className="task-actions">{task.status === "paused" ? <button title="Resume task" aria-label="Resume task" onClick={() => controlTask(task.id,"resume")}><Play size={14}/></button> : ["queued","running"].includes(task.status) ? <button title="Pause task" aria-label="Pause task" onClick={() => controlTask(task.id,"pause")}><Pause size={14}/></button> : null}{["queued","running","paused"].includes(task.status) && <button title="Cancel task" aria-label="Cancel task" onClick={() => controlTask(task.id,"cancel")}><XCircle size={14}/></button>}</div></article>)}</div>
       </section>
