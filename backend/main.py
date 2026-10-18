@@ -3,7 +3,6 @@ import os
 import secrets
 import sqlite3
 import string
-from urllib.parse import urlparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -267,7 +266,10 @@ async def pairing_create(payload: PairCreateRequest):
                 conn.execute("INSERT INTO pair_sessions(session_id,code,created_at,expires_at) VALUES(?,?,?,?)",
                              (session_id, code, expires, expires_at))
                 break
-            except sqlite3.IntegrityError:
+            except Exception as exc:
+                if not isinstance(exc, sqlite3.IntegrityError) and exc.__class__.__name__ != "UniqueViolation":
+                    raise
+                conn.rollback()
                 code = "".join(secrets.choice(string.digits) for _ in range(6))
         conn.execute("INSERT INTO pair_devices(device_id,session_id,name,token,created_at,last_seen) VALUES(?,?,?,?,?,?)",
                      (device_id, session_id, payload.device_name.strip(), token, expires, expires))
