@@ -120,29 +120,20 @@ function App() {
       .replace(/\s+app$/i, "")
       .trim();
     const normalizeAppName = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const androidApps = [
-      { names: ["instagram"], pkg: "com.instagram.android", url: "https://www.instagram.com/" },
-      { names: ["youtube"], pkg: "com.google.android.youtube", url: "https://www.youtube.com/" },
-      { names: ["whatsapp"], pkg: "com.whatsapp", url: "https://www.whatsapp.com/" },
-      { names: ["gmail"], pkg: "com.google.android.gm", url: "https://mail.google.com/" },
-      { names: ["google maps", "maps"], pkg: "com.google.android.apps.maps", url: "https://maps.google.com/" },
-      { names: ["spotify"], pkg: "com.spotify.music", url: "https://open.spotify.com/" },
-      { names: ["telegram"], pkg: "org.telegram.messenger", url: "https://telegram.org/" }
-    ];
-    const requestedAndroidApp = openVerb
-      ? androidApps.find((app) => app.names.some((name) => normalizeAppName(name) === normalizeAppName(commandTarget)))
-      : null;
-
-    if (/Android/i.test(navigator.userAgent) && requestedAndroidApp) {
-      if (!window.confirm("NOX wants to open " + commandTarget + " or its official website. Continue?")) {
-        setTaskNotice(commandTarget + " launch cancelled.");
+    if (/Android/i.test(navigator.userAgent) && openVerb) {
+      if (!window.confirm("NOX wants to find and open an app matching: " + commandTarget + ". Continue?")) {
+        setTaskNotice("App launch cancelled.");
         return;
       }
       setTaskGoal("");
-      setTaskNotice("Requesting " + commandTarget + ". Android/browser settings decide whether the app or website opens.");
-      const fallback = encodeURIComponent(requestedAndroidApp.url);
-      const appHost = new URL(requestedAndroidApp.url).hostname;
-      window.location.href = "intent://" + appHost + "/#Intent;scheme=https;package=" + requestedAndroidApp.pkg + ";S.browser_fallback_url=" + fallback + ";end";
+      setTaskNotice("Opening NOX Android Companion. Choose the matching installed app there.");
+      const companionUrl = "nox://launch?query=" + encodeURIComponent(commandTarget);
+      window.location.href = companionUrl;
+      window.setTimeout(() => {
+        if (document.visibilityState === "visible") {
+          setTaskNotice("If NOX Companion did not open, install it from the NOX GitHub repository. This browser cannot enumerate all installed apps by itself.");
+        }
+      }, 1400);
       return;
     }
 
