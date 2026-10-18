@@ -21,3 +21,31 @@
 @media(prefers-reduced-motion:reduce){.holo-center-mark span{animation:none}}
 @media(max-width:760px){.core-wrap{height:260px}.holo-stage{height:250px;max-width:380px}}
 @media(max-width:420px){.core-wrap{height:242px}.holo-stage{height:235px}.holo-caption{bottom:13px}}
+
+
+/* Honest, backend-reported capability dashboard */
+.capability-panel{margin:10px 0 22px;border:1px solid #292a35;border-radius:13px;background:linear-gradient(145deg,#12131a,#0e0f15);overflow:hidden}
+.capability-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;border-bottom:1px solid #262731}
+.capability-heading>div{display:grid;grid-template-columns:28px auto;align-items:center;column-gap:9px}
+.capability-heading .tiny-icon{grid-row:span 2}
+.capability-heading b{font-size:12px;color:#e8e8ef}
+.capability-heading small{font-size:9px;color:#777986;margin-top:4px}
+.refresh-status{border:1px solid #343541;border-radius:7px;background:#191a22;color:#c7c8d2;padding:7px 10px;font-size:10px;cursor:pointer}
+.refresh-status:hover{border-color:#ff6873;color:#ff8790}
+.capability-summary{display:flex;gap:8px;flex-wrap:wrap;padding:13px 17px 0}
+.capability-summary span{border:1px solid #30313b;border-radius:5px;padding:5px 7px;color:#aaaeba;font:8px 'DM Mono',monospace;letter-spacing:.4px}
+.capability-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:13px 17px 17px}
+.capability-card{min-width:0;border:1px solid #2c2d37;border-radius:8px;background:#15161d;padding:11px}
+.capability-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:7px}
+.capability-card-top b{font-size:10px;line-height:1.45;color:#e1e1e8}
+.capability-card-top span{flex-shrink:0;font:7px 'DM Mono',monospace;letter-spacing:.2px;color:#b2b4bf}
+.capability-card p,.capability-message{font-size:9px;line-height:1.6;color:#858794;margin:9px 0 0}
+.capability-card.status-ready{border-color:#285046}
+.capability-card.status-ready .capability-card-top span{color:#73d9b0}
+.capability-card.status-limited{border-color:#554724}
+.capability-card.status-limited .capability-card-top span{color:#e5c16d}
+.capability-card.status-setup_required .capability-card-top span{color:#e0a66b}
+.capability-card.status-unavailable .capability-card-top span,.capability-card.status-error .capability-card-top span{color:#ff7a83}
+.capability-message{padding:4px 18px 17px}
+@media(max-width:760px){.capability-grid{grid-template-columns:repeat(2,minmax(0,1fr));padding:11px}.capability-heading{padding:14px}.capability-summary{padding:11px 11px 0}}
+@media(max-width:420px){.capability-grid{grid-template-columns:1fr}.capability-heading small{max-width:205px}.capability-card{padding:12px}}
