@@ -57,6 +57,13 @@ class SharedChatPayload(BaseModel):
     messages: list[SharedChatMessage] = Field(min_length=1, max_length=300)
 
 
+class UserChatPayload(BaseModel):
+    chat_id: str = Field(min_length=1, max_length=100)
+    title: str = Field(default="New conversation", max_length=120)
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    messages: list[SharedChatMessage] = Field(min_length=1, max_length=300)
+
+
 PAIR_DB = Path(os.getenv("NOX_PAIRING_DB", str(ROOT / "nox_pairing.sqlite3")))
 # Supabase uses PostgreSQL; keep the connection string server-side only.
 # SUPABASE_DB_URL is an optional explicit alias; DATABASE_URL remains compatible with Render/Postgres.
@@ -471,6 +478,63 @@ async def pairing_command_status(command_id: str, session_id: str, x_nox_device_
         if not row:
             raise HTTPException(status_code=404, detail="Command not found for this paired source device.")
         return {"command": dict(row)}
+
+
+@app.get("/api/chats")
+async def list_user_chats(user_id: str):
+    """List chats for a browser-generated private profile key."""
+    if not user_id or len(user_id) > 100:
+        raise HTTPException(status_code=400, detail="Invalid user identifier.")
+    with pair_db() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS user_chat_history (
+            user_id TEXT NOT NULL, chat_id TEXT NOT NULL, title TEXT NOT NULL,
+            updated_at TEXT NOT NULL, messages TEXT NOT NULL,
+            PRIMARY KEY(user_id, chat_id))""")
+        rows = conn.execute(
+            "SELECT chat_id,title,updated_at,messages FROM user_chat_history WHERE user_id=? ORDER BY updated_at DESC",
+            (user_id,),
+        ).fetchall()
+        return {"chats": [
+            {"id": row["chat_id"], "title": row["title"], "updatedAt": row["updated_at"],
+             "messages": json.loads(row["messages"])} for row in rows
+        ]}
+
+
+@app.put("/api/chats")
+async def save_user_chat(payload: UserChatPayload, user_id: str):
+    """Persist a conversation until the user explicitly deletes it."""
+    if not user_id or len(user_id) > 100:
+        raise HTTPException(status_code=400, detail="Invalid user identifier.")
+    messages = [{"role": item.role, "content": item.content} for item in payload.messages[-300:]]
+    serialized = json.dumps(messages, ensure_ascii=False)
+    if len(serialized) > 1_000_000:
+        raise HTTPException(status_code=413, detail="Conversation is too large to save.")
+    with pair_db() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS user_chat_history (
+            user_id TEXT NOT NULL, chat_id TEXT NOT NULL, title TEXT NOT NULL,
+            updated_at TEXT NOT NULL, messages TEXT NOT NULL,
+            PRIMARY KEY(user_id, chat_id))""")
+        conn.execute(
+            """INSERT INTO user_chat_history(user_id,chat_id,title,updated_at,messages)
+               VALUES(?,?,?,?,?) ON CONFLICT(user_id,chat_id) DO UPDATE SET
+               title=excluded.title,updated_at=excluded.updated_at,messages=excluded.messages""",
+            (user_id, payload.chat_id, payload.title[:120], payload.updated_at[:80], serialized),
+        )
+    return {"status": "saved", "chat_id": payload.chat_id}
+
+
+@app.delete("/api/chats/{chat_id}")
+async def delete_user_chat(chat_id: str, user_id: str):
+    """Permanently remove a chat from persistent history."""
+    if not user_id or len(user_id) > 100:
+        raise HTTPException(status_code=400, detail="Invalid user identifier.")
+    with pair_db() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS user_chat_history (
+            user_id TEXT NOT NULL, chat_id TEXT NOT NULL, title TEXT NOT NULL,
+            updated_at TEXT NOT NULL, messages TEXT NOT NULL,
+            PRIMARY KEY(user_id, chat_id))""")
+        conn.execute("DELETE FROM user_chat_history WHERE user_id=? AND chat_id=?", (user_id, chat_id))
+    return {"status": "deleted", "chat_id": chat_id}
 
 
 @app.get("/api/health")
