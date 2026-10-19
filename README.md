@@ -192,3 +192,14 @@ NOX includes a separate **Agent Swarm** workspace that accepts a complex objecti
 - Each specialist is a separate provider call with a scoped role and task contract. The current version generates plans and text artifacts; it does **not** grant agents shell, repository-write, arbitrary browsing, deployment, purchase, messaging, image/video generation, or desktop-control tools. Agent role labels do not imply those integrations exist.
 - Independent tasks run concurrently up to the configured limit; dependency cycles are rejected. A failed dependency blocks dependent tasks, and a failed job does not claim a unified success. Cancellation is best-effort for in-flight provider requests. A server restart marks in-flight jobs failed rather than claiming they resumed.
 - This first phase uses bounded asyncio work within one application process, not a distributed durable queue. For multi-instance production use, add a shared job broker/worker system and database-level claim/lease semantics.
+
+
+## Safe Tool Bench (deterministic utilities)
+
+The Agent Swarm workspace includes a **Safe Tool Bench** with three bounded, deterministic utilities:
+
+- **Calculator:** parses arithmetic with Python's AST but only permits numeric literals, parentheses, unary signs, and basic arithmetic operators. It does not evaluate arbitrary Python expressions, function calls, names, or imports.
+- **Text analyzer:** reports character/word/line counts, unique words, frequent terms, and a rough reading-time estimate.
+- **JSON validate / format:** validates standard JSON and returns an indented representation plus top-level type and keys.
+
+The tools are available through `POST /api/tools/execute` with `{"tool":"calculator","input":"(125 * 8) / 4"}`. Calls require the existing browser-session cookie. Input size and expression complexity are bounded. Tool execution is local and deterministic: it does not call an AI provider or access the shell, filesystem, or network. Results are returned to the requesting browser and are not saved as a separate history.
