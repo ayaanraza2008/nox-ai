@@ -49,9 +49,15 @@
     const response = await fetch("/api/session", {credentials:"same-origin",cache:"no-store"});
     if (!response.ok) throw Error("Browser session could not be initialized.");
   }
+  function syncReviewButtons() {
+    const pending = Boolean(selectedPatch) && selectedPatchStatus === "pending";
+    $("npApprove").disabled = busy || !pending;
+    $("npReject").disabled = busy || !pending;
+  }
   function setBusy(value) {
     busy = value;
-    ["npCreate","npNewFile","npRefresh","npSave","npValidate","npPropose","npApprove","npReject"].forEach(id => $(id).disabled = value);
+    ["npCreate","npNewFile","npRefresh","npSave","npValidate","npPropose"].forEach(id => $(id).disabled = value);
+    syncReviewButtons();
   }
   async function run(action, successMessage) {
     if (busy) return;
@@ -72,7 +78,7 @@
   }
   function renderPatches(patches) {
     const root=$("npPatches"); root.replaceChildren();
-    if (!patches.length) { const note=document.createElement("p"); note.className="np-help"; note.textContent="No patch proposals yet."; root.append(note); $("npDiff").textContent="Select a patch to inspect its diff."; return; }
+    if (!patches.length) { selectedPatch=""; selectedPatchStatus=""; const note=document.createElement("p"); note.className="np-help"; note.textContent="No patch proposals yet."; root.append(note); $("npDiff").textContent="Select a patch to inspect its diff."; syncReviewButtons(); return; }
     patches.forEach(patch=>{
       const button=document.createElement("button"); button.type="button"; button.className="np-review-item"+(patch.id===selectedPatch?" active":"");
       button.textContent=patch.summary;
@@ -84,8 +90,8 @@
     if(chosen) $("npDiff").textContent=chosen.diff;
     else {selectedPatch=patches[0].id;$("npDiff").textContent=patches[0].diff;renderPatches(patches);}
     const active=patches.find(p=>p.id===selectedPatch);
-    $("npApprove").disabled=busy||!active||active.status!=="pending";
-    $("npReject").disabled=busy||!active||active.status!=="pending";
+    selectedPatchStatus=active?active.status:"";
+    syncReviewButtons();
   }
   async function loadProjects(preferred) {
     await ensureSession();
