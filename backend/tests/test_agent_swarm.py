@@ -36,6 +36,12 @@ class SwarmTests(unittest.IsolatedAsyncioTestCase):
         self.manager = SwarmManager(provider=self.provider)
 
     async def asyncTearDown(self):
+        runners = list(self.manager.runners.values())
+        for runner in runners:
+            if not runner.done():
+                runner.cancel()
+        if runners:
+            await asyncio.gather(*runners, return_exceptions=True)
         if self.old_db is None:
             os.environ.pop("NOX_SWARM_DB", None)
         else:
