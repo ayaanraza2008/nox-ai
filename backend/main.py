@@ -424,8 +424,9 @@ async def pairing_disconnect(session_id: str, x_nox_device_token: str | None = N
         if current["session_id"] != session_id:
             raise HTTPException(status_code=403, detail="This device does not belong to that pairing session.")
         conn.execute("UPDATE pair_devices SET disconnected=1 WHERE device_id=?", (current["device_id"],))
-        remaining = conn.execute("SELECT COUNT(*) FROM pair_devices WHERE session_id=? AND disconnected=0",
-                                 (session_id,)).fetchone()[0]
+        remaining_row = conn.execute("SELECT COUNT(*) AS count FROM pair_devices WHERE session_id=? AND disconnected=0",
+                                     (session_id,)).fetchone()
+        remaining = remaining_row["count"]
         if remaining == 0:
             conn.execute("UPDATE pair_sessions SET revoked=1 WHERE session_id=?", (session_id,))
     return {"status": "disconnected", "message": "This device has been disconnected from the pairing session."}
