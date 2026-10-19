@@ -328,17 +328,10 @@ class SwarmManager:
             pending = set(by_id)
             finished = set()
             while pending and job["status"] != "cancelled":
-                ready = [by_id[key] for key in list(pending)
-                         if all(dep in finished for dep in by_id[key]["depends_on"])]
-                if not ready:
-                    raise SwarmError("No runnable tasks remain; dependency graph is blocked.")
-                await asyncio.gather(*(self._execute_agent(job, agent,
-                    [by_id[dep] for dep in agent["depends_on"]], semaphore) for agent in ready))
-                for agent in ready:
-                    pending.discard(agent["id"])
-                    finished.add(agent["id"])
-                # Dependencies that failed are not silently treated as successful.
-                blocked = [by_id[key] for key in pending if any(by_id[dep]["status"] != "completed" for dep in by_id[key]["depends_on"])]
+                # Mark downstream tasks blocked once every dependency has finished and any dependency failed.
+                blocked = [by_id[key] for key in list(pending)
+                           if all(dep in finished for dep in by_id[key]["depends_on"])
+                           and any(by_id[dep]["status"] != "completed" for dep in by_id[key]["depends_on"])]
                 for agent in blocked:
                     agent["status"] = "failed"
                     agent["error"] = "A required dependency did not complete successfully."
@@ -346,6 +339,19 @@ class SwarmManager:
                     pending.remove(agent["id"])
                     finished.add(agent["id"])
                     self._event(job, f'{ALLOWED_ROLES[agent["role"]]} blocked by a failed dependency.', "warning")
+                ready = [by_id[key] for key in list(pending)
+                         if all(dep in finished and by_id[dep]["status"] == "completed"
+                                for dep in by_id[key]["depends_on"])]
+                if not ready:
+                    if pending:
+                        raise SwarmError("No runnable tasks remain; dependency graph is blocked.")
+                    self._save(job)
+                    break
+                await asyncio.gather(*(self._execute_agent(job, agent,
+                    [by_id[dep] for dep in agent["depends_on"]], semaphore) for agent in ready))
+                for agent in ready:
+                    pending.discard(agent["id"])
+                    finished.add(agent["id"])
                 self._save(job)
             if job["status"] == "cancelled":
                 return
