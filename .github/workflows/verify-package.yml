@@ -25,6 +25,8 @@ jobs:
         run: pip install -r backend/requirements.txt
       - name: Validate Python syntax
         run: python -m compileall -q backend desktop-companion
+      - name: Test backend storage regressions
+        run: python -m unittest discover -s backend/tests -v
       - name: Test defensive security tools
         run: python -m unittest discover -s desktop-companion/tests -v
       - name: Install frontend dependencies
