@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import difflib
 import json
 import math
 import operator
@@ -105,6 +106,62 @@ def validate_json(value: str) -> dict[str, Any]:
     }
 
 
+
+def validate_python(value: str) -> dict[str, Any]:
+    if len(value) > 10000:
+        raise SafeToolError("Python source is limited to 10,000 characters.")
+    if not value.strip():
+        raise SafeToolError("Paste Python source to validate.")
+    try:
+        tree = ast.parse(value, mode="exec")
+    except SyntaxError as exc:
+        return {
+            "tool": "python_syntax",
+            "valid": False,
+            "error": exc.msg,
+            "line": exc.lineno,
+            "column": exc.offset,
+            "source_line": (exc.text or "").rstrip("\n")[:300],
+        }
+    counts = Counter(type(node).__name__ for node in ast.walk(tree))
+    return {
+        "tool": "python_syntax",
+        "valid": True,
+        "top_level_statements": len(tree.body),
+        "function_definitions": sum(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in ast.walk(tree)),
+        "class_definitions": sum(isinstance(node, ast.ClassDef) for node in ast.walk(tree)),
+        "import_statements": sum(isinstance(node, (ast.Import, ast.ImportFrom)) for node in ast.walk(tree)),
+        "ast_node_count": sum(counts.values()),
+        "note": "Syntax parsed successfully; this does not execute the code or prove runtime correctness.",
+    }
+
+
+def diff_preview(value: str) -> dict[str, Any]:
+    if len(value) > 20000:
+        raise SafeToolError("Diff input JSON is limited to 20,000 characters.")
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise SafeToolError(f"Provide valid JSON with 'original' and 'proposed' strings (line {exc.lineno}, column {exc.colno}).") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("original"), str) or not isinstance(payload.get("proposed"), str):
+        raise SafeToolError("Input must be a JSON object with string fields 'original' and 'proposed'.")
+    original, proposed = payload["original"], payload["proposed"]
+    if len(original) > 10000 or len(proposed) > 10000:
+        raise SafeToolError("Each code version is limited to 10,000 characters.")
+    lines = list(difflib.unified_diff(
+        original.splitlines(), proposed.splitlines(),
+        fromfile="original", tofile="proposed", lineterm="", n=3,
+    ))
+    return {
+        "tool": "diff_preview",
+        "changed": original != proposed,
+        "added_lines": sum(1 for line in lines if line.startswith("+") and not line.startswith("+++")),
+        "removed_lines": sum(1 for line in lines if line.startswith("-") and not line.startswith("---")),
+        "diff": "\n".join(lines)[:12000] if lines else "No changes detected.",
+        "note": "Preview only. NOX has not written or applied either version.",
+    }
+
+
 def run_tool(name: str, value: str) -> dict[str, Any]:
     if not isinstance(value, str):
         raise SafeToolError("Tool input must be text.")
@@ -114,4 +171,8 @@ def run_tool(name: str, value: str) -> dict[str, Any]:
         return analyze_text(value)
     if name == "json_validator":
         return validate_json(value)
-    raise SafeToolError("Unknown tool. Available tools: calculator, text_analysis, json_validator.")
+    if name == "python_syntax":
+        return validate_python(value)
+    if name == "diff_preview":
+        return diff_preview(value)
+    raise SafeToolError("Unknown tool. Available tools: calculator, text_analysis, json_validator, python_syntax, diff_preview.")
