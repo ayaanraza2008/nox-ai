@@ -55,7 +55,7 @@ export default function SpatialDashboard({
   status, coreMode, busy, micLevelRef, ttsLevelRef, voiceMode, voiceMuted, voiceState,
   voiceTranscript, chatHistory, currentChatId, onNewChat, onOpenChat, onJump,
   capabilities, capabilityError, tasks, taskNotice, pairing,
-  onStartVoiceMode, onStopVoiceMode, onToggleVoiceMute, onInterruptVoice, onControlTask
+  onStartVoiceMode, onStopVoiceMode, onToggleVoiceMute, onInterruptVoice, onControlTask, onStopGeneration, canStopGeneration
 }) {
   const [clock, setClock] = useState(() => new Date());
   const [positions, setPositions] = useState(() => readStored("nox-spatial-panel-positions", {}));
@@ -173,7 +173,7 @@ export default function SpatialDashboard({
 
       {!hidden.includes("voice") && <FloatingPanel id="voice" title="Voice link" eyebrow="CONVERSATION CONTROL" subtitle="Real browser voice session state" className="spatial-grid-voice" {...panelProps("voice")}>
         <div className="spatial-voice-state"><div className={"spatial-voice-orb " + (voiceMode ? "active " + voiceState : "")}><AudioLines size={18} /></div><div><b>{modeLabel}</b><small>{voiceMode ? voiceTranscript || "Microphone session active." : "Voice mode is stopped; microphone is not requested."}</small></div></div>
-        <div className="spatial-voice-controls">{voiceMode ? <><button type="button" onClick={onToggleVoiceMute} className={voiceMuted ? "active" : ""}><Mic size={14} /> {voiceMuted ? "UNMUTE" : "MUTE"}</button><button type="button" onClick={onInterruptVoice}><Activity size={14} /> INTERRUPT</button><button type="button" onClick={onStopVoiceMode}><X size={14} /> END SESSION</button></> : <button type="button" className="spatial-voice-start" onClick={onStartVoiceMode}><Mic size={15} /> START VOICE MODE</button>}</div>
+        <div className="spatial-voice-controls">{canStopGeneration && <button type="button" className="spatial-stop-generation" onClick={onStopGeneration}><X size={14} /> STOP REPLY</button>}{voiceMode ? <><button type="button" onClick={onToggleVoiceMute} className={voiceMuted ? "active" : ""}><Mic size={14} /> {voiceMuted ? "UNMUTE" : "MUTE"}</button><button type="button" onClick={onInterruptVoice}><Activity size={14} /> INTERRUPT</button><button type="button" onClick={onStopVoiceMode}><X size={14} /> END SESSION</button></> : <button type="button" className="spatial-voice-start" onClick={onStartVoiceMode}><Mic size={15} /> START VOICE MODE</button>}</div>
         <p className="spatial-privacy-note"><ShieldCheck size={12} /> Microphone permission is requested only when Voice Mode starts. Browser speech services may process audio remotely.</p>
       </FloatingPanel>}
     </div>
