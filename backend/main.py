@@ -58,7 +58,9 @@ class SharedChatPayload(BaseModel):
 
 
 PAIR_DB = Path(os.getenv("NOX_PAIRING_DB", str(ROOT / "nox_pairing.sqlite3")))
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+# Supabase uses PostgreSQL; keep the connection string server-side only.
+# SUPABASE_DB_URL is an optional explicit alias; DATABASE_URL remains compatible with Render/Postgres.
+DATABASE_URL = (os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or "").strip()
 
 
 class PairDBConnection:
