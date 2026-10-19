@@ -52,7 +52,7 @@ function FloatingPanel({
 }
 
 export default function SpatialDashboard({
-  status, coreMode, busy, micLevelRef, ttsLevelRef, voiceMode, voiceMuted, voiceState,
+  status, coreMode, busy, micLevelRef, ttsLevelRef, ttsAudioReactiveRef, voiceMode, voiceMuted, voiceState,
   voiceTranscript, chatHistory, currentChatId, onNewChat, onOpenChat, onJump,
   capabilities, capabilityError, tasks, taskNotice, pairing, input, onInputChange, onSendMessage,
   onStartVoiceMode, onStopVoiceMode, onToggleVoiceMute, onInterruptVoice, onControlTask, onStopGeneration, canStopGeneration
@@ -166,7 +166,7 @@ export default function SpatialDashboard({
       <div className="spatial-core-zone" aria-label="Central living holographic core">
         <div className="spatial-core-halo" aria-hidden="true" />
         <div className="spatial-core-topline"><span><i /> LIVE CORE</span><div className="spatial-core-actions"><span>{modeLabel}</span><button type="button" onClick={voiceMode ? onInterruptVoice : onStartVoiceMode} aria-label={voiceMode ? "Interrupt voice output" : "Activate NOX voice mode"} title={voiceMode ? "Interrupt current voice response" : "Start voice mode"}><span className="core-action-pulse" />{voiceMode ? <Activity size={12} /> : <Mic size={12} />}{voiceMode ? "INTERRUPT" : "ACTIVATE"}</button></div></div>
-        <HolographicCore mode={coreVisualMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} motionIntensity={reducedMotion || motionPreset === "off" ? 0.12 : motionIntensity} userReducedMotion={reducedMotion || motionPreset === "off"} />
+        <HolographicCore mode={coreVisualMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} ttsAudioReactiveRef={ttsAudioReactiveRef} motionIntensity={reducedMotion || motionPreset === "off" ? 0.12 : motionIntensity} userReducedMotion={reducedMotion || motionPreset === "off"} />
         <div className="spatial-core-footer"><span><Bot size={13} /> NOX NEURAL INTERFACE</span><span>{voiceMode ? "AUDIO LINK ACTIVE" : "STANDING BY"}</span></div>
       </div>
 
