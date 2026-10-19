@@ -38,6 +38,32 @@ class SafeToolTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(SafeToolError):
                 run_tool("json_validator", raw)
 
+
+    def test_python_syntax_validator_reports_valid_source_without_execution(self):
+        result = run_tool("python_syntax", "def greet(name):\n    return f'Hi {name}'\n")
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["function_definitions"], 1)
+        self.assertIn("does not execute", result["note"])
+
+    def test_python_syntax_validator_reports_syntax_error_location(self):
+        result = run_tool("python_syntax", "def broken(:\n    pass")
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["line"], 1)
+        self.assertTrue(result["error"])
+
+    def test_diff_preview_reports_added_and_removed_lines(self):
+        result = run_tool("diff_preview", '{"original":"one\\ntwo","proposed":"one\\nthree\\nfour"}')
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["added_lines"], 2)
+        self.assertEqual(result["removed_lines"], 1)
+        self.assertIn("-two", result["diff"])
+        self.assertIn("+three", result["diff"])
+
+    def test_diff_preview_rejects_bad_contract_and_caps_input(self):
+        for raw in ('[]', '{"original":4,"proposed":"x"}', '{"original":"x","proposed":"y"}' + " " * 20001):
+            with self.subTest(raw=raw[:40]), self.assertRaises(SafeToolError):
+                run_tool("diff_preview", raw)
+
     def test_unknown_tool_is_rejected(self):
         with self.assertRaises(SafeToolError):
             run_tool("shell", "echo hello")
