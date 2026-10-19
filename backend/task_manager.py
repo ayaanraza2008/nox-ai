@@ -141,7 +141,7 @@ class TaskManager:
         # entire web service offline: fall back to temporary SQLite storage.
         try:
             with self._connect() as db:
-                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused')").fetchall()
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused') AND owner_id <> ''").fetchall()
         except Exception as exc:
             if not self.use_postgres:
                 raise
@@ -153,7 +153,7 @@ class TaskManager:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._init_db()
             with self._connect() as db:
-                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused')").fetchall()
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused') AND owner_id <> ''").fetchall()
         for row in rows:
             item = self._row(row)
             if item["status"] == "running":
