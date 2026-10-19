@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
+from backend.agent_swarm import SwarmManager
 from backend import knowledge
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
@@ -103,6 +104,11 @@ def normalize_hinglish_for_tts(text: str) -> str:
 
 class TaskCreateRequest(BaseModel):
     goal: str = Field(min_length=3, max_length=6000)
+    language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
+
+class SwarmCreateRequest(BaseModel):
+    goal: str = Field(min_length=8, max_length=6000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
 
 
@@ -578,6 +584,7 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
     yield {"type": "error", "message": detail}
 
 task_manager = TaskManager(run_autonomous_task)
+swarm_manager = SwarmManager()
 
 
 @app.on_event("startup")
@@ -658,6 +665,39 @@ async def resume_task(task_id: str, request: Request):
 @app.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str, request: Request):
     return await _task_action(task_id, "cancel", session_owner(request))
+
+
+@app.post("/api/swarm/jobs", status_code=202)
+async def create_swarm_job(payload: SwarmCreateRequest, request: Request):
+    owner_id = session_owner(request)
+    goal = payload.goal.strip()
+    if len(goal) < 8:
+        raise HTTPException(status_code=400, detail="Swarm goal must contain at least 8 characters.")
+    return {"job": await swarm_manager.create(goal, payload.language, owner_id)}
+
+
+@app.get("/api/swarm/jobs")
+async def list_swarm_jobs(request: Request, limit: int = 20):
+    return {"jobs": swarm_manager.list(session_owner(request), limit=max(1, min(limit, 50)))}
+
+
+@app.get("/api/swarm/jobs/{job_id}")
+async def get_swarm_job(job_id: str, request: Request):
+    job = swarm_manager.get(job_id, owner_id=session_owner(request))
+    if not job:
+        raise HTTPException(status_code=404, detail="Swarm job not found.")
+    return {"job": job}
+
+
+@app.post("/api/swarm/jobs/{job_id}/cancel")
+async def cancel_swarm_job(job_id: str, request: Request):
+    try:
+        job = await swarm_manager.cancel(job_id, session_owner(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if not job:
+        raise HTTPException(status_code=404, detail="Swarm job not found.")
+    return {"job": job}
 
 
 @app.post("/api/pairing/create")
