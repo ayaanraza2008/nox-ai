@@ -650,7 +650,8 @@ function App() {
     const chooseVoice = () => {
       const voices = synth.getVoices();
       const prefix = lang.toLowerCase().split("-")[0];
-      const matchingVoice = voices.find((voice) => voice.lang?.toLowerCase() === lang.toLowerCase())
+      const matchingVoice = voices.find((voice) => voice.name === selectedVoiceName && voice.lang?.toLowerCase().startsWith(prefix))
+        || voices.find((voice) => voice.lang?.toLowerCase() === lang.toLowerCase())
         || voices.find((voice) => voice.lang?.toLowerCase().startsWith(prefix));
       if (matchingVoice) utterance.voice = matchingVoice;
       synth.speak(utterance);
