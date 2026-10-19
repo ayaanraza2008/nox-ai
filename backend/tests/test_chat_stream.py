@@ -55,6 +55,33 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {"NOX_CHAT_PROVIDER": "auto"}):
             self.assertEqual(main._prioritize_providers(providers), providers)
 
+    def test_prompt_prioritizes_direct_relevant_answers_and_followup_context(self):
+        prompt = main.build_nox_system_prompt("hinglish").lower()
+        self.assertIn("answer that message directly", prompt)
+        self.assertIn("use the recent conversation", prompt)
+        self.assertIn("do not restate their whole prompt", prompt)
+        self.assertIn("reply in the language/script the user is using", prompt)
+
+    def test_shared_builder_keeps_followup_context_and_current_message_last(self):
+        messages = main.build_chat_messages("Aur short kar", "hinglish", [
+            {"role": "user", "content": "Mujhe NOX ke liye prompt bana"},
+            {"role": "assistant", "content": "Ye raha prompt"},
+        ])
+        self.assertEqual(messages[1]["content"], "Mujhe NOX ke liye prompt bana")
+        self.assertEqual(messages[2]["content"], "Ye raha prompt")
+        self.assertEqual(messages[-1], {"role": "user", "content": "Aur short kar"})
+        self.assertEqual(messages[0]["role"], "system")
+
+    def test_context_builder_discards_invalid_turns_and_bounds_old_messages(self):
+        messages = main.build_chat_messages("Current", "auto", [
+            {"role": "tool", "content": "ignore"},
+            {"role": "assistant", "content": "old assistant only"},
+            {"role": "user", "content": "x" * 5000},
+        ])
+        self.assertEqual(messages[1]["role"], "user")
+        self.assertEqual(len(messages[1]["content"]), 2500)
+        self.assertEqual(messages[-1]["content"], "Current")
+
 
 if __name__ == "__main__":
     unittest.main()
