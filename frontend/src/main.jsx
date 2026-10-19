@@ -25,7 +25,7 @@ function MotionEnhancements() {
       });
     };
     const onPointerDown = (event) => {
-      if (reduced || root.dataset.noxMotion === "off" || event.pointerType === "touch") return;
+      if (reduced || root.dataset.noxMotion === "off") return;
       const target = event.target.closest("button, .nav-item, .spatial-nav-action, .spatial-task-item, .chat-history-item, summary");
       if (!target || target.disabled || target.getAttribute("aria-disabled") === "true") return;
       const rect = target.getBoundingClientRect();
