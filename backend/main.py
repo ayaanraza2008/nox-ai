@@ -155,11 +155,6 @@ def device_from_token(conn, token):
 
 
 async def provider_reply(message: str, language: str, history: list[dict]) -> str | None:
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        return None
-
-    model = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
     messages = [
         {
             "role": "system",
@@ -182,48 +177,96 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
             messages.append({"role": role, "content": content[:4000]})
     messages.append({"role": "user", "content": message})
 
-    request_headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": os.getenv("APP_URL", "https://nox-ai-vcqx.onrender.com"),
-        "X-Title": "NOX AI",
-    }
-    # A single retry helps recover from short-lived network/TLS resets on free hosting.
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0), trust_env=True) as client:
-        response = None
-        for attempt in range(2):
-            try:
-                response = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=request_headers,
-                    json={"model": model, "messages": messages, "temperature": 0.7},
-                )
-                break
-            except httpx.RequestError as exc:
-                logger.warning("OpenRouter request attempt %s failed: %s: %s",
-                               attempt + 1, type(exc).__name__, str(exc))
-                if attempt == 1:
-                    raise
-    if response is None:
-        raise HTTPException(status_code=502, detail="AI provider connection failed. Please try again.")
-    if response.status_code >= 400:
-        # Keep provider diagnostics in Render logs; do not log request headers or secrets.
-        logger.error("OpenRouter returned HTTP %s: %s", response.status_code, response.text[:1200])
-        if response.status_code in (401, 403):
-            raise HTTPException(status_code=502, detail="OpenRouter rejected the API key. Check OPENROUTER_API_KEY in Render.")
-        if response.status_code == 429:
-            raise HTTPException(status_code=503, detail="OpenRouter rate limit or credit limit reached. Check your provider usage and credits.")
-        raise HTTPException(status_code=502, detail=f"AI provider request failed (HTTP {response.status_code}). Check Render logs.")
-    try:
-        data = response.json()
-    except ValueError as exc:
-        logger.error("OpenRouter returned invalid JSON (HTTP %s)", response.status_code)
-        raise HTTPException(status_code=502, detail="AI provider returned an invalid response. Please retry.") from exc
-    try:
-        return data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        raise HTTPException(status_code=502, detail="AI provider returned an unexpected response.")
+    # Try configured providers in priority order. A failing key, quota, model, or
+    # provider connection must not prevent NOX from trying the next configured API.
+    providers = []
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if openrouter_key:
+        providers.append({
+            "name": "OpenRouter",
+            "url": "https://openrouter.ai/api/v1/chat/completions",
+            "key": openrouter_key,
+            "model": os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+            "headers": {
+                "HTTP-Referer": os.getenv("APP_URL", "https://nox-ai-vcqx.onrender.com"),
+                "X-Title": "NOX AI",
+            },
+        })
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if groq_key:
+        providers.append({
+            "name": "Groq",
+            "url": "https://api.groq.com/openai/v1/chat/completions",
+            "key": groq_key,
+            "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "headers": {},
+        })
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        providers.append({
+            "name": "Gemini",
+            "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            "key": gemini_key,
+            "model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            "headers": {},
+        })
 
+    if not providers:
+        return None
+
+    failures = []
+    async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=12.0), trust_env=True) as client:
+        for provider in providers:
+            headers = {
+                "Authorization": f"Bearer {provider['key']}",
+                "Content-Type": "application/json",
+                **provider["headers"],
+            }
+            for attempt in range(2):
+                try:
+                    response = await client.post(
+                        provider["url"],
+                        headers=headers,
+                        json={"model": provider["model"], "messages": messages, "temperature": 0.7},
+                    )
+                    if response.status_code < 400:
+                        try:
+                            data = response.json()
+                            answer = data["choices"][0]["message"]["content"]
+                            if isinstance(answer, str) and answer.strip():
+                                logger.info("Chat reply served by %s", provider["name"])
+                                return answer.strip()
+                            raise ValueError("Provider returned an empty message")
+                        except (ValueError, KeyError, IndexError, TypeError) as exc:
+                            logger.warning("%s returned an invalid/empty response: %s", provider["name"], type(exc).__name__)
+                            failures.append(f"{provider['name']}: invalid response")
+                            break
+
+                    # Log a short response body for diagnostics, never request headers/secrets.
+                    logger.warning("%s returned HTTP %s: %s", provider["name"], response.status_code, response.text[:500])
+                    failures.append(f"{provider['name']}: HTTP {response.status_code}")
+                    # Retry transient throttling/server errors once; otherwise try the next provider.
+                    if response.status_code in (408, 429, 500, 502, 503, 504) and attempt == 0:
+                        continue
+                    break
+                except httpx.TimeoutException as exc:
+                    logger.warning("%s timed out (attempt %s)", provider["name"], attempt + 1)
+                    if attempt == 0:
+                        continue
+                    failures.append(f"{provider['name']}: timeout")
+                    break
+                except httpx.RequestError as exc:
+                    logger.warning("%s connection failed (%s): %s", provider["name"], type(exc).__name__, str(exc))
+                    if attempt == 0:
+                        continue
+                    failures.append(f"{provider['name']}: connection failure")
+                    break
+
+    logger.error("All configured AI providers failed: %s", "; ".join(failures))
+    raise HTTPException(
+        status_code=503,
+        detail="All configured AI providers are unavailable right now. Check API keys, model access, quotas, and Render logs.",
+    )
 
 task_manager = TaskManager(run_autonomous_task)
 
