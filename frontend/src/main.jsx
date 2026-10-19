@@ -15,6 +15,7 @@ function MotionEnhancements() {
     let pointerY = 0;
     const onPointerMove = (event) => {
       if (!finePointer || reduced || root.dataset.noxMotion === "off" || event.pointerType === "touch") return;
+      document.body.classList.add("nox-fine-pointer");
       pointerX = event.clientX;
       pointerY = event.clientY;
       if (pointerFrame) return;
