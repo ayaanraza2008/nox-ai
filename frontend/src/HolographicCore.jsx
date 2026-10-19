@@ -122,12 +122,16 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
 
       const projected = particles.map((p) => {
         const wobble = Math.sin(time + p.phase) * (0.025 + energy * 0.09);
-        const x = p.x * Math.cos(rotation) - p.z * Math.sin(rotation);
+        // Thinking draws particles inward in a slow spiral; working pushes energy outward.
+        const spiralScale = thinking
+          ? 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(time * 1.65 + p.phase))
+          : working ? 0.96 + 0.1 * Math.sin(time * 1.2 + p.phase) : 1;
+        const x = (p.x * Math.cos(rotation) - p.z * Math.sin(rotation)) * spiralScale;
         const z = p.x * Math.sin(rotation) + p.z * Math.cos(rotation);
         const perspective = 1.0 / (1.65 - (z + wobble) * 0.42);
         return {
           x: cx + x * radius * perspective + pointerRef.current.x * (reducedMotion ? 0 : 9 * motionIntensity) * perspective,
-          y: cy + (p.y + wobble) * radius * perspective + pointerRef.current.y * (reducedMotion ? 0 : 7 * motionIntensity) * perspective,
+          y: cy + (p.y + wobble) * radius * spiralScale * perspective + pointerRef.current.y * (reducedMotion ? 0 : 7 * motionIntensity) * perspective,
           z,
           depth: perspective,
           size: p.size * perspective * (1 + energy * 0.65),
