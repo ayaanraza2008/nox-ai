@@ -628,6 +628,26 @@ async def delete_user_chat(chat_id: str, user_id: str):
 
 @app.get("/api/health")
 async def health():
+    """Fast liveness probe for Render; never wait on optional external databases."""
+    ai_provider_flags = {
+        "openrouter": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
+        "groq": bool(os.getenv("GROQ_API_KEY", "").strip()),
+        "gemini": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+    }
+    ai_configured = any(ai_provider_flags.values())
+    return {
+        "status": "ok",
+        "service": "NOX AI",
+        "ai_configured": ai_configured,
+        "ai_providers_configured": ai_provider_flags,
+        "ai_setup_message": None if ai_configured else "No AI provider key is configured. Add a valid provider key in the hosting environment to enable real AI replies.",
+        "healthcheck": "liveness_only",
+        "details_url": "/api/health/details",
+    }
+
+
+@app.get("/api/health/details")
+async def health_details():
     database_configured = DATABASE_URL.startswith(("postgres://", "postgresql://"))
     database_connected = False
     task_database_connected = False
