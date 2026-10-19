@@ -83,7 +83,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
         : activeMode === "NOX_SPEAKING"
           ? (ttsLevelRef.current || 0)
           : 0;
-      const listening = activeMode === "USER_LISTENING";
+      const listening = activeMode === "USER_LISTENING" || activeMode === "USER_SPEAKING";
       const thinking = activeMode === "PROCESSING" || activeMode === "THINKING";
       const working = activeMode === "WORKING";
       const success = activeMode === "SUCCESS";
@@ -260,6 +260,21 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
       ctx.stroke();
       ctx.restore();
 
+      // A thin event horizon gives the nucleus a defined silhouette and depth.
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const horizonPulse = 1 + Math.sin(time * 1.4) * 0.025 + energy * 0.04;
+      const horizon = ctx.createRadialGradient(cx, cy, radius * 0.18, cx, cy, radius * 0.52 * horizonPulse);
+      horizon.addColorStop(0, "rgba(54, 102, 220, 0)");
+      horizon.addColorStop(0.66, `rgba(74, 174, 255, ${0.035 + energy * 0.07})`);
+      horizon.addColorStop(0.82, `rgba(173, 133, 255, ${0.07 + energy * 0.08})`);
+      horizon.addColorStop(1, "rgba(80, 120, 255, 0)");
+      ctx.fillStyle = horizon;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.52 * horizonPulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       // Delicate rotating orbital arcs add depth without replacing the particle field.
       ctx.save();
       ctx.translate(cx, cy);
@@ -294,6 +309,42 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
         ctx.fillStyle = `rgba(145, 224, 255, ${0.38 + energy * 0.35})`;
         ctx.fill();
       }
+      ctx.restore();
+
+      // Flowing plasma ribbons: curved, broken bands imply a 3D toroidal field.
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const ribbonCount = reducedMotion ? 2 : 4;
+      for (let r = 0; r < ribbonCount; r += 1) {
+        const phase = time * (0.22 + r * 0.035) * (paused ? 0.12 : 1) + r * Math.PI / 2;
+        const rx = radius * (0.58 + r * 0.105);
+        const ry = radius * (0.16 + r * 0.028);
+        ctx.beginPath();
+        for (let step = 0; step <= 84; step += 1) {
+          const t = step / 84 * Math.PI * 2;
+          const wobble = Math.sin(t * 3 + phase) * radius * (0.012 + energy * 0.014);
+          const x = cx + Math.cos(t + phase * 0.12) * rx;
+          const y = cy + Math.sin(t + phase) * ry + wobble;
+          if (step === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        const ribbon = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
+        ribbon.addColorStop(0, "rgba(95, 120, 255, 0.015)");
+        ribbon.addColorStop(0.34, `rgba(106, 221, 255, ${0.055 + energy * 0.06})`);
+        ribbon.addColorStop(0.62, `rgba(188, 143, 255, ${0.045 + energy * 0.05})`);
+        ribbon.addColorStop(1, "rgba(95, 120, 255, 0.015)");
+        ctx.strokeStyle = ribbon;
+        ctx.lineWidth = 0.55 + energy * 0.55;
+        ctx.stroke();
+      }
+      // Two fine meridian arcs cross the field like a suspended magnetic cage.
+      ctx.strokeStyle = `rgba(151, 218, 255, ${0.045 + energy * 0.055})`;
+      ctx.lineWidth = 0.55;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, radius * 0.43, radius * 0.98, rotation * 0.26, -Math.PI * 0.48, Math.PI * 0.48);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, radius * 0.43, radius * 0.98, -rotation * 0.22, Math.PI * 0.52, Math.PI * 1.48);
+      ctx.stroke();
       ctx.restore();
 
       // Bright couriers travel on elliptical paths with short, fading light trails.
@@ -389,7 +440,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
             : mode === "SUCCESS" ? "TASK COMPLETE"
               : mode === "ERROR" ? "VOICE ISSUE"
         : mode === "PAUSED" || mode === "INTERRUPTED" ? "PAUSED"
-          : mode === "SUCCESS" ? "TASK COMPLETE" : "CORE IDLE";
+          : "CORE IDLE";
 
   return <div className={`holo-stage holo-${mode.toLowerCase().replaceAll("_", "-")}`} aria-label={`NOX holographic core: ${label}`}>
     <canvas className="holo-canvas" ref={canvasRef} aria-hidden="true" />
