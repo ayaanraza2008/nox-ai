@@ -1074,7 +1074,7 @@ async def knowledge_remove_source(source_id: str, request: Request):
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, request: Request | None = None):
+async def chat(payload: ChatRequest, request: Request = None):
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
@@ -1116,7 +1116,7 @@ async def chat(payload: ChatRequest, request: Request | None = None):
 
 
 @app.post("/api/chat/stream")
-async def chat_stream(payload: ChatRequest, request: Request | None = None):
+async def chat_stream(payload: ChatRequest, request: Request = None):
     """Server-sent events endpoint for incremental chat responses."""
     message = payload.message.strip()
     if not message:
