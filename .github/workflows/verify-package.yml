@@ -64,6 +64,8 @@ jobs:
         run: node --check frontend/dist/nox-3d-lab.js
       - name: Validate agent swarm JavaScript syntax
         run: node --check frontend/dist/nox-agent-swarm.js
+      - name: Validate project workspace JavaScript syntax
+        run: node --check frontend/dist/nox-project-workspace.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
