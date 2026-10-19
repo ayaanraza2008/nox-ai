@@ -744,7 +744,7 @@ function App() {
         const outcome = await submitTask(null, value);
         const commandReply = typeof outcome === "string" ? outcome : "Command handled. Check the task status for details.";
         setMessages((old) => [...old, { role: "assistant", content: commandReply }]);
-        if (voiceModeRef.current) speakText(commandReply);
+        if (voiceModeRef.current || (speakReplies && !fromVoice)) speakText(commandReply);
       } catch (error) {
         setMessages((old) => [...old, { role: "assistant", content: "Command failed: " + error.message }]);
       } finally {
@@ -791,7 +791,7 @@ function App() {
       if (!response.ok) throw new Error(data.detail || "Request failed");
       setMessages((old) => [...old, { role: "assistant", content: data.reply, mode: data.mode }]);
       setStatus(data.mode === "ai" ? "AI LINK ACTIVE" : "DEMO MODE");
-      if (speakReplies || voiceModeRef.current) speakText(data.reply);
+      if (voiceModeRef.current || (speakReplies && !fromVoice)) speakText(data.reply);
     } catch (error) {
       const detail = error?.message || "Network request failed";
       setMessages((old) => [...old, { role: "assistant", content: "NOX couldn't get a reply: " + detail }]);
@@ -846,6 +846,7 @@ function App() {
           if (!transcript || !voiceModeRef.current || voiceMutedRef.current || voiceRequestPendingRef.current) return;
           voiceTranscriptRef.current = "";
           voiceRequestPendingRef.current = true;
+          try { voiceRecognitionRef.current?.stop(); } catch {}
           try { await sendMessage(transcript, true); }
           finally { voiceRequestPendingRef.current = false; }
         }, 850);
