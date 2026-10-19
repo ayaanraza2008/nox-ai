@@ -28,6 +28,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
     let time = 0;
     let particles = [];
     let lastFrame = 0;
+    let previousMode = "";
+    let shockwaves = [];
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -64,6 +66,14 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       }
       const delta = lastFrame ? Math.min(2, (timestamp - lastFrame) / 16.67) : 1;
       lastFrame = timestamp;
+      // State changes create a single intentional wave; no random fake event pulses.
+      if (activeMode !== previousMode) {
+        if (["SUCCESS", "ERROR", "USER_LISTENING", "NOX_SPEAKING", "WORKING"].includes(activeMode)) {
+          shockwaves.push({ born: time, strength: activeMode === "SUCCESS" ? 1 : activeMode === "ERROR" ? 0.48 : 0.68, tint: activeMode === "ERROR" ? "255, 105, 125" : "112, 218, 255" });
+          if (shockwaves.length > 3) shockwaves.shift();
+        }
+        previousMode = activeMode;
+      }
       const sourceLevel = activeMode === "USER_SPEAKING"
         ? (micLevelRef.current || 0)
         : activeMode === "NOX_SPEAKING"
@@ -74,27 +84,29 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       const working = activeMode === "WORKING";
       const success = activeMode === "SUCCESS";
       const error = activeMode === "ERROR";
+      const paused = activeMode === "PAUSED" || activeMode === "INTERRUPTED";
       const target = Math.max(0, Math.min(1, sourceLevel));
       smoothed += (target - smoothed) * (target > smoothed ? 0.24 : 0.075);
       // Quiet, restrained motion while thinking; a stronger orbit while executing.
       const targetStatePulse = thinking ? (0.12 + 0.08 * (0.5 + 0.5 * Math.sin(time * 2.2)))
         : working ? (0.22 + 0.12 * (0.5 + 0.5 * Math.sin(time * 3.1)))
-          : success ? (0.38 + 0.24 * (0.5 + 0.5 * Math.sin(time * 5.2)))
-            : error ? 0.06 : 0;
+          : listening ? 0.12 + smoothed * 0.28
+            : success ? (0.38 + 0.24 * (0.5 + 0.5 * Math.sin(time * 5.2)))
+              : error ? 0.06 : 0;
       // Ease state changes in and out instead of snapping between visual presets.
       statePulse += (targetStatePulse - statePulse) * (targetStatePulse > statePulse ? 0.045 : 0.025);
       const energy = Math.max(smoothed, statePulse);
       const idleMotion = reducedMotion ? 0.12 : Math.max(0.32, motionIntensity);
-      const speed = (0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : 0)) * idleMotion;
+      const speed = (paused ? 0.00008 : 0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : listening ? 0.001 : 0)) * idleMotion;
       rotation += speed * delta;
-      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta * (reducedMotion ? 0.35 : Math.max(0.32, motionIntensity));
+      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta * (paused ? 0.08 : reducedMotion ? 0.35 : Math.max(0.32, motionIntensity));
       ctx.clearRect(0, 0, width, height);
 
       const cx = width / 2;
       const cy = height / 2;
       const radius = Math.min(width * 0.36, height * 0.42, 132) * (1 + energy * 0.11);
       const glow = ctx.createRadialGradient(cx, cy, radius * 0.04, cx, cy, radius * 1.32);
-      const coreTint = error ? "255, 86, 105" : success ? "202, 244, 255" : working ? "255, 150, 92" : "72, 194, 255";
+      const coreTint = error ? "255, 86, 105" : success ? "202, 244, 255" : paused ? "135, 151, 184" : "72, 194, 255";
       glow.addColorStop(0, `rgba(${coreTint}, ${0.07 + energy * 0.16})`);
       glow.addColorStop(0.55, `rgba(120, 72, 255, ${0.035 + energy * 0.07})`);
       glow.addColorStop(1, "rgba(40, 100, 255, 0)");
@@ -102,6 +114,19 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       ctx.beginPath();
       ctx.arc(cx, cy, radius * 1.32, 0, Math.PI * 2);
       ctx.fill();
+
+      // State-triggered expanding wavefronts; they decay quickly and never run on a random timer.
+      shockwaves = shockwaves.filter((wave) => time - wave.born < 2.1);
+      shockwaves.forEach((wave) => {
+        const age = Math.max(0, time - wave.born);
+        const progress = age / 2.1;
+        const waveRadius = radius * (0.32 + progress * 1.08);
+        ctx.beginPath();
+        ctx.arc(cx, cy, waveRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${wave.tint}, ${(1 - progress) * 0.24 * wave.strength})`;
+        ctx.lineWidth = 0.7 + (1 - progress) * 1.6 * wave.strength;
+        ctx.stroke();
+      });
 
       // Soft radial energy filaments extend from the core and intensify with audio.
       ctx.save();
@@ -123,9 +148,10 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       const projected = particles.map((p) => {
         const wobble = Math.sin(time + p.phase) * (0.025 + energy * 0.09);
         // Thinking draws particles inward in a slow spiral; working pushes energy outward.
-        const spiralScale = thinking
-          ? 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(time * 1.65 + p.phase))
-          : working ? 0.96 + 0.1 * Math.sin(time * 1.2 + p.phase) : 1;
+        const spiralScale = listening
+          ? 0.84 + 0.16 * (0.5 + 0.5 * Math.sin(time * 1.25 + p.phase))
+          : thinking ? 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(time * 1.65 + p.phase))
+            : working ? 0.96 + 0.1 * Math.sin(time * 1.2 + p.phase) : paused ? 0.99 : 1;
         const x = (p.x * Math.cos(rotation) - p.z * Math.sin(rotation)) * spiralScale;
         const z = p.x * Math.sin(rotation) + p.z * Math.cos(rotation);
         const perspective = 1.0 / (1.65 - (z + wobble) * 0.42);
@@ -220,6 +246,12 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       ctx.beginPath();
       ctx.ellipse(0, 0, radius * 1.12, radius * 0.22, -0.32, 0.25, Math.PI * 1.65);
       ctx.stroke();
+      ctx.rotate(-rotation * 0.34);
+      ctx.strokeStyle = `rgba(194, 184, 255, ${0.035 + energy * 0.11})`;
+      ctx.lineWidth = 0.55;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radius * 0.76, radius * 0.48, 0.42, 0.35, Math.PI * 1.75);
+      ctx.stroke();
       // Tiny orbiting nodes create depth cues without obscuring the central particle sphere.
       for (let i = 0; i < 4; i += 1) {
         const angle = time * (0.32 + i * 0.055) + i * Math.PI / 2;
@@ -252,7 +284,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       canvas.dataset.audioSource = activeMode === "USER_SPEAKING" ? "microphone-amplitude"
         : activeMode === "NOX_SPEAKING" ? "tts-playback-fallback" : "none";
       canvas.dataset.activity = thinking ? "thinking-animation" : working ? "working-animation"
-        : error ? "error-state" : listening ? "listening" : "idle";
+        : error ? "error-state" : paused ? "paused" : listening ? "listening" : success ? "success" : "idle";
       raf = window.requestAnimationFrame(draw);
     };
 
@@ -291,7 +323,9 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
         : mode === "PROCESSING" || mode === "THINKING" ? "THINKING"
           : mode === "WORKING" ? "EXECUTING TASK"
             : mode === "SUCCESS" ? "TASK COMPLETE"
-              : mode === "ERROR" ? "VOICE ISSUE" : "CORE IDLE";
+              : mode === "ERROR" ? "VOICE ISSUE"
+        : mode === "PAUSED" || mode === "INTERRUPTED" ? "PAUSED"
+          : mode === "SUCCESS" ? "TASK COMPLETE" : "CORE IDLE";
 
   return <div className={`holo-stage holo-${mode.toLowerCase().replaceAll("_", "-")}`} aria-label={`NOX holographic core: ${label}`}>
     <canvas className="holo-canvas" ref={canvasRef} aria-hidden="true" />
