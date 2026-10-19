@@ -63,9 +63,10 @@ export default function SpatialDashboard({
   const [minimized, setMinimized] = useState(() => readStored("nox-spatial-panel-minimized", []));
   const [hidden, setHidden] = useState(() => readStored("nox-spatial-panel-hidden", []));
   const [maximized, setMaximized] = useState("");
-  const [motionIntensity, setMotionIntensity] = useState(() => {
-    try { return Number(localStorage.getItem("nox-motion-intensity") || "0.8"); } catch { return 0.8; }
+  const [motionPreset, setMotionPreset] = useState(() => {
+    try { return localStorage.getItem("nox-motion-preset") || "subtle"; } catch { return "subtle"; }
   });
+  const motionIntensity = motionPreset === "off" ? 0.12 : motionPreset === "enhanced" ? 1.18 : 0.68;
   const [reducedMotion, setReducedMotion] = useState(() => {
     try { return localStorage.getItem("nox-reduced-motion") === "true"; } catch { return false; }
   });
@@ -164,7 +165,7 @@ export default function SpatialDashboard({
 
       <div className="spatial-core-zone" aria-label="Central living holographic core">
         <div className="spatial-core-halo" aria-hidden="true" />
-        <div className="spatial-core-topline"><span><i /> LIVE CORE</span><span>{modeLabel}</span></div>
+        <div className="spatial-core-topline"><span><i /> LIVE CORE</span><div className="spatial-core-actions"><span>{modeLabel}</span><button type="button" onClick={voiceMode ? onInterruptVoice : onStartVoiceMode} aria-label={voiceMode ? "Interrupt voice output" : "Activate NOX voice mode"} title={voiceMode ? "Interrupt current voice response" : "Start voice mode"}><span className="core-action-pulse" />{voiceMode ? <Activity size={12} /> : <Mic size={12} />}{voiceMode ? "INTERRUPT" : "ACTIVATE"}</button></div></div>
         <HolographicCore mode={coreVisualMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} motionIntensity={reducedMotion || motionPreset === "off" ? 0.12 : motionIntensity} userReducedMotion={reducedMotion || motionPreset === "off"} />
         <div className="spatial-core-footer"><span><Bot size={13} /> NOX NEURAL INTERFACE</span><span>{voiceMode ? "AUDIO LINK ACTIVE" : "STANDING BY"}</span></div>
       </div>
