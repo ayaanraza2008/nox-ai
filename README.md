@@ -6,6 +6,7 @@ A futuristic, multilingual personal AI assistant starter built with React, Vite,
 - Responsive dark interface with red accents
 - Chat UI with Hindi, Urdu, English, and Hinglish language selection
 - Browser speech input/output where supported
+- Hands-free Voice Mode with automatic speech turn-taking, interruption, mute/end controls, browser voice selection, and speed/volume settings
 - FastAPI backend with optional OpenRouter-compatible AI provider
 - Bounded autonomous task worker with tool-calling public-web search and page reading
 - Demo fallback when no AI API key is configured
@@ -21,6 +22,15 @@ A futuristic, multilingual personal AI assistant starter built with React, Vite,
 
 ## AI provider
 Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed responses. Optionally set `OPENROUTER_MODEL`. Without a key, the app uses a simple demo response; it is not a full AI model.
+
+
+## Voice Mode: setup and limitations
+
+Voice Mode is available from the Conversation panel. Select **Start Voice Mode** and grant microphone permission when the browser asks. Use the controls to mute/unmute, interrupt spoken playback, adjust supported voice/speed/volume settings, or end the session. Ending the session stops recognition, cancels playback, and releases the microphone stream. Text chat remains available if voice features are unsupported.
+
+**Current implementation:** NOX uses the browser's Speech Recognition API for recognition and Speech Synthesis for spoken replies, then sends recognized text through the same existing `/api/chat` endpoint and conversation history. Voice-detected action commands continue through the existing task/command handler. No speech-provider API key is required by this implementation, and it does not silently configure a paid speech service.
+
+**Important limitations:** this is a browser-native, turn-based voice conversation, not low-latency server-side full-duplex audio streaming. Speech recognition support and available voices vary by browser, OS, language, and device; some browsers send recognition audio to their own service, so review your browser vendor's privacy terms. Hindi/English/Hinglish recognition quality depends on the browser's language support. The current voice UI offers playback interruption by button; reliable voice-activity interruption while NOX is speaking is not guaranteed. A supported browser and HTTPS (or localhost for development) are required for microphone access. No local STT/TTS model is bundled, so there are no local model hardware requirements; standard microphone/audio hardware is sufficient. Browser/OS speech features may use data or platform services, and this app cannot promise unlimited or universally offline speech.
 
 ## Deploy on Render
 Create a **Web Service** from this repository. The included `render.yaml` defines the build/start commands and checks `/api/health` for service health. Add `OPENROUTER_API_KEY` as a secret environment variable in Render to enable provider-backed AI replies. Free hosting and third-party AI free tiers may have usage limits or sleep.
