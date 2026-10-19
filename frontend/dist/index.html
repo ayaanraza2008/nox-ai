@@ -309,7 +309,7 @@ for(let i=0;i<28;i++){const s=document.createElement('span');s.style.setProperty
      if(ttsObjectUrl)URL.revokeObjectURL(ttsObjectUrl);ttsObjectUrl=URL.createObjectURL(blob);ttsAudio.src=ttsObjectUrl;
      const meter=()=>{if(!ttsAnalyser||!ttsData||!ttsAudioAvailable)return;ttsAnalyser.getByteTimeDomainData(ttsData);let sum=0;for(let i=0;i<ttsData.length;i++){const v=(ttsData[i]-128)/128;sum+=v*v}const rms=Math.sqrt(sum/ttsData.length);ttsTarget=Math.min(1,Math.max(0,(rms-.008)*9));ttsRaf=requestAnimationFrame(meter)};
      ttsAudioAvailable=true;if(ttsRaf)cancelAnimationFrame(ttsRaf);meter();
-     await ttsAudio.play();await new Promise(resolve=>{if(ttsAudio.ended){resolve();return}ttsAudio.addEventListener('ended',resolve,{once:true});ttsAudio.addEventListener('error',resolve,{once:true})});
+     await ttsAudio.play();await new Promise(resolve=>{if(ttsAudio.ended){resolve();return}ttsAudio.addEventListener('ended',resolve,{once:true});ttsAudio.addEventListener('pause',resolve,{once:true});ttsAudio.addEventListener('error',resolve,{once:true})});
      ttsTarget=0;ttsAudioAvailable=false;if(ttsRaf)cancelAnimationFrame(ttsRaf);ttsRaf=0;if(state==='speaking')setState('idle');return true;
    }catch(err){console.info('NOX neural TTS unavailable; caller may use browser speech fallback.',err?.message||err);ttsTarget=0;ttsAudioAvailable=false;if(ttsRaf)cancelAnimationFrame(ttsRaf);ttsRaf=0;return false}
  }
