@@ -4,6 +4,7 @@ A futuristic, multilingual personal AI assistant starter built with React, Vite,
 
 ## Features
 - Responsive dark interface with red accents
+- Spatial holographic command deck with live canvas particles, draggable glass panels, real task/capability state, and adjustable/reduced motion
 - Chat UI with Hindi, Urdu, English, and Hinglish language selection
 - Browser speech input/output where supported
 - Hands-free Voice Mode with automatic speech turn-taking, interruption, mute/end controls, browser voice selection, and speed/volume settings
@@ -23,6 +24,15 @@ A futuristic, multilingual personal AI assistant starter built with React, Vite,
 ## AI provider
 Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed responses. Optionally set `OPENROUTER_MODEL`. Without a key, the app uses a simple demo response; it is not a full AI model.
 
+
+
+## Spatial holographic command deck
+
+The dashboard uses the existing `frontend/src/HolographicCore.jsx` canvas renderer and a new `frontend/src/SpatialDashboard.jsx` composition; it adds no rendering dependency. The central core uses a lightweight projected 3D particle field, orbiting arcs, proximity links, pointer parallax, and live application state. Microphone visuals use measured input levels where available; browser speech-synthesis output is labelled as estimated playback activity because the browser does not expose its rendered output stream to this UI.
+
+Panels show existing NOX data only: saved conversation history, backend-reported capabilities, task queue state, pairing status, and browser voice-session state. Camera preview, OS telemetry, and a 3D model editor are intentionally not displayed because those integrations are not currently exposed by the web app. Panel position, pin state, minimized/hidden panels, motion intensity, and reduced-motion preference are saved locally in this browser. Use panel header controls to move, pin, minimize, expand, hide, or restore panels. On narrow screens the dashboard becomes a stacked layout.
+
+The canvas lowers its particle count on smaller/low-core-count devices, caps rendering resolution/frame rate, and pauses its animation loop while the page is hidden. WebGL is not required; if a 2D canvas context is unavailable, the core drawing is omitted while the rest of NOX remains usable.
 
 ## Voice Mode: setup and limitations
 
