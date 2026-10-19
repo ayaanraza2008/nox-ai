@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import string
@@ -38,8 +39,55 @@ class ChatResponse(BaseModel):
 
 class TTSRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2500)
-    language: Literal["en-US", "hi-IN", "ur-PK"] = "en-US"
+    language: Literal["en-US", "en-IN", "hi-IN", "ur-PK"] = "en-US"
+    voice: Literal[
+        "hi-IN-MadhurNeural", "hi-IN-SwaraNeural",
+        "en-IN-PrabhatNeural", "en-IN-NeerjaNeural",
+        "en-US-GuyNeural", "ur-PK-AsadNeural",
+    ] | None = None
     rate: float = Field(default=1.0, ge=0.65, le=1.4)
+
+
+# Conservative speech-only transliteration for common Roman Hindi words.
+# Technical/product words remain in Latin script; this is not a general transliterator.
+_HINGLISH_TTS_WORDS = {
+    "main": "मैं", "mein": "में", "mai": "मैं", "mujhe": "मुझे",
+    "tumhe": "तुम्हें", "tum": "तुम", "aap": "आप", "hum": "हम",
+    "mera": "मेरा", "meri": "मेरी", "mere": "मेरे", "hamara": "हमारा",
+    "kya": "क्या", "kyun": "क्यों", "kaise": "कैसे", "kaisa": "कैसा",
+    "kaisi": "कैसी", "hai": "है", "hain": "हैं", "hoon": "हूँ",
+    "hun": "हूँ", "ho": "हो", "tha": "था", "thi": "थी",
+    "nahi": "नहीं", "nahin": "नहीं", "haan": "हाँ", "han": "हाँ",
+    "achha": "अच्छा", "accha": "अच्छा", "theek": "ठीक", "thik": "ठीक",
+    "chalo": "चलो", "batao": "बताओ", "samjhao": "समझाओ",
+    "kar": "कर", "karo": "करो", "karta": "करता", "karti": "करती",
+    "karte": "करते", "karna": "करना", "karunga": "करूँगा",
+    "karungi": "करूँगी", "sakta": "सकता", "sakti": "सकती",
+    "sakte": "सकते", "do": "दो", "raha": "रहा", "rahi": "रही", "rahe": "रहे", "chal": "चल", "chalta": "चलता", "chalti": "चलती", "chale": "चले",
+    "mera": "मेरा", "ka": "का", "ki": "की", "ke": "के", "ko": "को",
+    "se": "से", "par": "पर", "aur": "और", "lekin": "लेकिन",
+    "liye": "लिए", "kyunki": "क्योंकि", "jab": "जब", "ab": "अब",
+    "phir": "फिर", "ye": "ये", "yah": "यह", "ise": "इसे",
+    "isko": "इसको", "us": "उस", "use": "उसे", "usko": "उसको",
+    "kyun": "क्यों", "kahan": "कहाँ", "kab": "कब", "kuch": "कुछ",
+    "bahut": "बहुत", "jaldi": "जल्दी", "dheere": "धीरे",
+}
+
+
+def normalize_hinglish_for_tts(text: str) -> str:
+    """Convert common Roman Hindi words to Devanagari for Hindi TTS, preserving English terms."""
+    if not text or re.search(r"[\u0600-\u06FF]", text):
+        return text
+    words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
+    hindi_hits = sum(1 for word in words if word in _HINGLISH_TTS_WORDS)
+    if hindi_hits < 2:
+        return text
+
+    def replace_word(match):
+        original = match.group(0)
+        return _HINGLISH_TTS_WORDS.get(original.lower(), original)
+
+    return re.sub(r"\b[a-zA-Z]+\b", replace_word, text)
 
 
 class TaskCreateRequest(BaseModel):
@@ -912,14 +960,19 @@ async def synthesize_speech(payload: TTSRequest, request: Request):
 
     voices = {
         "en-US": "en-US-GuyNeural",
+        "en-IN": "en-IN-PrabhatNeural",
         "hi-IN": "hi-IN-MadhurNeural",
         "ur-PK": "ur-PK-AsadNeural",
     }
-    voice = voices[payload.language]
+    voice = payload.voice or voices[payload.language]
+    speech_text = payload.text
+    if voice.startswith("hi-IN-") or payload.language == "hi-IN":
+        speech_text = normalize_hinglish_for_tts(speech_text)
     rate_percent = round((payload.rate - 1.0) * 100)
+    synthesis_started = time.perf_counter()
     try:
         synthesizer = edge_tts.Communicate(
-            text=payload.text,
+            text=speech_text,
             voice=voice,
             rate=f"{rate_percent:+d}%",
         )
@@ -930,12 +983,18 @@ async def synthesize_speech(payload: TTSRequest, request: Request):
         audio_bytes = b"".join(audio_parts)
         if not audio_bytes:
             raise RuntimeError("Speech provider returned no audio.")
+        logger.info(
+            "TTS completed voice=%s chars=%s audio_bytes=%s generation_ms=%s",
+            voice, len(speech_text), len(audio_bytes),
+            round((time.perf_counter() - synthesis_started) * 1000),
+        )
         return Response(
             content=audio_bytes,
             media_type="audio/mpeg",
             headers={
                 "Cache-Control": "no-store",
                 "X-NOX-TTS-Engine": "edge-neural",
+                "X-NOX-TTS-Voice": voice,
             },
         )
     except HTTPException:
