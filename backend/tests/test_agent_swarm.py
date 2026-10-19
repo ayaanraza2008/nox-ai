@@ -64,8 +64,8 @@ class SwarmTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(a["status"] == "completed" for a in final["agents"]))
         self.assertEqual(final["result"], "Unified deliverable with limitations.")
         qa_call = next(m for m in self.provider.calls if "Testing and QA Agent" in m[0]["content"])
-        self.assertIn("Define module boundaries", qa_call[1]["content"])
-        self.assertIn("Identify safety risks", qa_call[1]["content"])
+        self.assertIn("dependency_artifacts", qa_call[1]["content"])
+        self.assertIn("Specialist artifact.", qa_call[1]["content"])
 
     async def test_invalid_circular_plan_is_rejected_before_agent_execution(self):
         self.provider.planner = {"tasks": [
