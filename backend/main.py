@@ -187,36 +187,71 @@ def _prioritize_providers(providers: list[dict]) -> list[dict]:
     return sorted(providers, key=lambda item: 0 if item["name"].lower() == preferred else 1)
 
 
-async def provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None) -> str | None:
-    images = images or []
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are NOX, a helpful, natural, concise multilingual assistant and proactive executor. "
-                "Understand Hindi, Urdu, English, and Hinglish. Match the user's language when possible. "
-                "Consider emotional context from the user's words and recent conversation; when frustration, sadness, uncertainty, excitement, or urgency may be present, adapt tone with respectful empathy without claiming certainty or making psychological/medical diagnoses. "
-                "For spoken conversations, prefer natural concise phrasing that is easy to say aloud. Voice cues are not available to this text endpoint, so do not pretend to analyze vocal emotion. "
-                "When the user gives a clear, allowed command, do it immediately using available tools instead of asking for confirmation or repeating the request. "
-                "Do not ask unnecessary follow-up questions; infer sensible, low-risk defaults and report the result. "
-                "Ask one concise question only when a missing detail is essential, multiple choices are materially different, or proceeding could cause a significant, irreversible, financial, privacy, or external side effect. "
-                "For consequential actions such as sending/posting messages, purchases/payments, deleting or overwriting data, sharing private information, or changing security settings, require explicit confirmation. "
-                "Never bypass authentication, OS/browser permission prompts, or security controls. Be honest about limitations and never claim actions you did not do. "
-                f"Preferred language: {language}."
-            ),
-        }
-    ]
+def build_nox_system_prompt(language: str) -> str:
+    """One shared instruction set for streaming and non-streaming chat."""
+    return (
+        "You are NOX, a capable conversational assistant. Your first job is to understand the user's "
+        "actual message and answer THAT message directly. Relevance is more important than sounding impressive. "
+        "Before answering, silently identify the user's intent, the specific question or task, and any reference "
+        "to earlier turns. Answer the main question first; do not give a generic introduction, unrelated advice, "
+        "feature list, or repeat the request. If the user asks a simple question, keep the answer short and exact. "
+        "For complex tasks, give a structured answer with concrete steps. If the user corrects you or says your "
+        "answer was irrelevant, acknowledge briefly and fix the exact issue rather than defending the previous reply. "
+        "Use the recent conversation to resolve words like it, that, this, and the previous one. Do not treat each "
+        "message as a fresh conversation when relevant context exists. Prefer the most recent explicit user request; "
+        "do not let old context override what the user is asking now. Never invent prior details, tool results, "
+        "files, actions, or capabilities. If the request is ambiguous but a safe, likely interpretation exists, "
+        "state that interpretation briefly and proceed. Ask only one short clarifying question when the missing "
+        "detail materially changes the answer or makes safe progress impossible. If you do not know, say so plainly. "
+        "Do not pretend you used a tool or changed something unless it actually happened. "
+        "LANGUAGE: understand Hindi, Urdu, English, and Hinglish. Reply in the language/script the user is using; "
+        "when they mix languages, naturally mix them too. Do not switch to formal English without a reason. "
+        "If language is auto, infer it from the current message and recent turns; otherwise follow the requested "
+        "language. Preferred language setting: " + language + ". "
+        "STYLE: sound natural, direct, warm, and specific—not robotic, overenthusiastic, or verbose by default. "
+        "Use the user's casual tone when appropriate. Avoid stock phrases like 'Certainly, here is...' unless useful. "
+        "Do not restate their whole prompt before helping. Do not claim to read vocal emotion from text. "
+        "ACTION RULES: perform clear, allowed actions using tools that actually exist; this chat model alone cannot "
+        "control the user's device or external apps without an implemented and authorized tool. Ask explicit "
+        "confirmation before sending messages, purchases/payments, destructive changes, or sharing private data. "
+        "Never bypass permissions or security controls. "
+        "TRUTHFULNESS: distinguish verified facts from guesses; mention uncertainty briefly when material. "
+        "For current facts, use available search/tools when available rather than guessing. "
+        "For code/debugging, diagnose the actual error, inspect the relevant code/context, and provide the smallest "
+        "correct fix; do not dump a generic tutorial. "
+        "For follow-ups, answer in continuity with the conversation. For a bare acknowledgment like 'ok', respond "
+        "briefly or continue the already-agreed next step instead of starting an unrelated explanation."
+    )
+
+
+def build_chat_messages(message: str, language: str, history: list[dict], images: list[str] | None = None) -> list[dict]:
+    """Build consistent, bounded conversation context for every chat transport."""
+    messages = [{"role": "system", "content": build_nox_system_prompt(language)}]
+    # Only keep valid text turns and cap both count and size to avoid malformed context
+    # or an old long message crowding out the current request.
+    cleaned = []
     for item in history[-12:]:
-        role = item.get("role")
-        content = item.get("content")
-        if role in ("user", "assistant") and isinstance(content, str):
-            messages.append({"role": role, "content": content[:4000]})
+        if not isinstance(item, dict):
+            continue
+        role, content = item.get("role"), item.get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content.strip():
+            cleaned.append({"role": role, "content": content[-2500:]})
+    # Keep a coherent tail, starting at a user turn where possible.
+    if cleaned and cleaned[0]["role"] == "assistant":
+        cleaned = cleaned[1:]
+    messages.extend(cleaned)
     if images:
         user_content = [{"type": "text", "text": message}]
         user_content.extend({"type": "image_url", "image_url": {"url": image}} for image in images)
     else:
         user_content = message
     messages.append({"role": "user", "content": user_content})
+    return messages
+
+
+async def provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None) -> str | None:
+    images = images or []
+    messages = build_chat_messages(message, language, history, images)
 
     # Try configured providers in priority order. A failing key, quota, model, or
     # provider connection must not prevent NOX from trying the next configured API.
@@ -336,26 +371,7 @@ async def provider_reply(message: str, language: str, history: list[dict], image
 async def stream_provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None):
     """Yield structured deltas from OpenAI-compatible provider streaming APIs."""
     images = images or []
-    messages = [{
-        "role": "system",
-        "content": (
-            "You are NOX, a helpful, natural, concise multilingual assistant and proactive executor. "
-            "Understand Hindi, Urdu, English, and Hinglish; match the user's language when possible. "
-            "Use recent conversation history for follow-up references, but do not invent memories or facts. "
-            "Adapt respectfully to emotional context without diagnosing or claiming certainty. "
-            "For voice replies, use natural concise phrasing. Never claim an action you did not perform. "
-            "Require explicit confirmation for consequential external actions, purchases, deletion, or sharing private data. "
-            f"Preferred language: {language}."
-        ),
-    }]
-    for item in history[-12:]:
-        role = item.get("role")
-        content = item.get("content")
-        if role in ("user", "assistant") and isinstance(content, str):
-            messages.append({"role": role, "content": content[:4000]})
-    user_content = [{"type": "text", "text": message}]
-    user_content.extend({"type": "image_url", "image_url": {"url": image}} for image in images)
-    messages.append({"role": "user", "content": user_content if images else message})
+    messages = build_chat_messages(message, language, history, images)
 
     providers = []
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()

@@ -108,3 +108,8 @@ NOX is a growing, permissioned assistant, not yet a universal remote-control lay
 NOX exposes `POST /api/chat/stream` using Server-Sent Events so assistant text appears while the provider is generating it. The existing `POST /api/chat` endpoint remains available for compatibility. Recent user/assistant turns are sent as bounded context (up to 12 turns at the provider), and image requests use the configured vision model.
 
 Provider selection is configurable with `NOX_CHAT_PROVIDER=auto|openrouter|groq|gemini`. The default `auto` keeps the OpenRouter → Groq → Gemini fallback order; selecting a provider moves it to the front while other configured providers remain fallbacks. Model names remain configured separately with `OPENROUTER_MODEL`, `GROQ_MODEL`, and `GEMINI_MODEL`; vision models use `OPENROUTER_VISION_MODEL`, `GROQ_VISION_MODEL`, and `GEMINI_VISION_MODEL`. Keep API keys only in the hosting environment, never in frontend code. Streaming reduces perceived wait time but does not make a slow provider faster, and provider/model availability and quotas still apply.
+
+
+## Response relevance and context handling
+
+Streaming and non-streaming chat now share the same system prompt and context builder. The prompt prioritizes answering the current question directly, resolving follow-ups from recent turns, matching Hindi/Urdu/English/Hinglish naturally, avoiding unrelated filler, and acknowledging/correcting a reply when the user says it missed the point. The builder filters malformed turns and bounds history text so old messages are less likely to crowd out the current request. This improves behavior but cannot guarantee every model/provider will follow instructions perfectly; model quality and context limits still matter.
