@@ -21,8 +21,10 @@ A futuristic, multilingual personal AI assistant with a responsive holographic c
 
 The frontend is a dependency-free static dashboard in `frontend/dist/index.html`. FastAPI serves it from the same origin as `/api/*`, so no separate frontend server or Node build is required.
 
-## AI provider
+## AI provider and image input
 Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed responses. Optionally set `OPENROUTER_MODEL`. Without a key, the app uses a simple demo response; it is not a full AI model.
+
+**Image understanding:** the Vision & Media panel accepts one PNG, JPEG, or WebP image up to 5 MB. After selecting it, send a chat message (or send the image without text) to submit it to the configured model. The image is not sent just by selecting it. OpenAI-compatible vision payloads are routed to `OPENROUTER_VISION_MODEL` when configured, or to the configured OpenRouter model as a fallback; Gemini uses `GEMINI_VISION_MODEL` or `GEMINI_MODEL`. Groq is skipped for image requests unless `GROQ_VISION_MODEL` is explicitly set. A model must actually support image input; a free-model router does not guarantee vision support, and provider quotas/availability still apply. No image-analysis success is reported when the provider is missing or the model rejects the payload. Uploaded image data is sent to the selected provider only when the user submits the chat request; review that provider's data policy before sending sensitive images.
 
 
 
