@@ -213,3 +213,8 @@ The Safe Tool Bench also includes:
 - **Code diff preview:** accepts a JSON object with string fields `original` and `proposed`, then shows a bounded unified diff with added/removed line counts. It is preview-only; NOX does not write files or apply patches.
 
 Both utilities enforce input limits and are covered by automated tests. This is a review aid, not a sandbox or a repository editing/execution environment.
+
+
+### Agent Swarm live updates
+
+The Agent Swarm workspace subscribes to `GET /api/swarm/jobs/{job_id}/events`, a same-origin Server-Sent Events stream. It emits the latest persisted job snapshot when the job changes and closes when the job reaches a terminal state or the browser disconnects. The stream is scoped to the existing HttpOnly browser session; a missing or foreign job is rejected before streaming. Browsers without EventSource support, or where the stream disconnects, fall back to bounded status polling. This improves UI responsiveness without introducing a WebSocket server or claiming distributed-worker support.
