@@ -126,3 +126,7 @@
 @keyframes voiceWave{from{transform:scaleY(.45);opacity:.55}to{transform:scaleY(1.35);opacity:1}}@keyframes voiceThink{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.voice-orb,.voice-orb span{animation:none!important;transition:none!important}}
 @media(max-width:680px){.voice-mode-panel{grid-template-columns:54px minmax(0,1fr);gap:10px;margin:12px 9px 0;padding:12px}.voice-orb-wrap{width:50px;height:50px}.voice-orb{width:44px;height:44px}.voice-mode-controls{grid-column:1/-1;justify-content:flex-end}.voice-settings{flex-wrap:wrap;gap:10px}.voice-settings label{flex:1 1 135px}.voice-settings input[type=range]{flex:1;min-width:55px}.voice-settings label:last-child{flex-basis:100%}.voice-settings select{max-width:none;flex:1}}
+
+.composer .voice-mode-trigger{color:#d7b0ff;border-color:#3a2b4c;background:#191521}
+.composer .voice-mode-trigger:hover,.composer .voice-mode-trigger.active{color:#f1d9ff;border-color:#9c6ac4;background:#2a1c36;box-shadow:0 0 14px #b77bff1c}
+.composer .voice-mode-trigger:disabled{opacity:.45;cursor:wait}
