@@ -233,6 +233,12 @@ function App() {
   const meterFrameRef = useRef(0);
   const listeningRef = useRef(false);
   const ttsDecayRef = useRef(0);
+  const ttsAudioRef = useRef(null);
+  const ttsAudioContextRef = useRef(null);
+  const ttsAnalyserRef = useRef(null);
+  const ttsMeterFrameRef = useRef(0);
+  const ttsObjectUrlRef = useRef("");
+  const ttsAudioReactiveRef = useRef(false);
   const sharedHistoryReadyRef = useRef(false);
 
   useEffect(() => {
@@ -711,104 +717,188 @@ function App() {
     window.clearTimeout(voiceRestartRef.current);
     stopMicMeter();
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+    stopTtsAudio();
     window.clearTimeout(ttsDecayRef.current);
   }, []);
 
-  function speakText(text) {
-    if (!("speechSynthesis" in window) || !text?.trim()) {
-      setStatus("VOICE NOT SUPPORTED");
+  function stopTtsAudio() {
+    if (ttsMeterFrameRef.current) cancelAnimationFrame(ttsMeterFrameRef.current);
+    ttsMeterFrameRef.current = 0;
+    const audio = ttsAudioRef.current;
+    ttsAudioRef.current = null;
+    if (audio) {
+      audio.onplay = null;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.removeAttribute("src");
+      try { audio.load(); } catch {}
+    }
+    const audioContext = ttsAudioContextRef.current;
+    ttsAudioContextRef.current = null;
+    ttsAnalyserRef.current = null;
+    if (audioContext && audioContext.state !== "closed") audioContext.close().catch(() => {});
+    if (ttsObjectUrlRef.current) URL.revokeObjectURL(ttsObjectUrlRef.current);
+    ttsObjectUrlRef.current = "";
+    ttsAudioReactiveRef.current = false;
+    ttsLevelRef.current = 0;
+  }
+
+  function finishSpeechPlayback() {
+    voiceSpeakingRef.current = false;
+    ttsLevelRef.current = 0;
+    setCoreMode("IDLE");
+    setStatus("AI LINK ACTIVE");
+    if (voiceModeRef.current && !voiceMutedRef.current) {
+      setVoiceState("listening");
+      scheduleVoiceRecognition(180);
+    } else if (!voiceModeRef.current) {
+      setVoiceState("idle");
+    }
+  }
+
+  function speakWithBrowserSynthesis(text, lang) {
+    if (!("speechSynthesis" in window)) {
+      setStatus("NEURAL TTS UNAVAILABLE · BROWSER VOICE UNSUPPORTED");
+      setVoiceState(voiceModeRef.current ? "error" : "idle");
+      setCoreMode("ERROR");
       return;
     }
     const synth = window.speechSynthesis;
-    synth.cancel();
-    window.clearTimeout(ttsDecayRef.current);
-    ttsLevelRef.current = 0;
     const utterance = new SpeechSynthesisUtterance(text);
-    const lang = getSpeechLanguage(text);
     utterance.lang = lang;
     utterance.rate = voiceSpeed;
     utterance.volume = voiceVolume;
-    const requestedVoice = availableVoices.find((voice) => voice.name === selectedVoiceName);
-    if (requestedVoice && requestedVoice.lang?.toLowerCase().startsWith(lang.split("-")[0].toLowerCase())) utterance.voice = requestedVoice;
-    const chooseVoice = () => {
+    let spoken = false;
+    const chooseVoiceAndSpeak = () => {
+      if (spoken) return;
+      spoken = true;
       const voices = synth.getVoices();
       const prefix = lang.toLowerCase().split("-")[0];
-      const matchingVoice = voices.find((voice) => voice.name === selectedVoiceName && voice.lang?.toLowerCase().startsWith(prefix))
-        || voices.find((voice) => voice.lang?.toLowerCase() === lang.toLowerCase())
-        || voices.find((voice) => voice.lang?.toLowerCase().startsWith(prefix));
-      if (matchingVoice) utterance.voice = matchingVoice;
-      synth.speak(utterance);
-    };
-    let speechPulseTimer = 0;
-    let speechPulsePhase = 0;
-    utterance.onstart = () => {
-      voiceSpeakingRef.current = true;
-      setVoiceState("speaking");
-      setCoreMode("NOX_SPEAKING");
-      setStatus("AI VOICE ACTIVE");
-      // Keep the hologram visibly reactive even on browsers that omit onboundary.
-      ttsLevelRef.current = 0.48;
-      speechPulseTimer = window.setInterval(() => {
-        speechPulsePhase += 0.72;
-        ttsLevelRef.current = 0.32 + (0.5 + 0.5 * Math.sin(speechPulsePhase)) * 0.48;
-      }, 90);
-    };
-    utterance.onboundary = () => {
-      // speechSynthesis exposes events, not its rendered audio stream; this is a
-      // clearly-labelled playback pulse fallback, not true output-amplitude analysis.
-      ttsLevelRef.current = 0.42 + Math.random() * 0.28;
-      window.clearTimeout(ttsDecayRef.current);
-      ttsDecayRef.current = window.setTimeout(() => { ttsLevelRef.current = 0; }, 220);
-    };
-    utterance.onerror = (event) => {
-      voiceSpeakingRef.current = false;
-      window.clearInterval(speechPulseTimer);
-      ttsLevelRef.current = 0;
-      if (event?.error === "canceled" || event?.error === "interrupted" || !voiceModeRef.current) {
-        if (!voiceModeRef.current) setVoiceState("idle");
-        return;
-      }
-      setVoiceState("error");
-      setCoreMode("ERROR");
-      setStatus("VOICE PLAYBACK ISSUE");
-      window.setTimeout(() => setCoreMode("IDLE"), 900);
-    };
-    utterance.onend = () => {
-      voiceSpeakingRef.current = false;
-      window.clearInterval(speechPulseTimer);
-      ttsLevelRef.current = 0;
-      setCoreMode("IDLE");
-      setStatus("AI LINK ACTIVE");
-      if (voiceModeRef.current && !voiceMutedRef.current) {
-        setVoiceState("listening");
-        scheduleVoiceRecognition(180);
-      } else if (!voiceModeRef.current) {
-        setVoiceState("idle");
-      }
-    };
-    const voices = synth.getVoices();
-    if (voices.length) {
-      const prefix = lang.toLowerCase().split("-")[0];
-      const preferred = voices.find((voice) => voice.name === selectedVoiceName && voice.lang?.toLowerCase().startsWith(prefix));
-      utterance.voice = preferred
+      const selected = voices.find((voice) => voice.name === selectedVoiceName && voice.lang?.toLowerCase().startsWith(prefix));
+      utterance.voice = selected
         || voices.find((voice) => voice.lang?.toLowerCase() === lang.toLowerCase())
         || voices.find((voice) => voice.lang?.toLowerCase().startsWith(prefix))
         || null;
       synth.speak(utterance);
-    } else {
-      // Some mobile browsers load voices asynchronously. Speak only once when
-      // the list arrives, with a guarded fallback for browsers that omit the event.
-      let spoken = false;
-      const speakWhenReady = () => {
-        if (spoken) return;
-        spoken = true;
-        synth.removeEventListener("voiceschanged", speakWhenReady);
-        chooseVoice();
+    };
+    utterance.onstart = () => {
+      ttsAudioReactiveRef.current = false;
+      voiceSpeakingRef.current = true;
+      setVoiceState("speaking");
+      setCoreMode("NOX_SPEAKING");
+      setStatus("BROWSER VOICE ACTIVE · AMPLITUDE ESTIMATED");
+      // Browser speechSynthesis does not expose its output waveform. This is a
+      // clearly-labelled low-energy fallback, never presented as measured audio.
+      ttsLevelRef.current = 0.18;
+    };
+    utterance.onboundary = (event) => {
+      const chars = Math.max(1, Number(event.charLength) || 3);
+      ttsLevelRef.current = Math.min(0.72, 0.2 + chars * 0.025);
+      window.clearTimeout(ttsDecayRef.current);
+      ttsDecayRef.current = window.setTimeout(() => { ttsLevelRef.current = 0.08; }, 140);
+    };
+    utterance.onerror = (event) => {
+      voiceSpeakingRef.current = false;
+      window.clearTimeout(ttsDecayRef.current);
+      ttsLevelRef.current = 0;
+      if (event?.error === "canceled" || event?.error === "interrupted") return;
+      setCoreMode("ERROR");
+      setStatus("VOICE PLAYBACK ISSUE");
+      if (voiceModeRef.current) setVoiceState("error");
+      window.setTimeout(() => { if (!voiceSpeakingRef.current) setCoreMode("IDLE"); }, 900);
+    };
+    utterance.onend = finishSpeechPlayback;
+    const voices = synth.getVoices();
+    if (voices.length) chooseVoiceAndSpeak();
+    else {
+      synth.addEventListener?.("voiceschanged", chooseVoiceAndSpeak, { once: true });
+      window.setTimeout(chooseVoiceAndSpeak, 900);
+    }
+  }
+
+  async function speakText(text) {
+    if (!text?.trim()) return;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    window.clearTimeout(ttsDecayRef.current);
+    stopTtsAudio();
+    const lang = getSpeechLanguage(text);
+    let fallbackStarted = false;
+    const startFallbackOnce = () => {
+      if (fallbackStarted) return;
+      fallbackStarted = true;
+      stopTtsAudio();
+      speakWithBrowserSynthesis(text, lang);
+    };
+
+    try {
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.slice(0, 2500), language: lang, rate: voiceSpeed })
+      });
+      if (!response.ok) throw new Error("Neural TTS endpoint unavailable");
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("Neural TTS returned empty audio");
+      const objectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(objectUrl);
+      audio.preload = "auto";
+      audio.volume = voiceVolume;
+      ttsAudioRef.current = audio;
+      ttsObjectUrlRef.current = objectUrl;
+
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      let analyser = null;
+      if (AudioContextClass) {
+        try {
+          const audioContext = new AudioContextClass();
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.78;
+          const source = audioContext.createMediaElementSource(audio);
+          source.connect(analyser);
+          analyser.connect(audioContext.destination);
+          await audioContext.resume();
+          ttsAudioContextRef.current = audioContext;
+          ttsAnalyserRef.current = analyser;
+          ttsAudioReactiveRef.current = true;
+        } catch {
+          ttsAudioReactiveRef.current = false;
+        }
+      }
+
+      audio.onplay = () => {
+        if (ttsAudioRef.current !== audio) return;
+        voiceSpeakingRef.current = true;
+        setVoiceState("speaking");
+        setCoreMode("NOX_SPEAKING");
+        setStatus(ttsAudioReactiveRef.current ? "LIVE NEURAL AUDIO · REACTIVE" : "NEURAL VOICE ACTIVE");
+        if (!analyser || !ttsAudioReactiveRef.current) return;
+        const samples = new Float32Array(analyser.fftSize);
+        const measureOutput = () => {
+          if (ttsAudioRef.current !== audio || !ttsAnalyserRef.current) return;
+          analyser.getFloatTimeDomainData(samples);
+          let sum = 0;
+          for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
+          const rms = Math.sqrt(sum / samples.length);
+          // RMS is measured from the actual neural TTS audio element output.
+          ttsLevelRef.current = Math.max(0, Math.min(1, rms * 16));
+          ttsMeterFrameRef.current = requestAnimationFrame(measureOutput);
+        };
+        measureOutput();
       };
-      synth.addEventListener("voiceschanged", speakWhenReady, { once: true });
-      window.setTimeout(() => {
-        if (!synth.getVoices().length) speakWhenReady();
-      }, 900);
+      audio.onended = () => {
+        if (ttsAudioRef.current !== audio) return;
+        stopTtsAudio();
+        finishSpeechPlayback();
+      };
+      audio.onerror = () => {
+        if (ttsAudioRef.current !== audio) return;
+        startFallbackOnce();
+      };
+      await audio.play();
+    } catch {
+      startFallbackOnce();
     }
   }
 
@@ -1039,6 +1129,7 @@ function App() {
     voiceRecognitionRef.current = null;
     try { recognitionRef.current?.stop(); } catch {}
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+    stopTtsAudio();
     stopMicMeter();
     setCoreMode("IDLE");
     setStatus("VOICE SESSION ENDED");
@@ -1073,6 +1164,7 @@ function App() {
     voiceTranscriptRef.current = "";
     voiceSpeakingRef.current = false;
     if (window.speechSynthesis) window.speechSynthesis.cancel();
+    stopTtsAudio();
     setVoiceState("interrupted");
     setCoreMode("IDLE");
     setVoiceTranscript("Playback stopped. You can speak now.");
@@ -1159,7 +1251,7 @@ function App() {
       <section className="hero"><div className="eyebrow"><span /> PERSONAL AI INTERFACE</div><h1>Think beyond.<br /><em>Move with intent.</em></h1><p>Your space to reason, create, and get things done.</p>
       </section>
       <SpatialDashboard
-        status={status} coreMode={coreMode} busy={busy} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef}
+        status={status} coreMode={coreMode} busy={busy} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} ttsAudioReactiveRef={ttsAudioReactiveRef}
         voiceMode={voiceMode} voiceMuted={voiceMuted} voiceState={voiceState} voiceTranscript={voiceTranscript}
         input={input} onInputChange={setInput} onSendMessage={() => sendMessage()}
         chatHistory={chatHistory} currentChatId={currentChatId} onNewChat={startNewChat} onOpenChat={openSavedChat}
