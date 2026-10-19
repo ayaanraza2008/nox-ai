@@ -174,3 +174,36 @@
 .spatial-voice-controls .spatial-stop-generation{border-color:#8b4552;background:#321720;color:#ffabb4}.spatial-voice-controls .spatial-stop-generation:hover{background:#4a1d2a;border-color:#ff7f8d}
 
 .spatial-quick-composer{display:flex;align-items:center;gap:6px;margin-top:12px;padding:5px;border:1px solid #424365;border-radius:9px;background:#090c16a8;box-shadow:inset 0 1px 0 #ffffff06}.spatial-quick-composer:focus-within{border-color:#8981e8;box-shadow:0 0 0 2px #8981e81c}.spatial-quick-composer input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#e8e9ff;padding:8px 7px;font-size:10px}.spatial-quick-composer input::placeholder{color:#68718f}.spatial-quick-composer button{display:grid;place-items:center;width:31px;height:31px;flex:0 0 31px;border:1px solid #7770c2;border-radius:7px;background:#28274a;color:#c9c4ff;cursor:pointer}.spatial-quick-composer button:disabled{opacity:.35;cursor:not-allowed}.spatial-quick-composer button:not(:disabled):hover{background:#3b376b;border-color:#a69cff}
+
+
+/* Living glass finish: deeper refraction, moving highlights and a layered energy nucleus. */
+.holo-stage{overflow:hidden;border-radius:18px;isolation:isolate;filter:drop-shadow(0 12px 34px #4d55ff12)}
+.holo-stage:before{content:"";position:absolute;inset:7% 9% 13%;z-index:0;pointer-events:none;border-radius:50%;background:radial-gradient(ellipse at 50% 44%,#8b83ff0b 0%,#51dcff08 35%,transparent 68%);box-shadow:inset 0 0 35px #a8baff06}
+.holo-canvas{z-index:1}
+.holo-energy-shells{position:absolute;z-index:2;left:50%;top:46%;width:min(62%,245px);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;filter:drop-shadow(0 0 12px #68dfff18)}
+.holo-energy-shells span{position:absolute;inset:7%;border:1px solid #82eaff38;border-radius:50%;box-shadow:inset 0 0 18px #72dfff0a,0 0 18px #72dfff0b;animation:holoShellOrbit 13s linear infinite}
+.holo-energy-shells span:nth-child(2){inset:0 15%;border-color:#a69bff55;transform:rotateX(68deg) rotateZ(24deg);animation-duration:9s;animation-direction:reverse}
+.holo-energy-shells span:nth-child(3){inset:14% -7%;border-color:#5be2ff35;transform:rotateY(66deg) rotateZ(-24deg);animation-duration:16s}
+.holo-energy-shells i{position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#b4f7ff;box-shadow:0 0 9px 3px #59dfff77,0 0 22px #8a7cff66;transform-origin:0 0;animation:holoNodeOrbit 5.8s linear infinite}
+.holo-energy-shells i:last-child{width:3px;height:3px;background:#d6caff;animation-duration:3.9s;animation-direction:reverse}
+.holo-scan-plane{position:absolute;z-index:3;inset:8% 10% 16%;border-radius:50%;pointer-events:none;opacity:.28;background:repeating-linear-gradient(0deg,transparent 0 7px,#9ceeff13 8px,#9ceeff13 9px,transparent 10px 16px);mask-image:radial-gradient(ellipse at center,#000 0%,#000 48%,transparent 73%);animation:holoScanDrift 8s linear infinite}
+.holo-center-mark{z-index:4;width:13px;height:13px;background:#d6fbff;box-shadow:0 0 12px 5px #51d8ff88,0 0 32px 14px #5b63ff44,0 0 70px 28px #4dc8ff12;animation:holoCoreHeartbeat 3.4s ease-in-out infinite}
+.holo-center-mark span{inset:-12px;border-color:#a4f1ff88;box-shadow:0 0 14px #5bdcff20;animation:holoCoreBreath 2.6s ease-in-out infinite}
+.holo-center-mark i{position:absolute;inset:-22px;border:1px dashed #91caff55;border-radius:50%;animation:holoCoreBreath 4.2s ease-in-out infinite reverse}
+.holo-caption{z-index:5;padding:7px 12px;border:1px solid #a4d9ff18;border-radius:8px;background:linear-gradient(135deg,#10192a9c,#17152b8c);backdrop-filter:blur(12px) saturate(150%);-webkit-backdrop-filter:blur(12px) saturate(150%);box-shadow:0 8px 25px #0002,inset 0 1px 0 #ffffff0b}
+.spatial-dashboard{background:radial-gradient(ellipse at 50% 42%,#4d4bb82a 0%,transparent 39%),radial-gradient(ellipse at 7% 4%,#7543a426,transparent 39%),linear-gradient(145deg,#111626f0,#080b14f5 58%,#101322f0);border-color:#a7baff30;box-shadow:0 30px 100px #0007,inset 0 1px 0 #ffffff12,inset 0 0 70px #8d89ff05}
+.spatial-dashboard:after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,transparent 15%,#c5e7ff06 33%,transparent 48%,#c7bdff04 67%,transparent 82%);background-size:220% 100%;animation:spatialGlassSheen 18s linear infinite}
+.spatial-panel{background:linear-gradient(135deg,#252b42a6 0%,#151a2bd1 38%,#111525c9 72%,#25203b9c 100%);border-color:#b9caff30;box-shadow:0 18px 42px #0004,inset 0 1px 0 #ffffff12,inset 1px 0 0 #ffffff06;backdrop-filter:blur(24px) saturate(145%);-webkit-backdrop-filter:blur(24px) saturate(145%)}
+.spatial-panel:before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,#ffffff08,transparent 24%,transparent 68%,#a6a2ff08);opacity:.85}
+.spatial-panel-header,.spatial-panel-body{position:relative;z-index:1}
+.spatial-panel-header{background:linear-gradient(90deg,#ffffff08,transparent 72%);border-bottom-color:#c4d3ff19}
+.spatial-panel:hover{border-color:#b7b0ff69;box-shadow:0 24px 48px #0005,inset 0 1px 0 #ffffff19,0 0 28px #8982ff0a}
+.spatial-core-zone{border-color:#b0b4ff30;background:radial-gradient(ellipse at 50% 44%,#6460d12b,transparent 58%),linear-gradient(145deg,#22284168,#0a0e1ad9 75%);box-shadow:inset 0 1px 0 #ffffff12,inset 0 0 55px #9d9cff09,0 22px 55px #0003;backdrop-filter:blur(16px) saturate(135%);-webkit-backdrop-filter:blur(16px) saturate(135%)}
+.spatial-core-zone:before{inset:9px;border-color:#c5c9ff16;box-shadow:inset 0 0 24px #c4caff04}
+.spatial-grid-system .spatial-panel-body,.spatial-metric-grid>div,.spatial-activity-summary>div{background:linear-gradient(135deg,#ffffff08,#ffffff02);border-color:#c0ccff1b;box-shadow:inset 0 1px 0 #ffffff08}
+@keyframes holoShellOrbit{0%{rotate:0deg}100%{rotate:360deg}}
+@keyframes holoNodeOrbit{0%{transform:rotate(0deg) translateX(100px) rotate(0deg)}100%{transform:rotate(360deg) translateX(100px) rotate(-360deg)}}
+@keyframes holoScanDrift{0%{transform:translateY(-5px) rotate(-8deg);opacity:.12}50%{opacity:.34}100%{transform:translateY(5px) rotate(8deg);opacity:.12}}
+@keyframes holoCoreHeartbeat{0%,100%{scale:.9;filter:brightness(.95)}50%{scale:1.18;filter:brightness(1.25)}}
+@keyframes spatialGlassSheen{0%{background-position:150% 0}100%{background-position:-80% 0}}
+@media(prefers-reduced-motion:reduce){.holo-energy-shells span,.holo-energy-shells i,.holo-scan-plane,.holo-center-mark,.spatial-dashboard:after{animation:none!important}.holo-energy-shells span{rotate:0deg}}
