@@ -1087,6 +1087,7 @@ function App() {
       <SpatialDashboard
         status={status} coreMode={coreMode} busy={busy} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef}
         voiceMode={voiceMode} voiceMuted={voiceMuted} voiceState={voiceState} voiceTranscript={voiceTranscript}
+        input={input} onInputChange={setInput} onSendMessage={() => sendMessage()}
         chatHistory={chatHistory} currentChatId={currentChatId} onNewChat={startNewChat} onOpenChat={openSavedChat}
         onJump={(id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" })}
         capabilities={capabilities} capabilityError={capabilityError} tasks={tasks} taskNotice={taskNotice} pairing={pairing}
