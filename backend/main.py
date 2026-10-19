@@ -1026,8 +1026,10 @@ async def synthesize_speech(payload: TTSRequest, request: Request):
         logger.warning("Neural TTS unavailable: %s", exc)
         raise HTTPException(status_code=503, detail="Neural speech is temporarily unavailable.")
 
-def _retrieved_context(request: Request, message: str) -> list[dict]:
+def _retrieved_context(request: Request | None, message: str) -> list[dict]:
     """Retrieve only this browser session's indexed evidence; chat still works without a session."""
+    if request is None:
+        return []
     try:
         owner_id = session_owner(request)
         result = knowledge.search_knowledge(owner_id, message, limit=4)
@@ -1072,7 +1074,7 @@ async def knowledge_remove_source(source_id: str, request: Request):
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, request: Request):
+async def chat(payload: ChatRequest, request: Request | None = None):
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
@@ -1114,7 +1116,7 @@ async def chat(payload: ChatRequest, request: Request):
 
 
 @app.post("/api/chat/stream")
-async def chat_stream(payload: ChatRequest, request: Request):
+async def chat_stream(payload: ChatRequest, request: Request | None = None):
     """Server-sent events endpoint for incremental chat responses."""
     message = payload.message.strip()
     if not message:
