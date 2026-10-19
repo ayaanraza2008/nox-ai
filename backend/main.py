@@ -28,6 +28,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
     history: list[dict] = Field(default_factory=list, max_length=20)
+    images: list[str] = Field(default_factory=list, max_length=1)
 
 
 class ChatResponse(BaseModel):
@@ -177,7 +178,8 @@ def device_from_token(conn, token):
 
 
 
-async def provider_reply(message: str, language: str, history: list[dict]) -> str | None:
+async def provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None) -> str | None:
+    images = images or []
     messages = [
         {
             "role": "system",
@@ -200,7 +202,12 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
         content = item.get("content")
         if role in ("user", "assistant") and isinstance(content, str):
             messages.append({"role": role, "content": content[:4000]})
-    messages.append({"role": "user", "content": message})
+    if images:
+        user_content = [{"type": "text", "text": message}]
+        user_content.extend({"type": "image_url", "image_url": {"url": image}} for image in images)
+    else:
+        user_content = message
+    messages.append({"role": "user", "content": user_content})
 
     # Try configured providers in priority order. A failing key, quota, model, or
     # provider connection must not prevent NOX from trying the next configured API.
@@ -211,19 +218,20 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
             "name": "OpenRouter",
             "url": "https://openrouter.ai/api/v1/chat/completions",
             "key": openrouter_key,
-            "model": os.getenv("OPENROUTER_MODEL", "openrouter/free"),
+            "model": os.getenv("OPENROUTER_VISION_MODEL", os.getenv("OPENROUTER_MODEL", "openrouter/free")) if images else os.getenv("OPENROUTER_MODEL", "openrouter/free"),
             "headers": {
                 "HTTP-Referer": os.getenv("APP_URL", "https://nox-ai-vcqx.onrender.com"),
                 "X-Title": "NOX AI",
             },
         })
     groq_key = os.getenv("GROQ_API_KEY", "").strip()
-    if groq_key:
+    groq_vision_model = os.getenv("GROQ_VISION_MODEL", "").strip()
+    if groq_key and (not images or groq_vision_model):
         providers.append({
             "name": "Groq",
             "url": "https://api.groq.com/openai/v1/chat/completions",
             "key": groq_key,
-            "model": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "model": groq_vision_model if images else os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
             "headers": {},
         })
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -232,7 +240,7 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
             "name": "Gemini",
             "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
             "key": gemini_key,
-            "model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            "model": os.getenv("GEMINI_VISION_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-flash")) if images else os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
             "headers": {},
         })
 
@@ -792,8 +800,12 @@ async def chat(payload: ChatRequest):
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    if payload.images:
+        allowed_prefixes = ("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")
+        if any(not image.startswith(allowed_prefixes) or len(image) > 7_000_000 for image in payload.images):
+            raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
     try:
-        answer = await provider_reply(message, payload.language, payload.history)
+        answer = await provider_reply(message, payload.language, payload.history, payload.images)
     except httpx.TimeoutException as exc:
         logger.warning("AI provider timed out (%s)", type(exc).__name__)
         raise HTTPException(status_code=504, detail="The AI provider timed out. Please try again.")
@@ -810,6 +822,8 @@ async def chat(payload: ChatRequest):
         raise HTTPException(status_code=502, detail="NOX hit an unexpected AI backend error. Check the server logs.")
     if answer:
         return ChatResponse(reply=answer, mode="ai")
+    if payload.images:
+        raise HTTPException(status_code=503, detail="Image analysis requires a configured provider and a vision-capable model. Configure OPENROUTER_VISION_MODEL or GEMINI_VISION_MODEL.")
     return ChatResponse(
         reply=(
             "NOX is online in demo mode. To enable real AI responses, add an OPENROUTER_API_KEY "
@@ -831,7 +845,7 @@ async def capabilities():
         {"id": "research", "name": "Live Web Research", "status": "ready" if ai_configured else "setup_required", "detail": "Bounded public-web search and page reading through the configured AI provider." if ai_configured else "Add OPENROUTER_API_KEY to enable the autonomous research worker."},
         {"id": "coding", "name": "Coding Agent", "status": "setup_required", "detail": "Repository editing and isolated code execution are not exposed as a production tool yet."},
         {"id": "creative", "name": "Image & Video Studio", "status": "setup_required", "detail": "Generation/editing providers and media-processing workflows are not connected yet."},
-        {"id": "vision", "name": "Camera & Media Analysis", "status": "setup_required", "detail": "No backend vision-analysis provider is connected in this build."},
+        {"id": "vision", "name": "Image Understanding", "status": "limited" if ai_configured else "setup_required", "detail": "Single-image chat attachments are supported when a configured provider model supports vision. Configure OPENROUTER_VISION_MODEL or GEMINI_VISION_MODEL; provider/model availability varies."},
         {"id": "browser", "name": "Browser Navigation", "status": "limited", "detail": "Clear commands open recognized websites in a new tab without redundant confirmation; this does not automate clicks or forms. High-impact actions still require confirmation."},
         {"id": "desktop", "name": "Paired Device Actions", "status": "limited", "detail": "Authenticated paired companions report live heartbeats and real command outcomes. Windows can launch Start Menu apps and run an explicit allowlist of diagnostics; optional Home Assistant integration can control supported configured lights, switches, media players, climate, covers and vacuums. Launch requests are labelled as unverified unless the companion reports actual success. Devices must be powered, online, paired and running a compatible companion; arbitrary desktop control and universal power-on/off are not available."},
         {"id": "security", "name": "Cybersecurity Lab", "status": "setup_required", "detail": "Security checks must be implemented and scoped to authorized targets before use."},
