@@ -4,6 +4,65 @@ import { Activity, AudioLines, Bot, ChevronDown, Command, Mic, Pause, Play, Send
 import "./style.css";
 import SpatialDashboard from "./SpatialDashboard.jsx";
 
+function MotionEnhancements() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const cursor = document.querySelector(".nox-cursor");
+    const finePointer = window.matchMedia("(pointer: fine)").matches;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let pointerFrame = 0;
+    let pointerX = 0;
+    let pointerY = 0;
+    const onPointerMove = (event) => {
+      if (!finePointer || reduced || root.dataset.noxMotion === "off" || event.pointerType === "touch") return;
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      if (pointerFrame) return;
+      pointerFrame = window.requestAnimationFrame(() => {
+        if (cursor) cursor.style.transform = `translate3d(${pointerX}px, ${pointerY}px, 0)`;
+        pointerFrame = 0;
+      });
+    };
+    const onPointerDown = (event) => {
+      if (reduced || root.dataset.noxMotion === "off" || event.pointerType === "touch") return;
+      const target = event.target.closest("button, .nav-item, .spatial-nav-action, .spatial-task-item, .chat-history-item, summary");
+      if (!target || target.disabled || target.getAttribute("aria-disabled") === "true") return;
+      const rect = target.getBoundingClientRect();
+      const ripple = document.createElement("span");
+      ripple.className = "nox-interaction-ripple";
+      ripple.style.left = `${event.clientX - rect.left}px`;
+      ripple.style.top = `${event.clientY - rect.top}px`;
+      target.classList.add("nox-ripple-host");
+      target.appendChild(ripple);
+      ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
+    };
+    const revealTargets = ".spatial-panel, .capability-card, .task-row, .pairing-panel, .chat-panel, .task-panel";
+    let observer;
+    if ("IntersectionObserver" in window && !reduced && root.dataset.noxMotion !== "off") {
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("nox-revealed");
+          observer.unobserve(entry.target);
+        });
+      }, { threshold: 0.08, rootMargin: "0px 0px -24px 0px" });
+      document.querySelectorAll(revealTargets).forEach((element) => {
+        element.classList.add("nox-reveal-ready");
+        observer.observe(element);
+      });
+    }
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    document.addEventListener("pointerdown", onPointerDown, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerdown", onPointerDown);
+      if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
+      observer?.disconnect();
+    };
+  }, []);
+  return <div className="nox-cursor" aria-hidden="true" />;
+}
+
 function App() {
   const initialGreeting = { role: "assistant", content: "Systems initialized. I'm NOX. What are we working on today?" };
   const [messages, setMessages] = useState(() => {
@@ -150,7 +209,7 @@ function App() {
   const [pairDeviceName, setPairDeviceName] = useState(() => /Android|iPhone|iPad/i.test(navigator.userAgent) ? "NOX Mobile" : "NOX PC");
   const [pairNotice, setPairNotice] = useState("");
   const [pairBusy, setPairBusy] = useState(false);
-  const endRef = useRef(null);
+  const endRef = useRef(null);\n  const messagesContainerRef = useRef(null);\n  const shouldFollowChatRef = useRef(true);
   const chatAbortRef = useRef(null);
   const chatAbortReasonRef = useRef("");
   const recognitionRef = useRef(null);
@@ -173,7 +232,7 @@ function App() {
   const ttsDecayRef = useRef(0);
   const sharedHistoryReadyRef = useRef(false);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
+  useEffect(() => {\n    if (!shouldFollowChatRef.current) return;\n    endRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "end" });\n  }, [messages, busy]);\n\n  function jumpToSection(id) {\n    const target = document.getElementById(id);\n    if (!target) return;\n    target.classList.remove("nox-arrival");\n    target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });\n    window.requestAnimationFrame(() => target.classList.add("nox-arrival"));\n  }
 
   useEffect(() => {
     let active = true;
@@ -1069,7 +1128,7 @@ function App() {
     }
   }
 
-  return <div className="app-shell">
+  return <div className="app-shell">\n    <MotionEnhancements />
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><Zap size={20} fill="currentColor" /></div><div><b>NOX<span>AI</span></b><small>PERSONAL INTELLIGENCE</small></div></div>
       <div className="side-label">WORKSPACE</div>
@@ -1077,7 +1136,7 @@ function App() {
       <button className="nav-item" onClick={startNewChat}><Sparkles size={17} /> New chat</button>
       <div className="side-label">CHAT HISTORY</div>
       <div className="chat-history-list">{chatHistory.map((chat) => <div className={"chat-history-item" + (chat.id === currentChatId ? " current" : "")} key={chat.id}><button type="button" title={chat.title} onClick={() => openSavedChat(chat)}>{chat.title || "New conversation"}</button><button type="button" className="chat-history-delete" aria-label={"Delete chat " + (chat.title || "")} title="Delete chat" onClick={() => deleteSavedChat(chat.id)}>×</button></div>)}</div>
-      <button className="nav-item" onClick={() => document.getElementById("pairing-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><ShieldCheck size={17} /> Pair devices <span className="nav-dot" style={{ background: pairing ? "#65d7a1" : "#777" }} /></button>
+      <button className="nav-item" onClick={() => jumpToSection("pairing-panel")}><ShieldCheck size={17} /> Pair devices <span className="nav-dot" style={{ background: pairing ? "#65d7a1" : "#777" }} /></button>
       <div className="side-bottom"><div className="secure"><ShieldCheck size={17} /><div><b>Private by design</b><small>Keys stay on the server</small></div></div><div className="version">NOX CORE <span>v0.1.0</span></div></div>
     </aside>
     <main className="main">
@@ -1089,7 +1148,7 @@ function App() {
         voiceMode={voiceMode} voiceMuted={voiceMuted} voiceState={voiceState} voiceTranscript={voiceTranscript}
         input={input} onInputChange={setInput} onSendMessage={() => sendMessage()}
         chatHistory={chatHistory} currentChatId={currentChatId} onNewChat={startNewChat} onOpenChat={openSavedChat}
-        onJump={(id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+        onJump={jumpToSection}
         capabilities={capabilities} capabilityError={capabilityError} tasks={tasks} taskNotice={taskNotice} pairing={pairing}
         onStartVoiceMode={startVoiceMode} onStopVoiceMode={stopVoiceMode} onToggleVoiceMute={toggleVoiceMute} onInterruptVoice={interruptVoice} onControlTask={controlTask} onStopGeneration={stopGeneration} canStopGeneration={Boolean(chatAbortRef.current)}
       />
@@ -1121,7 +1180,7 @@ function App() {
         <div className="task-list">{tasks.length === 0 ? <p className="capability-message">No tasks yet. Create one above to test the queue.</p> : tasks.slice(0,8).map((task) => <article className="task-row" key={task.id}><div className="task-row-main"><div className="task-row-title"><b>{task.goal}</b><span className={"task-status task-" + task.status}>{task.status.replace("_"," ").toUpperCase()}</span></div><div className="task-progress"><span style={{width: task.progress + "%"}} /></div><div className="task-meta"><span>{task.progress}% · {task.attempts} attempt(s)</span><span>{new Date(task.updated_at).toLocaleTimeString()}</span></div>{task.error && <p className="task-error">{task.error}</p>}{task.result && <details className="task-result"><summary>View result</summary><p>{task.result}</p></details>}{task.events?.length > 0 && <details className="task-events"><summary>Execution log ({task.events.length})</summary>{task.events.slice(-5).map((entry,index)=><p key={index}><time>{new Date(entry.at).toLocaleTimeString()}</time> {entry.message}</p>)}</details>}</div><div className="task-actions">{task.status === "paused" ? <button title="Resume task" aria-label="Resume task" onClick={() => controlTask(task.id,"resume")}><Play size={14}/></button> : ["queued","running"].includes(task.status) ? <button title="Pause task" aria-label="Pause task" onClick={() => controlTask(task.id,"pause")}><Pause size={14}/></button> : null}{["queued","running","paused"].includes(task.status) && <button title="Cancel task" aria-label="Cancel task" onClick={() => controlTask(task.id,"cancel")}><XCircle size={14}/></button>}</div></article>)}</div>
       </section>
       <section className="chat-panel" id="chat-panel"><div className="panel-heading"><div><span className="tiny-icon"><AudioLines size={16} /></span><b>Conversation</b><small>Encrypted transport · API keys remain server-side</small></div><label className="language">LANGUAGE <select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="auto">Auto detect</option><option value="en">English</option><option value="hi">Hindi</option><option value="ur">Urdu</option><option value="hinglish">Hinglish</option></select></label></div>
-        <div className="messages">{messages.map((m, i) => <div className={"message " + m.role} key={i}><div className="avatar">{m.role === "assistant" ? <Bot size={17} /> : "YOU"}</div><div className="bubble"><div className="message-label">{m.role === "assistant" ? "NOX" : "YOU"}{m.mode === "demo" && <span className="demo-tag">DEMO</span>}</div><p>{m.content}</p>{m.role === "assistant" && <button type="button" className="message-speak" title="Play this reply aloud" aria-label="Play this reply aloud" onClick={() => speakText(m.content)}><Volume2 size={15} /> Listen</button>}</div></div>)}{busy && <div className="message assistant"><div className="avatar"><Bot size={17} /></div><div className="bubble"><div className="message-label">NOX</div><p className="typing">Processing<span>.</span><span>.</span><span>.</span></p></div></div>}<div ref={endRef} /></div>
+        <div className="messages" ref={messagesContainerRef} onScroll={(event) => { const el = event.currentTarget; shouldFollowChatRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96; }}>{messages.map((m, i) => <div className={"message " + m.role} key={i}><div className="avatar">{m.role === "assistant" ? <Bot size={17} /> : "YOU"}</div><div className="bubble"><div className="message-label">{m.role === "assistant" ? "NOX" : "YOU"}{m.mode === "demo" && <span className="demo-tag">DEMO</span>}</div><p>{m.content}</p>{m.role === "assistant" && <button type="button" className="message-speak" title="Play this reply aloud" aria-label="Play this reply aloud" onClick={() => speakText(m.content)}><Volume2 size={15} /> Listen</button>}</div></div>)}{busy && <div className="message assistant"><div className="avatar"><Bot size={17} /></div><div className="bubble"><div className="message-label">NOX</div><p className="typing">Processing<span>.</span><span>.</span><span>.</span></p></div></div>}<div ref={endRef} /></div>
         <div className={"voice-mode-panel " + (voiceMode ? "voice-mode-active" : "")} data-state={voiceState}>
           <div className="voice-orb-wrap"><div className={"voice-orb voice-orb-" + voiceState}><span /><span /><span /></div></div>
           <div className="voice-mode-copy"><b>{({ idle: "VOICE MODE", connecting: "CONNECTING", listening: "LISTENING", thinking: "THINKING", speaking: "NOX IS SPEAKING", interrupted: "PLAYBACK INTERRUPTED", muted: "MICROPHONE MUTED", error: "VOICE MODE ERROR" })[voiceState] || "VOICE MODE"}</b><small>{voiceMode ? "Mic active only in this session; your browser may process speech remotely." : "Start a hands-free conversation with NOX."}</small>{voiceMode && <p className="voice-transcript" aria-live="polite">{voiceTranscript}</p>}</div>
