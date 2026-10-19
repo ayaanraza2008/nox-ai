@@ -151,6 +151,8 @@ function App() {
   const [pairNotice, setPairNotice] = useState("");
   const [pairBusy, setPairBusy] = useState(false);
   const endRef = useRef(null);
+  const chatAbortRef = useRef(null);
+  const chatAbortReasonRef = useRef("");
   const recognitionRef = useRef(null);
   const sendMessageRef = useRef(null);
   const voiceRecognitionRef = useRef(null);
@@ -543,6 +545,13 @@ function App() {
     }
   }
 
+  function stopGeneration() {
+    if (!chatAbortRef.current) return;
+    chatAbortReasonRef.current = "user";
+    chatAbortRef.current.abort();
+    setStatus("GENERATION STOPPING");
+  }
+
   async function controlTask(taskId, action) {
     try {
       const response = await fetch(`/api/tasks/${taskId}/${action}`, { method: "POST" });
@@ -775,6 +784,8 @@ function App() {
     setStatus("PROCESSING REQUEST");
     try {
       const controller = new AbortController();
+      chatAbortRef.current = controller;
+      chatAbortReasonRef.current = "";
       const timeoutId = window.setTimeout(() => controller.abort(), 55000);
       let response;
       let data;
@@ -796,21 +807,29 @@ function App() {
         }
       } catch (requestError) {
         if (requestError.name === "AbortError") {
+          if (chatAbortReasonRef.current === "user") throw new Error("Generation stopped by you.");
           throw new Error("AI response timed out. Please try again; if it repeats, check the Render logs and OpenRouter model/key.");
         }
         throw requestError;
       } finally {
         window.clearTimeout(timeoutId);
+        if (chatAbortRef.current === controller) chatAbortRef.current = null;
       }
       if (!response.ok) throw new Error(data.detail || "Request failed");
       setMessages((old) => [...old, { role: "assistant", content: data.reply, mode: data.mode }]);
       setStatus(data.mode === "ai" ? "AI LINK ACTIVE" : "DEMO MODE");
       if (voiceModeRef.current || (speakReplies && !fromVoice)) speakText(data.reply);
     } catch (error) {
-      const detail = error?.message || "Network request failed";
-      setMessages((old) => [...old, { role: "assistant", content: "NOX couldn't get a reply: " + detail }]);
-      setStatus("CONNECTION ISSUE");
+      if (chatAbortReasonRef.current === "user") {
+        setStatus("GENERATION STOPPED");
+      } else {
+        const detail = error?.message || "Network request failed";
+        setMessages((old) => [...old, { role: "assistant", content: "NOX couldn't get a reply: " + detail }]);
+        setStatus("CONNECTION ISSUE");
+      }
     } finally {
+      if (chatAbortRef.current) chatAbortRef.current = null;
+      chatAbortReasonRef.current = "";
       setBusy(false);
       if (fromVoice || voiceModeRef.current) voiceRequestPendingRef.current = false;
     }
@@ -1071,7 +1090,7 @@ function App() {
         chatHistory={chatHistory} currentChatId={currentChatId} onNewChat={startNewChat} onOpenChat={openSavedChat}
         onJump={(id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" })}
         capabilities={capabilities} capabilityError={capabilityError} tasks={tasks} taskNotice={taskNotice} pairing={pairing}
-        onStartVoiceMode={startVoiceMode} onStopVoiceMode={stopVoiceMode} onToggleVoiceMute={toggleVoiceMute} onInterruptVoice={interruptVoice} onControlTask={controlTask}
+        onStartVoiceMode={startVoiceMode} onStopVoiceMode={stopVoiceMode} onToggleVoiceMute={toggleVoiceMute} onInterruptVoice={interruptVoice} onControlTask={controlTask} onStopGeneration={stopGeneration} canStopGeneration={Boolean(chatAbortRef.current)}
       />
       <section className="pairing-panel" id="pairing-panel">
         <div className="task-panel-heading"><div><span className="tiny-icon"><ShieldCheck size={16} /></span><b>Device Pairing</b><small>Connect your PC and mobile to the same NOX session</small></div><span className={"pair-status " + (pairing ? "paired" : "")}>{pairing ? "SESSION SAVED" : "NOT PAIRED"}</span></div>
