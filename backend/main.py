@@ -186,7 +186,7 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
             "name": "OpenRouter",
             "url": "https://openrouter.ai/api/v1/chat/completions",
             "key": openrouter_key,
-            "model": os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+            "model": os.getenv("OPENROUTER_MODEL", "openrouter/free"),
             "headers": {
                 "HTTP-Referer": os.getenv("APP_URL", "https://nox-ai-vcqx.onrender.com"),
                 "X-Title": "NOX AI",
@@ -222,7 +222,7 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
                 "Content-Type": "application/json",
                 **provider["headers"],
             }
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
                     response = await client.post(
                         provider["url"],
@@ -245,8 +245,13 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
                     # Log a short response body for diagnostics, never request headers/secrets.
                     logger.warning("%s returned HTTP %s: %s", provider["name"], response.status_code, response.text[:500])
                     failures.append(f"{provider['name']}: HTTP {response.status_code}")
-                    # Retry transient throttling/server errors once; otherwise try the next provider.
+                    # Retry once for transient errors. If the configured OpenRouter model
+                    # is unavailable, make one final attempt with OpenRouter's free-model router.
                     if response.status_code in (408, 429, 500, 502, 503, 504) and attempt == 0:
+                        continue
+                    if provider["name"] == "OpenRouter" and attempt == 1 and provider["model"] != "openrouter/free":
+                        provider["model"] = "openrouter/free"
+                        logger.warning("Configured OpenRouter model failed; retrying with openrouter/free")
                         continue
                     break
                 except httpx.TimeoutException as exc:
@@ -661,6 +666,12 @@ async def chat(payload: ChatRequest):
         # TLS, connection, or proxy failures without logging API keys or headers.
         logger.exception("AI provider connection failed (%s): %s", type(exc).__name__, str(exc))
         raise HTTPException(status_code=502, detail="Could not reach the AI provider. Check Render logs for the connection error.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Keep an unexpected provider/parser bug from becoming an opaque HTTP 500.
+        logger.exception("Unexpected /api/chat failure (%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="NOX hit an unexpected AI backend error. Check the server logs.")
     if answer:
         return ChatResponse(reply=answer, mode="ai")
     return ChatResponse(
