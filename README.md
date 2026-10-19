@@ -170,3 +170,25 @@ Open **3D LAB** from the command deck to explore the separate Three.js workspace
 ### Realistic model generation limits
 
 Solid mode displays the procedural mesh and its materials; it does not mean NOX has generated a photorealistic AI model. No text-to-3D API key or paid provider is required for the built-in examples. An actual AI model-generation provider and supported GLB/GLTF import can be added as a later phase after selecting a provider and reviewing its pricing, quotas, licensing, and key-storage requirements.
+
+
+## Autonomous Agent Swarm (initial bounded implementation)
+
+NOX includes a separate **Agent Swarm** workspace that accepts a complex objective, asks the configured AI provider for a structured plan, validates role assignments and dependency references, executes independent specialist tasks concurrently, passes completed dependency artifacts to downstream tasks, and asks an integration lead to produce one unified result. Job contracts, role/state, timestamps, events, results, and errors are stored in a separate SQLite database and scoped to the current browser session.
+
+### API and controls
+
+- `POST /api/swarm/jobs` with `{"goal":"...","language":"auto"}` creates a job (HTTP 202).
+- `GET /api/swarm/jobs?limit=20` lists the current session's jobs.
+- `GET /api/swarm/jobs/{job_id}` returns the plan, specialist statuses, event log, artifacts, and final result.
+- `POST /api/swarm/jobs/{job_id}/cancel` cancels unfinished in-process work.
+- The frontend's **AGENT SWARM** button opens the live node visualization; it polls actual job state rather than inventing progress percentages.
+
+### Configuration and limitations
+
+- Requires server-side `OPENROUTER_API_KEY`; optionally set `NOX_SWARM_MODEL` (defaults to `OPENROUTER_MODEL` or `openai/gpt-4o-mini`).
+- `NOX_SWARM_MAX_AGENTS` defaults to 3 (bounded 1–5); `NOX_SWARM_MAX_TASKS` defaults to 5 (bounded 2–8); `NOX_SWARM_TASK_TIMEOUT` defaults to 90 seconds (bounded 15–180).
+- Set `NOX_SWARM_DB` to a persistent disk path if swarm history must survive Render redeploys. Default is `/tmp/nox_swarm.sqlite3`, which may be ephemeral.
+- Each specialist is a separate provider call with a scoped role and task contract. The current version generates plans and text artifacts; it does **not** grant agents shell, repository-write, arbitrary browsing, deployment, purchase, messaging, image/video generation, or desktop-control tools. Agent role labels do not imply those integrations exist.
+- Independent tasks run concurrently up to the configured limit; dependency cycles are rejected. A failed dependency blocks dependent tasks, and a failed job does not claim a unified success. Cancellation is best-effort for in-flight provider requests. A server restart marks in-flight jobs failed rather than claiming they resumed.
+- This first phase uses bounded asyncio work within one application process, not a distributed durable queue. For multi-instance production use, add a shared job broker/worker system and database-level claim/lease semantics.
