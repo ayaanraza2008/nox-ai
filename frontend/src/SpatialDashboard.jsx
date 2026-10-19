@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Activity, AudioLines, Bot, Check, ChevronRight, Clock3, Command, Grip,
+  Activity, AudioLines, Bot, ChevronRight, Clock3, Command, Grip,
   Maximize2, Minimize2, Mic, Pin, PinOff, RotateCcw, ShieldCheck, Sparkles,
   X, Zap
 } from "lucide-react";
 import HolographicCore from "./HolographicCore.jsx";
 
-const PANEL_IDS = ["workspace", "system", "activity", "voice"];
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 function readStored(key, fallback) {
@@ -121,7 +120,8 @@ export default function SpatialDashboard({
     : busy ? "THINKING"
       : liveTasks.some((task) => task.status === "running") ? "WORKING"
         : status.includes("FAILED") || status.includes("UNAVAILABLE") ? "ATTENTION NEEDED" : "IDLE";
-  const coreVisualMode = busy && coreMode !== "NOX_SPEAKING" ? "PROCESSING" : coreMode;
+  const recentlyCompleted = tasks.some((task) => task.status === "completed" && Number.isFinite(Date.parse(task.updated_at || "")) && Date.now() - Date.parse(task.updated_at) < 2600);
+  const coreVisualMode = busy && coreMode !== "NOX_SPEAKING" ? "PROCESSING" : liveTasks.some((task) => task.status === "running") ? "WORKING" : recentlyCompleted ? "SUCCESS" : coreMode;
   const hiddenCount = hidden.length;
 
   return <section className={"spatial-dashboard" + (reducedMotion ? " motion-reduced" : "")} aria-label="NOX spatial command center">
