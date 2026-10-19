@@ -34,6 +34,14 @@ function App() {
   const [language, setLanguage] = useState("auto");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceState, setVoiceState] = useState("idle");
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const [voiceSpeed, setVoiceSpeed] = useState(1);
+  const [voiceVolume, setVoiceVolume] = useState(1);
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
   const [speakReplies, setSpeakReplies] = useState(true);
   const [status, setStatus] = useState("ALL SYSTEMS READY");
   const [accentColor, setAccentColor] = useState(() => {
@@ -144,6 +152,14 @@ function App() {
   const [pairBusy, setPairBusy] = useState(false);
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
+  const voiceRecognitionRef = useRef(null);
+  const voiceModeRef = useRef(false);
+  const voiceMutedRef = useRef(false);
+  const voiceRequestPendingRef = useRef(false);
+  const voiceSpeakingRef = useRef(false);
+  const voiceTranscriptRef = useRef("");
+  const voiceDebounceRef = useRef(0);
+  const voiceRestartRef = useRef(0);
   const [coreMode, setCoreMode] = useState("IDLE");
   const micLevelRef = useRef(0);
   const ttsLevelRef = useRef(0);
@@ -594,9 +610,22 @@ function App() {
     measure();
   }
 
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    const loadVoices = () => setAvailableVoices(window.speechSynthesis.getVoices());
+    loadVoices();
+    window.speechSynthesis.addEventListener?.("voiceschanged", loadVoices);
+    return () => window.speechSynthesis.removeEventListener?.("voiceschanged", loadVoices);
+  }, []);
+
   useEffect(() => () => {
+    voiceModeRef.current = false;
+    voiceMutedRef.current = true;
     listeningRef.current = false;
     recognitionRef.current?.stop();
+    voiceRecognitionRef.current?.stop();
+    window.clearTimeout(voiceDebounceRef.current);
+    window.clearTimeout(voiceRestartRef.current);
     stopMicMeter();
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     window.clearTimeout(ttsDecayRef.current);
@@ -614,6 +643,10 @@ function App() {
     const utterance = new SpeechSynthesisUtterance(text);
     const lang = getSpeechLanguage(text);
     utterance.lang = lang;
+    utterance.rate = voiceSpeed;
+    utterance.volume = voiceVolume;
+    const requestedVoice = availableVoices.find((voice) => voice.name === selectedVoiceName);
+    if (requestedVoice && requestedVoice.lang?.toLowerCase().startsWith(lang.split("-")[0].toLowerCase())) utterance.voice = requestedVoice;
     const chooseVoice = () => {
       const voices = synth.getVoices();
       const prefix = lang.toLowerCase().split("-")[0];
@@ -625,6 +658,8 @@ function App() {
     let speechPulseTimer = 0;
     let speechPulsePhase = 0;
     utterance.onstart = () => {
+      voiceSpeakingRef.current = true;
+      setVoiceState("speaking");
       setCoreMode("NOX_SPEAKING");
       setStatus("AI VOICE ACTIVE");
       // Keep the hologram visibly reactive even on browsers that omit onboundary.
@@ -642,6 +677,7 @@ function App() {
       ttsDecayRef.current = window.setTimeout(() => { ttsLevelRef.current = 0; }, 220);
     };
     utterance.onerror = () => {
+      voiceSpeakingRef.current = false;
       window.clearInterval(speechPulseTimer);
       ttsLevelRef.current = 0;
       setCoreMode("ERROR");
@@ -649,10 +685,17 @@ function App() {
       window.setTimeout(() => setCoreMode("IDLE"), 900);
     };
     utterance.onend = () => {
+      voiceSpeakingRef.current = false;
       window.clearInterval(speechPulseTimer);
       ttsLevelRef.current = 0;
       setCoreMode("IDLE");
       setStatus("AI LINK ACTIVE");
+      if (voiceModeRef.current && !voiceMutedRef.current) {
+        setVoiceState("listening");
+        scheduleVoiceRecognition(180);
+      } else if (!voiceModeRef.current) {
+        setVoiceState("idle");
+      }
     };
     const voices = synth.getVoices();
     if (voices.length) {
@@ -678,9 +721,15 @@ function App() {
     }
   }
 
-  async function sendMessage(text = input) {
+  async function sendMessage(text = input, fromVoice = false) {
     const value = text.trim();
     if (!value || busy) return;
+    if (fromVoice) {
+      voiceRequestPendingRef.current = true;
+      setVoiceTranscript(value);
+      setVoiceState("thinking");
+      setCoreMode("PROCESSING");
+    }
 
     // Route explicit action/search commands from chat through the same real command handler as Task Orchestrator.
     // Ordinary conversational messages continue to the AI chat endpoint.
@@ -693,11 +742,14 @@ function App() {
       setBusy(true);
       try {
         const outcome = await submitTask(null, value);
-        setMessages((old) => [...old, { role: "assistant", content: typeof outcome === "string" ? outcome : "Command handled. Check the task status for details." }]);
+        const commandReply = typeof outcome === "string" ? outcome : "Command handled. Check the task status for details.";
+        setMessages((old) => [...old, { role: "assistant", content: commandReply }]);
+        if (voiceModeRef.current) speakText(commandReply);
       } catch (error) {
         setMessages((old) => [...old, { role: "assistant", content: "Command failed: " + error.message }]);
       } finally {
         setBusy(false);
+        if (fromVoice) voiceRequestPendingRef.current = false;
       }
       return;
     }
@@ -739,14 +791,179 @@ function App() {
       if (!response.ok) throw new Error(data.detail || "Request failed");
       setMessages((old) => [...old, { role: "assistant", content: data.reply, mode: data.mode }]);
       setStatus(data.mode === "ai" ? "AI LINK ACTIVE" : "DEMO MODE");
-      if (speakReplies) speakText(data.reply);
+      if (speakReplies || voiceModeRef.current) speakText(data.reply);
     } catch (error) {
       const detail = error?.message || "Network request failed";
       setMessages((old) => [...old, { role: "assistant", content: "NOX couldn't get a reply: " + detail }]);
       setStatus("CONNECTION ISSUE");
     } finally {
       setBusy(false);
+      if (fromVoice) voiceRequestPendingRef.current = false;
     }
+  }
+
+  function scheduleVoiceRecognition(delay = 350) {
+    window.clearTimeout(voiceRestartRef.current);
+    voiceRestartRef.current = window.setTimeout(() => {
+      if (voiceModeRef.current && !voiceMutedRef.current && !voiceRequestPendingRef.current && !voiceSpeakingRef.current) {
+        startVoiceRecognition();
+      }
+    }, delay);
+  }
+
+  function startVoiceRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition || !voiceModeRef.current || voiceMutedRef.current || voiceRequestPendingRef.current || voiceSpeakingRef.current) return;
+    try { voiceRecognitionRef.current?.abort(); } catch {}
+    const recognition = new SpeechRecognition();
+    const lang = language === "hi" ? "hi-IN" : language === "ur" ? "ur-PK" : language === "hinglish" ? "hi-IN" : language === "en" ? "en-US" : "en-IN";
+    recognition.lang = lang;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => {
+      if (voiceModeRef.current && !voiceMutedRef.current) {
+        setVoiceState("listening");
+        setListening(true);
+        listeningRef.current = true;
+        setCoreMode("USER_LISTENING");
+      }
+    };
+    recognition.onresult = (event) => {
+      let finalChunk = "";
+      let interimChunk = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const item = event.results[i];
+        if (item.isFinal) finalChunk += item[0].transcript + " ";
+        else interimChunk += item[0].transcript;
+      }
+      if (finalChunk.trim()) {
+        voiceTranscriptRef.current = (voiceTranscriptRef.current + " " + finalChunk).trim();
+        setVoiceTranscript(voiceTranscriptRef.current);
+        window.clearTimeout(voiceDebounceRef.current);
+        voiceDebounceRef.current = window.setTimeout(async () => {
+          const transcript = voiceTranscriptRef.current.trim();
+          if (!transcript || !voiceModeRef.current || voiceMutedRef.current || voiceRequestPendingRef.current) return;
+          voiceTranscriptRef.current = "";
+          voiceRequestPendingRef.current = true;
+          try { await sendMessage(transcript, true); }
+          finally { voiceRequestPendingRef.current = false; }
+        }, 850);
+      } else if (interimChunk.trim()) {
+        setVoiceTranscript((voiceTranscriptRef.current ? voiceTranscriptRef.current + " " : "") + interimChunk.trim());
+      }
+    };
+    recognition.onerror = (event) => {
+      if (!voiceModeRef.current) return;
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setVoiceState("error");
+        setStatus("MICROPHONE PERMISSION DENIED");
+        stopVoiceMode();
+      } else if (event.error !== "no-speech" && event.error !== "aborted") {
+        setVoiceState("error");
+        setStatus("VOICE CONNECTION ISSUE");
+      }
+    };
+    recognition.onend = () => {
+      if (voiceRecognitionRef.current === recognition) voiceRecognitionRef.current = null;
+      listeningRef.current = false;
+      setListening(false);
+      if (voiceModeRef.current && !voiceMutedRef.current && !voiceRequestPendingRef.current && !voiceSpeakingRef.current) scheduleVoiceRecognition(300);
+    };
+    voiceRecognitionRef.current = recognition;
+    try { recognition.start(); }
+    catch { if (voiceModeRef.current) scheduleVoiceRecognition(700); }
+  }
+
+  async function startVoiceMode() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceState("error");
+      setStatus("VOICE RECOGNITION NOT SUPPORTED");
+      setVoiceTranscript("This browser does not support continuous speech recognition. Text chat remains available; try a supported desktop Chrome browser.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceState("error");
+      setVoiceTranscript("Microphone access requires HTTPS and a browser that supports audio capture.");
+      return;
+    }
+    try {
+      setVoiceState("connecting");
+      setVoiceTranscript("Requesting microphone permission…");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      if (!stream.getAudioTracks().length) throw new Error("No microphone track is available.");
+      startMicMeter(stream);
+      voiceModeRef.current = true;
+      voiceMutedRef.current = false;
+      setVoiceMode(true);
+      setVoiceMuted(false);
+      setVoiceState("listening");
+      setVoiceTranscript("Listening. Speak naturally; NOX will respond automatically.");
+      setStatus("VOICE SESSION ACTIVE");
+      startVoiceRecognition();
+    } catch (error) {
+      stopMicMeter();
+      voiceModeRef.current = false;
+      setVoiceMode(false);
+      setVoiceState("error");
+      setStatus("MICROPHONE UNAVAILABLE");
+      setVoiceTranscript(error?.name === "NotAllowedError" ? "Microphone permission was denied. Allow microphone access in your browser settings, then try again." : "Could not start the microphone. Check that a microphone is connected and not blocked by another app.");
+    }
+  }
+
+  function stopVoiceMode() {
+    voiceModeRef.current = false;
+    voiceMutedRef.current = false;
+    voiceSpeakingRef.current = false;
+    voiceRequestPendingRef.current = false;
+    setVoiceMode(false);
+    setVoiceMuted(false);
+    setVoiceState("idle");
+    setListening(false);
+    listeningRef.current = false;
+    window.clearTimeout(voiceDebounceRef.current);
+    window.clearTimeout(voiceRestartRef.current);
+    try { voiceRecognitionRef.current?.abort(); } catch {}
+    voiceRecognitionRef.current = null;
+    try { recognitionRef.current?.stop(); } catch {}
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    stopMicMeter();
+    setCoreMode("IDLE");
+    setStatus("VOICE SESSION ENDED");
+  }
+
+  function toggleVoiceMute() {
+    if (!voiceModeRef.current) return;
+    const nextMuted = !voiceMutedRef.current;
+    voiceMutedRef.current = nextMuted;
+    setVoiceMuted(nextMuted);
+    window.clearTimeout(voiceRestartRef.current);
+    if (nextMuted) {
+      try { voiceRecognitionRef.current?.abort(); } catch {}
+      voiceRecognitionRef.current = null;
+      stopMicMeter();
+      setListening(false);
+      listeningRef.current = false;
+      setVoiceState("muted");
+      setVoiceTranscript("Microphone muted.");
+    } else {
+      setVoiceState("connecting");
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+        .then((stream) => { if (!voiceModeRef.current || voiceMutedRef.current) { stream.getTracks().forEach((track) => track.stop()); return; } startMicMeter(stream); startVoiceRecognition(); })
+        .catch(() => { setVoiceState("error"); setVoiceTranscript("Microphone could not be re-enabled. Check browser permissions."); });
+    }
+  }
+
+  function interruptVoice() {
+    window.clearTimeout(voiceDebounceRef.current);
+    voiceTranscriptRef.current = "";
+    voiceSpeakingRef.current = false;
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    setVoiceState("interrupted");
+    setCoreMode("IDLE");
+    setVoiceTranscript("Playback stopped. You can speak now.");
+    if (voiceModeRef.current && !voiceMutedRef.current) scheduleVoiceRecognition(150);
   }
 
   async function toggleMic() {
@@ -857,8 +1074,14 @@ function App() {
       </section>
       <section className="chat-panel"><div className="panel-heading"><div><span className="tiny-icon"><AudioLines size={16} /></span><b>Conversation</b><small>Encrypted transport · API keys remain server-side</small></div><label className="language">LANGUAGE <select value={language} onChange={(e) => setLanguage(e.target.value)}><option value="auto">Auto detect</option><option value="en">English</option><option value="hi">Hindi</option><option value="ur">Urdu</option><option value="hinglish">Hinglish</option></select></label></div>
         <div className="messages">{messages.map((m, i) => <div className={"message " + m.role} key={i}><div className="avatar">{m.role === "assistant" ? <Bot size={17} /> : "YOU"}</div><div className="bubble"><div className="message-label">{m.role === "assistant" ? "NOX" : "YOU"}{m.mode === "demo" && <span className="demo-tag">DEMO</span>}</div><p>{m.content}</p>{m.role === "assistant" && <button type="button" className="message-speak" title="Play this reply aloud" aria-label="Play this reply aloud" onClick={() => speakText(m.content)}><Volume2 size={15} /> Listen</button>}</div></div>)}{busy && <div className="message assistant"><div className="avatar"><Bot size={17} /></div><div className="bubble"><div className="message-label">NOX</div><p className="typing">Processing<span>.</span><span>.</span><span>.</span></p></div></div>}<div ref={endRef} /></div>
-        <form className="composer" onSubmit={(e) => { e.preventDefault(); sendMessage(); }}><button type="button" className={"icon-button mic " + (listening ? "recording" : "")} title="Voice input" onClick={toggleMic}><Mic size={18} /></button><input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message NOX... / NOX से कुछ पूछें" /><button type="button" className={"icon-button voice " + (speakReplies ? "enabled" : "")} title="Toggle voice replies" onClick={() => setSpeakReplies(!speakReplies)}>{speakReplies ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="send-button" type="submit" disabled={busy || !input.trim()}><Send size={17} /><span>Send</span></button></form>
-        <div className="composer-foot"><span><Activity size={13} /> {listening ? "LISTENING…" : "READY FOR INPUT"}</span><span>{speakReplies ? "VOICE REPLIES ON" : "VOICE REPLIES OFF"} · AI quality depends on configured provider</span></div>
+        <div className={"voice-mode-panel " + (voiceMode ? "voice-mode-active" : "")} data-state={voiceState}>
+          <div className="voice-orb-wrap"><div className={"voice-orb voice-orb-" + voiceState}><span /><span /><span /></div></div>
+          <div className="voice-mode-copy"><b>{({ idle: "VOICE MODE", connecting: "CONNECTING", listening: "LISTENING", thinking: "THINKING", speaking: "NOX IS SPEAKING", interrupted: "PLAYBACK INTERRUPTED", muted: "MICROPHONE MUTED", error: "VOICE MODE ERROR" })[voiceState] || "VOICE MODE"}</b><small>{voiceMode ? "Microphone capture is active only during this session." : "Start a hands-free conversation with NOX."}</small>{voiceMode && <p className="voice-transcript" aria-live="polite">{voiceTranscript}</p>}</div>
+          <div className="voice-mode-controls">{!voiceMode ? <button type="button" className="voice-primary" onClick={startVoiceMode}><Mic size={15} /> Start Voice Mode</button> : <><button type="button" className={"voice-control " + (voiceMuted ? "active" : "")} onClick={toggleVoiceMute} title={voiceMuted ? "Unmute microphone" : "Mute microphone"} aria-label={voiceMuted ? "Unmute microphone" : "Mute microphone"}>{voiceMuted ? <VolumeX size={16} /> : <Mic size={16} />}</button><button type="button" className="voice-control" onClick={interruptVoice} title="Interrupt AI speech" aria-label="Interrupt AI speech"><Pause size={16} /></button><button type="button" className="voice-end" onClick={stopVoiceMode}><XCircle size={15} /> End</button></>}</div>
+          <div className="voice-settings"><label>Speed <input aria-label="Voice speed" type="range" min="0.75" max="1.25" step="0.05" value={voiceSpeed} onChange={(e) => setVoiceSpeed(Number(e.target.value))} /><span>{voiceSpeed.toFixed(2)}×</span></label><label>Volume <input aria-label="Voice volume" type="range" min="0" max="1" step="0.1" value={voiceVolume} onChange={(e) => setVoiceVolume(Number(e.target.value))} /><span>{Math.round(voiceVolume * 100)}%</span></label><label>Voice <select aria-label="Speech voice" value={selectedVoiceName} onChange={(e) => setSelectedVoiceName(e.target.value)}><option value="">Auto select</option>{availableVoices.map((voice) => <option key={voice.voiceURI || voice.name} value={voice.name}>{voice.name} · {voice.lang}</option>)}</select></label></div>
+        </div>
+        <form className="composer" onSubmit={(e) => { e.preventDefault(); sendMessage(); }}><button type="button" className={"icon-button mic " + (listening ? "recording" : "")} title="Voice input (single turn)" aria-label="Voice input (single turn)" onClick={toggleMic}><Mic size={18} /></button><input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message NOX... / NOX से कुछ पूछें" /><button type="button" className={"icon-button voice " + (speakReplies ? "enabled" : "")} title="Toggle voice replies" aria-label="Toggle voice replies" onClick={() => setSpeakReplies(!speakReplies)}>{speakReplies ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="send-button" type="submit" disabled={busy || !input.trim()}><Send size={17} /><span>Send</span></button></form>
+        <div className="composer-foot"><span><Activity size={13} /> {voiceMode ? (voiceMuted ? "MICROPHONE MUTED" : voiceState.toUpperCase()) : listening ? "LISTENING…" : "READY FOR INPUT"}</span><span>{voiceMode ? "VOICE SESSION · BROWSER SPEECH ENGINE" : speakReplies ? "VOICE REPLIES ON" : "VOICE REPLIES OFF"} · AI quality depends on configured provider</span></div>
       </section>
       <footer><span>© 2026 NOX AI</span><span>BUILT FOR FOCUS <ChevronDown size={12} /></span></footer>
     </main>
