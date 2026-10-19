@@ -218,3 +218,10 @@ Both utilities enforce input limits and are covered by automated tests. This is 
 ### Agent Swarm live updates
 
 The Agent Swarm workspace subscribes to `GET /api/swarm/jobs/{job_id}/events`, a same-origin Server-Sent Events stream. It emits the latest persisted job snapshot when the job changes and closes when the job reaches a terminal state or the browser disconnects. The stream is scoped to the existing HttpOnly browser session; a missing or foreign job is rejected before streaming. Browsers without EventSource support, or where the stream disconnects, fall back to bounded status polling. This improves UI responsiveness without introducing a WebSocket server or claiming distributed-worker support.
+
+
+## Project Workspace (approval-gated snapshots)
+
+NOX includes a browser-session-scoped Project Workspace for reviewing user-supplied source snapshots. Create a project, paste/save relative-path files (maximum 100 files per project, 50,000 characters per file), draft replacement content, inspect the generated unified diff, and explicitly approve or reject the proposal. Approval updates only the saved SQLite workspace snapshot and increments its version; it never writes to the user's computer, a Git repository, or a deployed service. A patch is rejected as stale if the underlying file changed since the diff was created. Workspace project and patch APIs require the existing HttpOnly `nox_session` cookie and enforce per-session ownership.
+
+The built-in validation endpoint parses Python syntax or standard JSON only; it does not execute code or claim runtime tests passed. Other file extensions are stored as text without an implied validator. Path traversal, absolute paths, hidden paths, oversized input, and excessive project/file counts are rejected. By default the workspace database is `/tmp/nox_workspace.sqlite3`; configure `NOX_WORKSPACE_DB` to a path on a mounted persistent disk if history must survive host restarts. This feature is a controlled snapshot/review workflow, not a live filesystem, repository connector, shell, sandbox, or deployment agent.
