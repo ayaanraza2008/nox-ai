@@ -15,13 +15,21 @@ function App() {
   const [chatHistory, setChatHistory] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("nox-chat-history") || "[]");
-      return Array.isArray(saved) ? saved.slice(0, 30) : [];
+      return Array.isArray(saved) ? saved : [];
     } catch { return []; }
   });
   const [currentChatId, setCurrentChatId] = useState(() => {
     try { return localStorage.getItem("nox-current-chat-id") || crypto.randomUUID(); }
     catch { return String(Date.now()); }
   });
+  const [chatProfileId] = useState(() => {
+    try {
+      let id = localStorage.getItem("nox-chat-profile-id");
+      if (!id) { id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2); localStorage.setItem("nox-chat-profile-id", id); }
+      return id;
+    } catch { return String(Date.now()); }
+  });
+  const [persistentHistoryReady, setPersistentHistoryReady] = useState(false);
   const [input, setInput] = useState("");
   const [language, setLanguage] = useState("auto");
   const [busy, setBusy] = useState(false);
@@ -40,12 +48,46 @@ function App() {
       const titleMessage = messages.find((item) => item.role === "user")?.content || "New conversation";
       const entry = { id: currentChatId, title: titleMessage.slice(0, 64), updatedAt: new Date().toISOString(), messages: messages.slice(-300) };
       setChatHistory((old) => {
-        const next = [entry, ...old.filter((item) => item.id !== currentChatId)].slice(0, 30);
+        const next = [entry, ...old.filter((item) => item.id !== currentChatId)];
         try { localStorage.setItem("nox-chat-history", JSON.stringify(next)); } catch {}
         return next;
       });
     } catch {}
   }, [messages, currentChatId]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/chats?user_id=" + encodeURIComponent(chatProfileId))
+      .then((response) => { if (!response.ok) throw new Error("Persistent history unavailable"); return response.json(); })
+      .then((data) => {
+        if (!active) return;
+        const remote = Array.isArray(data.chats) ? data.chats : [];
+        setChatHistory((local) => {
+          const merged = new Map();
+          [...remote, ...local].forEach((chat) => {
+            const previous = merged.get(chat.id);
+            if (!previous || String(chat.updatedAt || "") > String(previous.updatedAt || "")) merged.set(chat.id, chat);
+          });
+          const next = [...merged.values()].sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+          try { localStorage.setItem("nox-chat-history", JSON.stringify(next)); } catch {}
+          return next;
+        });
+        const current = remote.find((chat) => chat.id === localStorage.getItem("nox-current-chat-id"));
+        if (current && Array.isArray(current.messages) && current.messages.length) setMessages(current.messages);
+        setPersistentHistoryReady(true);
+      })
+      .catch(() => { if (active) setPersistentHistoryReady(true); });
+    return () => { active = false; };
+  }, [chatProfileId]);
+
+  useEffect(() => {
+    if (!persistentHistoryReady || !messages.length) return;
+    const title = messages.find((item) => item.role === "user")?.content || "New conversation";
+    const payload = { chat_id: currentChatId, title: title.slice(0, 120), updated_at: new Date().toISOString(), messages: messages.slice(-300) };
+    fetch("/api/chats?user_id=" + encodeURIComponent(chatProfileId), {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    }).catch(() => setStatus("CHAT SAVE DELAYED · CHECK CONNECTION"));
+  }, [messages, currentChatId, chatProfileId, persistentHistoryReady]);
 
   function startNewChat() {
     const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
@@ -60,6 +102,13 @@ function App() {
   }
 
   async function deleteSavedChat(id) {
+    try {
+      const response = await fetch("/api/chats/" + encodeURIComponent(id) + "?user_id=" + encodeURIComponent(chatProfileId), { method: "DELETE" });
+      if (!response.ok) throw new Error("Could not delete chat from database");
+    } catch {
+      setStatus("CHAT DELETE FAILED · RETRY");
+      return;
+    }
     if (pairing?.session_id && pairing?.device_token) {
       try {
         await fetch("/api/pairing/history/" + encodeURIComponent(id) + "?session_id=" + encodeURIComponent(pairing.session_id), {
