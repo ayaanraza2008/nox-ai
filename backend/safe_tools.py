@@ -40,7 +40,7 @@ def _number(node: ast.AST) -> float | int:
             value = _BINOPS[type(node.op)](left, right)
         except (OverflowError, ZeroDivisionError, ValueError) as exc:
             raise SafeToolError("That calculation is outside the supported range.") from exc
-        if not isinstance(value, (int, float)) or not math.isfinite(value) or abs(value) > 1e100:
+        if not isinstance(value, (int, float)) or abs(value) > 1e100 or (isinstance(value, float) and not math.isfinite(value)):
             raise SafeToolError("Result is outside the supported numeric range.")
         return value
     raise SafeToolError("Use only numbers, parentheses, and +, -, *, /, //, %, ** operators.")
@@ -80,13 +80,17 @@ def analyze_text(value: str) -> dict[str, Any]:
     }
 
 
+def _reject_json_constant(value: str):
+    raise SafeToolError("JSON must not contain NaN or Infinity; use standard JSON values.")
+
+
 def validate_json(value: str) -> dict[str, Any]:
     if len(value) > 10000:
         raise SafeToolError("JSON input is limited to 10,000 characters.")
     if not value.strip():
         raise SafeToolError("Paste JSON to validate or format.")
     try:
-        parsed = json.loads(value)
+        parsed = json.loads(value, parse_constant=_reject_json_constant)
     except json.JSONDecodeError as exc:
         raise SafeToolError(f"Invalid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
     pretty = json.dumps(parsed, ensure_ascii=False, indent=2, allow_nan=False)
