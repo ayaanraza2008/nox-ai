@@ -94,8 +94,19 @@ class TaskManager:
                 id TEXT PRIMARY KEY, goal TEXT NOT NULL, language TEXT NOT NULL,
                 status TEXT NOT NULL, progress INTEGER NOT NULL, result TEXT,
                 error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                events TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0
+                events TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+                owner_id TEXT NOT NULL DEFAULT ''
             )""")
+            # Migrate databases created before per-browser task ownership existed.
+            if db.postgres:
+                columns = {row["column_name"] for row in db.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema=current_schema() AND table_name='tasks'"
+                ).fetchall()}
+            else:
+                columns = {row["name"] for row in db.execute("PRAGMA table_info(tasks)").fetchall()}
+            if "owner_id" not in columns:
+                db.execute("ALTER TABLE tasks ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''")
 
     def _row(self, row):
         if not row:
@@ -116,12 +127,12 @@ class TaskManager:
     def _save(self, item: dict[str, Any]):
         with self._connect() as db:
             db.execute("""INSERT INTO tasks
-              (id,goal,language,status,progress,result,error,created_at,updated_at,events,attempts)
-              VALUES (:id,:goal,:language,:status,:progress,:result,:error,:created_at,:updated_at,:events,:attempts)
+              (id,goal,language,status,progress,result,error,created_at,updated_at,events,attempts,owner_id)
+              VALUES (:id,:goal,:language,:status,:progress,:result,:error,:created_at,:updated_at,:events,:attempts,:owner_id)
               ON CONFLICT(id) DO UPDATE SET
               status=excluded.status,progress=excluded.progress,result=excluded.result,
               error=excluded.error,updated_at=excluded.updated_at,events=excluded.events,
-              attempts=excluded.attempts""", {**item, "events": json.dumps(item["events"])})
+              attempts=excluded.attempts,owner_id=excluded.owner_id""", {**item, "events": json.dumps(item["events"])})
 
     async def start(self):
         # A process restart cannot safely resume an in-flight network request.
@@ -167,26 +178,37 @@ class TaskManager:
             runner.cancel()
         self.runners.clear()
 
-    async def create(self, goal: str, language: str) -> dict[str, Any]:
+    async def create(self, goal: str, language: str, owner_id: str = "") -> dict[str, Any]:
         task_id = uuid.uuid4().hex
-        item = {"id": task_id, "goal": goal, "language": language, "status": "queued",
-                "progress": 0, "result": None, "error": None, "created_at": utcnow(),
-                "updated_at": utcnow(), "events": [], "attempts": 0}
+        item = {"id": task_id, "goal": goal, "language": language, "owner_id": owner_id,
+                "status": "queued", "progress": 0, "result": None, "error": None,
+                "created_at": utcnow(), "updated_at": utcnow(), "events": [], "attempts": 0}
         self._event(item, "Task accepted and added to the queue.")
         self._save(item)
         await self.queue.put(task_id)
         return item
 
-    def get(self, task_id: str):
-        return self._get(task_id)
+    def get(self, task_id: str, owner_id: str | None = None):
+        item = self._get(task_id)
+        if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
+            return None
+        return item
 
-    def list(self, limit: int = 50):
+    def list(self, limit: int = 50, owner_id: str | None = None):
         with self._connect() as db:
-            rows = db.execute("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+            if owner_id is None:
+                rows = db.execute("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT * FROM tasks WHERE owner_id=? ORDER BY created_at DESC LIMIT ?",
+                    (owner_id, limit),
+                ).fetchall()
         return [self._row(row) for row in rows]
 
-    async def pause(self, task_id: str):
+    async def pause(self, task_id: str, owner_id: str | None = None):
         item = self._get(task_id)
+        if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
+            return None
         if not item:
             return None
         if item["status"] not in ("queued", "running"):
@@ -198,8 +220,10 @@ class TaskManager:
         self._save(item)
         return item
 
-    async def resume(self, task_id: str):
+    async def resume(self, task_id: str, owner_id: str | None = None):
         item = self._get(task_id)
+        if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
+            return None
         if not item:
             return None
         if item["status"] != "paused":
@@ -213,8 +237,10 @@ class TaskManager:
             await self.queue.put(task_id)
         return item
 
-    async def cancel(self, task_id: str):
+    async def cancel(self, task_id: str, owner_id: str | None = None):
         item = self._get(task_id)
+        if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
+            return None
         if not item:
             return None
         if item["status"] in ("completed", "failed", "cancelled"):
