@@ -26,6 +26,38 @@ jobs:
         run: python -m unittest discover -s desktop-companion/tests -v
       - name: Validate deployed frontend
         run: test -s frontend/dist/index.html
+      - name: Validate inline frontend JavaScript syntax
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          class ScriptExtractor(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.in_script = False
+                  self.current = []
+                  self.scripts = []
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() == "script":
+                      self.in_script = True
+                      self.current = []
+              def handle_data(self, data):
+                  if self.in_script:
+                      self.current.append(data)
+              def handle_endtag(self, tag):
+                  if tag.lower() == "script" and self.in_script:
+                      content = "".join(self.current).strip()
+                      if content:
+                          self.scripts.append(content)
+                      self.in_script = False
+          parser = ScriptExtractor()
+          parser.feed(Path("frontend/dist/index.html").read_text(encoding="utf-8"))
+          if not parser.scripts:
+              raise SystemExit("No inline JavaScript found")
+          Path("/tmp/nox-inline.js").write_text("\\n;\\n".join(parser.scripts), encoding="utf-8")
+          print(f"Extracted {len(parser.scripts)} inline script block(s)")
+          PY
+          node --check /tmp/nox-inline.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
