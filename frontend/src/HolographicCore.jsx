@@ -72,13 +72,15 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       const listening = activeMode === "USER_LISTENING";
       const thinking = activeMode === "PROCESSING" || activeMode === "THINKING";
       const working = activeMode === "WORKING";
+      const success = activeMode === "SUCCESS";
       const error = activeMode === "ERROR";
       const target = Math.max(0, Math.min(1, sourceLevel));
       smoothed += (target - smoothed) * (target > smoothed ? 0.24 : 0.075);
       // Quiet, restrained motion while thinking; a stronger orbit while executing.
       const targetStatePulse = thinking ? (0.12 + 0.08 * (0.5 + 0.5 * Math.sin(time * 2.2)))
         : working ? (0.22 + 0.12 * (0.5 + 0.5 * Math.sin(time * 3.1)))
-          : error ? 0.06 : 0;
+          : success ? (0.38 + 0.24 * (0.5 + 0.5 * Math.sin(time * 5.2)))
+            : error ? 0.06 : 0;
       // Ease state changes in and out instead of snapping between visual presets.
       statePulse += (targetStatePulse - statePulse) * (targetStatePulse > statePulse ? 0.045 : 0.025);
       const energy = Math.max(smoothed, statePulse);
@@ -92,7 +94,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       const cy = height / 2;
       const radius = Math.min(width * 0.36, height * 0.42, 132) * (1 + energy * 0.11);
       const glow = ctx.createRadialGradient(cx, cy, radius * 0.04, cx, cy, radius * 1.32);
-      const coreTint = error ? "255, 86, 105" : working ? "255, 150, 92" : "72, 194, 255";
+      const coreTint = error ? "255, 86, 105" : success ? "202, 244, 255" : working ? "255, 150, 92" : "72, 194, 255";
       glow.addColorStop(0, `rgba(${coreTint}, ${0.07 + energy * 0.16})`);
       glow.addColorStop(0.55, `rgba(120, 72, 255, ${0.035 + energy * 0.07})`);
       glow.addColorStop(1, "rgba(40, 100, 255, 0)");
@@ -284,7 +286,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       : mode === "USER_LISTENING" ? "LISTENING"
         : mode === "PROCESSING" || mode === "THINKING" ? "THINKING"
           : mode === "WORKING" ? "EXECUTING TASK"
-            : mode === "ERROR" ? "VOICE ISSUE" : "CORE IDLE";
+            : mode === "SUCCESS" ? "TASK COMPLETE"
+              : mode === "ERROR" ? "VOICE ISSUE" : "CORE IDLE";
 
   return <div className={`holo-stage holo-${mode.toLowerCase().replaceAll("_", "-")}`} aria-label={`NOX holographic core: ${label}`}>
     <canvas className="holo-canvas" ref={canvasRef} aria-hidden="true" />
