@@ -832,11 +832,19 @@ function App() {
     };
 
     try {
-      const response = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.slice(0, 2500), language: lang, rate: voiceSpeed })
-      });
+      const ttsController = new AbortController();
+      const ttsTimeoutId = window.setTimeout(() => ttsController.abort(), 12000);
+      let response;
+      try {
+        response = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text.slice(0, 2500), language: lang, rate: voiceSpeed }),
+          signal: ttsController.signal
+        });
+      } finally {
+        window.clearTimeout(ttsTimeoutId);
+      }
       if (!response.ok) throw new Error("Neural TTS endpoint unavailable");
       const blob = await response.blob();
       if (!blob.size) throw new Error("Neural TTS returned empty audio");
