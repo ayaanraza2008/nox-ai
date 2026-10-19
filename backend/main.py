@@ -63,7 +63,7 @@ _HINGLISH_TTS_WORDS = {
     "kar": "कर", "karo": "करो", "karta": "करता", "karti": "करती",
     "karte": "करते", "karna": "करना", "karunga": "करूँगा",
     "karungi": "करूँगी", "sakta": "सकता", "sakti": "सकती",
-    "sakte": "सकते", "raha": "रहा", "rahi": "रही", "rahe": "रहे", "chal": "चल", "chalta": "चलता", "chalti": "चलती", "chale": "चले",
+    "sakte": "सकते", "do": "दो", "raha": "रहा", "rahi": "रही", "rahe": "रहे", "chal": "चल", "chalta": "चलता", "chalti": "चलती", "chale": "चले",
     "mera": "मेरा", "ka": "का", "ki": "की", "ke": "के", "ko": "को",
     "se": "से", "par": "पर", "aur": "और", "lekin": "लेकिन",
     "liye": "लिए", "kyunki": "क्योंकि", "jab": "जब", "ab": "अब",
@@ -76,7 +76,7 @@ _HINGLISH_TTS_WORDS = {
 
 def normalize_hinglish_for_tts(text: str) -> str:
     """Convert common Roman Hindi words to Devanagari for Hindi TTS, preserving English terms."""
-    if not text or re.search(r"[\u0900-\u097F\u0600-\u06FF]", text):
+    if not text or re.search(r"[\u0600-\u06FF]", text):
         return text
     words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
     hindi_hits = sum(1 for word in words if word in _HINGLISH_TTS_WORDS)
