@@ -808,7 +808,7 @@ function App() {
       setStatus("CONNECTION ISSUE");
     } finally {
       setBusy(false);
-      if (fromVoice) voiceRequestPendingRef.current = false;
+      if (fromVoice || voiceModeRef.current) voiceRequestPendingRef.current = false;
     }
   }
 
