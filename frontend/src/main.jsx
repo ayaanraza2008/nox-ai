@@ -1071,7 +1071,7 @@ function App() {
         chatHistory={chatHistory} currentChatId={currentChatId} onNewChat={startNewChat} onOpenChat={openSavedChat}
         onJump={(id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" })}
         capabilities={capabilities} capabilityError={capabilityError} tasks={tasks} taskNotice={taskNotice} pairing={pairing}
-        onStartVoiceMode={startVoiceMode} onStopVoiceMode={stopVoiceMode} onToggleVoiceMute={toggleVoiceMute} onInterruptVoice={interruptVoice}
+        onStartVoiceMode={startVoiceMode} onStopVoiceMode={stopVoiceMode} onToggleVoiceMute={toggleVoiceMute} onInterruptVoice={interruptVoice} onControlTask={controlTask}
       />
       <section className="pairing-panel" id="pairing-panel">
         <div className="task-panel-heading"><div><span className="tiny-icon"><ShieldCheck size={16} /></span><b>Device Pairing</b><small>Connect your PC and mobile to the same NOX session</small></div><span className={"pair-status " + (pairing ? "paired" : "")}>{pairing ? "SESSION SAVED" : "NOT PAIRED"}</span></div>
