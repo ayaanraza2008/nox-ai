@@ -210,7 +210,9 @@ function App() {
   const [pairDeviceName, setPairDeviceName] = useState(() => /Android|iPhone|iPad/i.test(navigator.userAgent) ? "NOX Mobile" : "NOX PC");
   const [pairNotice, setPairNotice] = useState("");
   const [pairBusy, setPairBusy] = useState(false);
-  const endRef = useRef(null);\n  const messagesContainerRef = useRef(null);\n  const shouldFollowChatRef = useRef(true);
+  const endRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const shouldFollowChatRef = useRef(true);
   const chatAbortRef = useRef(null);
   const chatAbortReasonRef = useRef("");
   const recognitionRef = useRef(null);
@@ -233,7 +235,18 @@ function App() {
   const ttsDecayRef = useRef(0);
   const sharedHistoryReadyRef = useRef(false);
 
-  useEffect(() => {\n    if (!shouldFollowChatRef.current) return;\n    endRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "end" });\n  }, [messages, busy]);\n\n  function jumpToSection(id) {\n    const target = document.getElementById(id);\n    if (!target) return;\n    target.classList.remove("nox-arrival");\n    target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });\n    window.requestAnimationFrame(() => target.classList.add("nox-arrival"));\n  }
+  useEffect(() => {
+    if (!shouldFollowChatRef.current) return;
+    endRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "end" });
+  }, [messages, busy]);
+
+  function jumpToSection(id) {
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.classList.remove("nox-arrival");
+    target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    window.requestAnimationFrame(() => target.classList.add("nox-arrival"));
+  }
 
   useEffect(() => {
     let active = true;
@@ -1129,7 +1142,8 @@ function App() {
     }
   }
 
-  return <div className="app-shell">\n    <MotionEnhancements />
+  return <div className="app-shell">
+    <MotionEnhancements />
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><Zap size={20} fill="currentColor" /></div><div><b>NOX<span>AI</span></b><small>PERSONAL INTELLIGENCE</small></div></div>
       <div className="side-label">WORKSPACE</div>
