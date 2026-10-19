@@ -708,18 +708,33 @@ function App() {
     setBusy(true);
     setStatus("PROCESSING REQUEST");
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: value, language, history })
-      });
-      const data = await response.json();
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 55000);
+      let response;
+      let data;
+      try {
+        response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: value, language, history }),
+          signal: controller.signal
+        });
+        data = await response.json();
+      } catch (requestError) {
+        if (requestError.name === "AbortError") {
+          throw new Error("AI response timed out. Please try again; if it repeats, check the Render logs and OpenRouter model/key.");
+        }
+        throw requestError;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
       if (!response.ok) throw new Error(data.detail || "Request failed");
       setMessages((old) => [...old, { role: "assistant", content: data.reply, mode: data.mode }]);
       setStatus(data.mode === "ai" ? "AI LINK ACTIVE" : "DEMO MODE");
       if (speakReplies) speakText(data.reply);
     } catch (error) {
-      setMessages((old) => [...old, { role: "assistant", content: "Connection error: " + error.message }]);
+      const detail = error?.message || "Network request failed";
+      setMessages((old) => [...old, { role: "assistant", content: "NOX couldn't get a reply: " + detail }]);
       setStatus("CONNECTION ISSUE");
     } finally {
       setBusy(false);
