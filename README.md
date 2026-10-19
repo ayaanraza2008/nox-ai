@@ -4,7 +4,7 @@ A futuristic, multilingual personal AI assistant with a responsive holographic c
 
 ## Features
 - Responsive dark interface with red accents
-- Spatial holographic command deck with live canvas particles, draggable glass panels, real task/capability state, and adjustable/reduced motion
+- Spatial holographic command deck with a Three.js/WebGL particle core, draggable glass panels, real task/capability state, and reduced-motion support
 - Chat UI with Hindi, Urdu, English, and Hinglish language selection
 - Browser speech input/output where supported
 - Hands-free Voice Mode with automatic speech turn-taking, interruption, mute/end controls, browser voice selection, and speed/volume settings
@@ -28,7 +28,7 @@ Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed r
 
 ## Spatial holographic command deck
 
-The dashboard lives in `frontend/dist/index.html` and is served by the existing FastAPI static mount. It includes a responsive floating glass-panel layout, a canvas-rendered holographic core with orbital rings and particles, real backend health/capability/task data, chat via `/api/chat`, task creation and cancellation, browser speech recognition/synthesis where supported, panel pin/minimize/hide controls, local motion and language preferences, and a reduced-motion mode. Core state is connected to real UI activity; visual animation does not claim that a task is running. The core uses Canvas 2D rather than requiring WebGL or a new runtime dependency, and pauses rendering while the page is hidden.
+The dashboard lives in `frontend/dist/index.html` and is served by the existing FastAPI static mount. It includes a responsive floating glass-panel layout, a Three.js/WebGL holographic core with orbital rings and particles (with a lightweight fallback if the library cannot initialize), real backend health/capability/task data, chat via `/api/chat`, task creation and cancellation, browser speech recognition and speech synthesis where supported, panel pin/minimize/hide controls, local motion and language preferences, and a reduced-motion mode. Core state is connected to real UI activity; visual animation does not claim that a task is running. The core pauses rendering while the page is hidden. Actual browser-level WebGL and microphone/TTS synchronization still need runtime testing on supported devices.
 
 Camera preview, OS telemetry, a 3D model editor, and full desktop control are not shown because those integrations are not exposed by the web app.
 
@@ -62,8 +62,10 @@ The UI now includes **Pair devices**. On the first browser, create a pairing cod
 
 **Current scope:** Windows and Android companions can join a six-digit pairing session and poll queued commands. Windows supports Start Menu app shortcuts, known websites, explicit HTTP(S) URLs, and web search. With the optional local Home Assistant adapter configured, Windows can also control supported lights, plugs/switches, fans, TVs/media players, and climate setpoints and list supported entity statuses. See `desktop-companion/README.md`. It does not automatically connect every household device; devices must be supported by and integrated into Home Assistant. The Android companion runs as a foreground service and may show a notification that must be tapped when Android blocks background app launches. Keep companions running and their OS services/notifications enabled. Browser-only pairing does not grant OS-level control. Do not share pairing codes or device tokens. The SQLite database defaults to `nox_pairing.sqlite3` in the service directory; on hosting platforms with ephemeral filesystems, pairing records can be lost after redeploy/restart unless `NOX_PAIRING_DB` points to persistent storage.
 
-## Security
+## Security and browser-session isolation
 Never commit API keys or passwords. Configure secrets in Render environment variables.
+
+Task listing, task details/actions, and saved-chat endpoints are scoped to an opaque, server-issued `HttpOnly`, `SameSite=Lax` browser-session cookie (`nox_session`). The frontend requests `/api/session` before calling those endpoints. This prevents a caller from selecting another browser's task/history scope by changing a public `user_id` query parameter, and task ownership is persisted in the task database with a migration for existing SQLite/PostgreSQL tables. These anonymous sessions are **not** user accounts: they do not provide identity verification, cross-device login, or protection if the browser cookie is stolen. The public chat/TTS endpoints are still not an account-authenticated API and should receive additional abuse controls before broad production exposure. Legacy chat rows from the old client-supplied `user_id` scheme are not deleted, but they are not automatically migrated into a new session.
 
 
 ## Command execution behavior
