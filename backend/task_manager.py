@@ -7,6 +7,7 @@ otherwise SQLite is used at NOX_TASK_DB (default /tmp/nox_tasks.sqlite3).
 """
 import asyncio
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -47,7 +48,22 @@ class TaskManager:
         self.pause_events: dict[str, asyncio.Event] = {}
         self.cancel_events: dict[str, asyncio.Event] = {}
         self.worker: asyncio.Task | None = None
-        self._init_db()
+        try:
+            self._init_db()
+        except Exception as exc:
+            # A stale/unreachable hosted PostgreSQL URL must not prevent the
+            # entire FastAPI app from importing and serving health/chat routes.
+            # Fall back only for the task queue; pairing/history still reports
+            # its own database health and can be repaired in hosting settings.
+            if not self.use_postgres:
+                raise
+            logging.getLogger("nox.tasks").exception(
+                "Task PostgreSQL initialization failed; using temporary SQLite task storage (%s)",
+                type(exc).__name__,
+            )
+            self.use_postgres = False
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._init_db()
 
     @contextmanager
     def _connect(self):
