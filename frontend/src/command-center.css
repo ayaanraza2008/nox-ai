@@ -242,3 +242,14 @@ footer { color:#65708f !important; border-color:rgba(151,166,255,.08) !important
   *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; }
   body::before { animation:none !important; }
 }
+
+/* Fit the existing state-aware canvas and hologram overlays to the new central stage. */
+.spatial-core-zone > .holo-stage { position:relative !important; z-index:2; width:100% !important; height:100% !important; min-height:0 !important; max-height:520px; flex:1 1 auto; }
+.spatial-core-zone .holo-canvas { display:block; width:100% !important; height:100% !important; }
+.spatial-core-zone .holo-energy-shells, .spatial-core-zone .holo-scan-plane { position:absolute; inset:0; }
+.spatial-core-zone .holo-caption { bottom:8% !important; }
+.spatial-core-zone .holo-center-mark { left:50% !important; top:50% !important; }
+@media (max-width:760px) {
+ .spatial-core-zone > .holo-stage { height:100% !important; max-height:430px; }
+ .spatial-core-zone .holo-caption { bottom:7% !important; }
+}
