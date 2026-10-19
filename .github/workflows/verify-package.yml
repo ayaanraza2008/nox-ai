@@ -60,6 +60,8 @@ jobs:
           print(f"Extracted {len(parser.scripts)} inline script block(s)")
           PY
           node --check /tmp/nox-inline.js
+      - name: Validate 3D lab JavaScript syntax
+        run: node --check frontend/dist/nox-3d-lab.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
