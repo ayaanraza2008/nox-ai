@@ -74,7 +74,9 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
         }
         previousMode = activeMode;
       }
-      const sourceLevel = activeMode === "USER_SPEAKING"
+      // The microphone meter is valid in both listening and detected-user-speech states.
+      // If permission/metering is unavailable, its zero value leaves the visual calm.
+      const sourceLevel = activeMode === "USER_LISTENING" || activeMode === "USER_SPEAKING"
         ? (micLevelRef.current || 0)
         : activeMode === "NOX_SPEAKING"
           ? (ttsLevelRef.current || 0)
@@ -97,16 +99,17 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
       statePulse += (targetStatePulse - statePulse) * (targetStatePulse > statePulse ? 0.045 : 0.025);
       const energy = Math.max(smoothed, statePulse);
       const idleMotion = reducedMotion ? 0.12 : Math.max(0.32, motionIntensity);
-      const speed = (paused ? 0.00008 : 0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : listening ? 0.001 : 0)) * idleMotion;
+      // A paused/error core settles down; active work gets a restrained speed lift.
+      const speed = (paused ? 0.00008 : 0.0021 + energy * 0.018 + (thinking ? 0.002 : working ? 0.005 : listening ? 0.0008 : 0)) * idleMotion;
       rotation += speed * delta;
-      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta * (paused ? 0.08 : reducedMotion ? 0.35 : Math.max(0.32, motionIntensity));
+      time += (reducedMotion ? 0.004 : 0.011 + energy * 0.03) * delta * (paused ? 0.08 : reducedMotion ? 0.35 : Math.max(0.32, motionIntensity));
       ctx.clearRect(0, 0, width, height);
 
       const cx = width / 2;
       const cy = height / 2;
       const radius = Math.min(width * 0.36, height * 0.42, 132) * (1 + energy * 0.11);
       const glow = ctx.createRadialGradient(cx, cy, radius * 0.04, cx, cy, radius * 1.32);
-      const coreTint = error ? "255, 86, 105" : success ? "202, 244, 255" : paused ? "135, 151, 184" : "72, 194, 255";
+      const coreTint = error ? "255, 105, 125" : success ? "202, 244, 255" : paused ? "135, 151, 184" : "72, 194, 255";
       glow.addColorStop(0, `rgba(${coreTint}, ${0.07 + energy * 0.16})`);
       glow.addColorStop(0.55, `rgba(120, 72, 255, ${0.035 + energy * 0.07})`);
       glow.addColorStop(1, "rgba(40, 100, 255, 0)");
@@ -289,8 +292,9 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
     };
 
     resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
+    observer?.observe(canvas);
+    if (!observer) window.addEventListener("resize", resize, { passive: true });
     const onPointerMove = (event) => {
       if (reducedMotion) return;
       pointerRef.current = {
@@ -311,7 +315,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
     raf = window.requestAnimationFrame(draw);
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
-      observer.disconnect();
+      observer?.disconnect();
+      if (!observer) window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
