@@ -79,7 +79,11 @@ export default function SpatialDashboard({
   useEffect(() => { try { localStorage.setItem("nox-spatial-panel-pinned", JSON.stringify(pinned)); } catch {} }, [pinned]);
   useEffect(() => { try { localStorage.setItem("nox-spatial-panel-minimized", JSON.stringify(minimized)); } catch {} }, [minimized]);
   useEffect(() => { try { localStorage.setItem("nox-spatial-panel-hidden", JSON.stringify(hidden)); } catch {} }, [hidden]);
-  useEffect(() => {\n    try { localStorage.setItem("nox-motion-preset", motionPreset); } catch {}\n    document.documentElement.dataset.noxMotion = motionPreset;\n    document.documentElement.style.setProperty("--nox-motion-scale", motionPreset === "off" ? "0" : motionPreset === "enhanced" ? "1.25" : "0.7");\n  }, [motionPreset]);
+  useEffect(() => {
+    try { localStorage.setItem("nox-motion-preset", motionPreset); } catch {}
+    document.documentElement.dataset.noxMotion = motionPreset;
+    document.documentElement.style.setProperty("--nox-motion-scale", motionPreset === "off" ? "0" : motionPreset === "enhanced" ? "1.25" : "0.7");
+  }, [motionPreset]);
   useEffect(() => { try { localStorage.setItem("nox-reduced-motion", String(reducedMotion)); } catch {} }, [reducedMotion]);
 
   const dragStart = (event, id, position, isPinned) => {
