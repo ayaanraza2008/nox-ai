@@ -245,11 +245,12 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
                     # Log a short response body for diagnostics, never request headers/secrets.
                     logger.warning("%s returned HTTP %s: %s", provider["name"], response.status_code, response.text[:500])
                     failures.append(f"{provider['name']}: HTTP {response.status_code}")
-                    # Retry once for transient errors. If the configured OpenRouter model
-                    # is unavailable, make one final attempt with OpenRouter's free-model router.
-                    if response.status_code in (408, 429, 500, 502, 503, 504) and attempt == 0:
+                    # Retry transient errors once. For a rejected/unavailable configured
+                    # OpenRouter model, switch to its free-model router before giving up.
+                    transient = response.status_code in (408, 429, 500, 502, 503, 504)
+                    if transient and attempt == 0:
                         continue
-                    if provider["name"] == "OpenRouter" and attempt == 1 and provider["model"] != "openrouter/free":
+                    if provider["name"] == "OpenRouter" and provider["model"] != "openrouter/free" and (not transient or attempt == 1):
                         provider["model"] = "openrouter/free"
                         logger.warning("Configured OpenRouter model failed; retrying with openrouter/free")
                         continue
