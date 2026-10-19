@@ -44,6 +44,27 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
             })
         self.assertEqual(response.status_code, 400)
 
+    def test_streaming_retries_transient_provider_errors_once(self):
+        provider = {"name": "Groq", "model": "llama-3.3-70b-versatile"}
+        retry = main._stream_retry_provider(provider, status_code=503)
+        self.assertIsNotNone(retry)
+        self.assertEqual(retry["model"], provider["model"])
+        self.assertTrue(retry["_stream_retried"])
+        self.assertIsNone(main._stream_retry_provider(retry, status_code=503))
+
+    def test_streaming_openrouter_model_error_falls_back_to_free_router(self):
+        provider = {"name": "OpenRouter", "model": "some/configured-model", "key": "test"}
+        fallback = main._stream_retry_provider(provider, status_code=404)
+        self.assertIsNotNone(fallback)
+        self.assertEqual(fallback["model"], "openrouter/free")
+        self.assertTrue(fallback["_stream_fallback_model"])
+        self.assertIsNone(main._stream_retry_provider(fallback, status_code=404))
+
+    def test_streaming_does_not_retry_authentication_failures(self):
+        provider = {"name": "Groq", "model": "test-model"}
+        self.assertIsNone(main._stream_retry_provider(provider, status_code=401))
+        self.assertIsNone(main._stream_retry_provider(provider, status_code=403))
+
     def test_preferred_provider_is_moved_first_but_fallbacks_remain(self):
         providers = [{"name": "OpenRouter"}, {"name": "Groq"}, {"name": "Gemini"}]
         with patch.dict(os.environ, {"NOX_CHAT_PROVIDER": "gemini"}):
