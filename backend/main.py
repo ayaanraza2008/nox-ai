@@ -1207,12 +1207,20 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
     retrieved = _retrieved_context(request, message)
 
     async def events():
-        if retrieved:
-            stream = stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved)
-        else:
-            stream = stream_provider_reply(message, payload.language, payload.history, payload.images)
-        async for item in stream:
-            yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
+        try:
+            if retrieved:
+                stream = stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved)
+            else:
+                stream = stream_provider_reply(message, payload.language, payload.history, payload.images)
+            async for item in stream:
+                yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
+        except asyncio.CancelledError:
+            # Client disconnected; let the server cancel the work cleanly.
+            raise
+        except Exception as exc:
+            logger.exception("Unexpected /api/chat/stream failure (%s)", type(exc).__name__)
+            event = {"type": "error", "message": "NOX's response stream encountered a server error. Please retry."}
+            yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
 
     return StreamingResponse(
         events(),
