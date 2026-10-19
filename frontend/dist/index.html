@@ -49,6 +49,28 @@ button:disabled{cursor:not-allowed;opacity:.48;transform:none}
 body.motion-off *,body.motion-off *:before,body.motion-off *:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 body.motion-subtle .panel:not(.stage):hover{transform:translateY(-1px);box-shadow:0 14px 36px #0002}
 body.motion-off .nox-cursor{display:none}
+
+/* NOX signature finish — restrained lighting, layered glass, and crisp feedback. */
+:root{--nox-lift:2px;--nox-glow:rgba(139,112,255,.14);--nox-cyan:rgba(90,220,255,.09)}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:radial-gradient(ellipse at 50% -12%,#a18aff0b,transparent 52%),linear-gradient(115deg,transparent 20%,#70e7ff03 48%,transparent 75%);background-size:100% 100%,220% 100%;animation:noxAmbientDrift 28s ease-in-out infinite alternate}
+@keyframes noxAmbientDrift{from{background-position:0 0,0% 0}to{background-position:0 0,100% 0}}
+.topbar{box-shadow:0 1px 0 #b8a4ff05,0 12px 35px #0000000b}
+.brand .mark{transition:box-shadow 300ms ease,border-color 300ms ease,transform 300ms var(--motion-ease)}
+@media(hover:hover) and (pointer:fine){.brand:hover .mark{transform:translateY(-1px);border-color:#b9a4ff99;box-shadow:0 0 28px #9a7cff30, inset 0 0 16px #70e7ff0c}}
+.panel,.stage{position:relative}
+.panel:focus-within{border-color:#a38aff50;box-shadow:0 0 0 1px #a38aff0a,0 14px 40px #0002}
+@media(hover:hover) and (pointer:fine){
+ .panel:not(.stage){background:radial-gradient(260px circle at var(--nox-x,50%) var(--nox-y,0%),#a48aff0b,transparent 75%),linear-gradient(145deg,rgba(23,23,48,.82),rgba(12,13,29,.84))}
+ .panel:not(.stage):hover{border-color:#a38aff48}
+ .quiet:hover,.panel-link:hover{ text-shadow:0 0 16px #a995ff35}
+ .core-wrap:hover .halo{border-color:#a995ff30}
+}
+button,.nav,.tiny,.panel-link,.quiet,.restore button{ -webkit-tap-highlight-color:transparent }
+button:focus-visible,.nav:focus-visible,.panel-link:focus-visible,.tiny:focus-visible{outline:2px solid #b6a4ff;outline-offset:3px;box-shadow:0 0 0 5px #a38aff12}
+.nox-ripple{border-color:#c2b2ff9c;box-shadow:0 0 16px #9276ff2b}
+@media(max-width:760px){body:before{animation:none;background:radial-gradient(ellipse at 50% -12%,#a18aff0a,transparent 52%)}.panel:focus-within{box-shadow:0 0 0 1px #a38aff0a}}
+@media(prefers-reduced-motion:reduce){body:before{animation:none!important}}
+body.motion-off:before{animation:none!important}
 </style>
 </head>
 <body>
@@ -329,6 +351,26 @@ function coreSetState(next){
   document.querySelectorAll('.grid .panel,.grid .stage,.settings-view,.full-view').forEach(el=>{if(!el.classList.contains('hidden')){el.classList.add('reveal-ready');io.observe(el)}});
   window.addEventListener('pagehide',()=>io.disconnect(),{once:true});
  }
+
+ // Lightweight pointer lighting and touch ripples are independent of the optional cursor.
+ const finePointer=window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+ const lowMotion=reducedMotion||prefersReduced||motionLevel==='off';
+ if(finePointer&&!lowMotion){
+   const spotlight=e=>{const panel=e.target.closest('.panel:not(.stage)');if(!panel)return;const r=panel.getBoundingClientRect();panel.style.setProperty('--nox-x',(e.clientX-r.left)+'px');panel.style.setProperty('--nox-y',(e.clientY-r.top)+'px')};
+   document.addEventListener('pointermove',spotlight,{passive:true});
+   window.addEventListener('pagehide',()=>document.removeEventListener('pointermove',spotlight),{once:true});
+ }
+ document.addEventListener('pointerdown',e=>{
+   if(lowMotion||!e.isPrimary||e.button!==0)return;
+   const el=e.target.closest('button,.panel-link,.nav,.tiny,[role="button"]');
+   if(!el||el.disabled||el.getAttribute('aria-disabled')==='true')return;
+   const r=el.getBoundingClientRect(),rip=document.createElement('span');
+   rip.className='nox-ripple';rip.style.left=(e.clientX-r.left)+'px';rip.style.top=(e.clientY-r.top)+'px';
+   const computed=getComputedStyle(el);
+   if(computed.position==='static')el.style.position='relative';
+   if(computed.overflow==='visible')el.style.overflow='hidden';
+   el.appendChild(rip);setTimeout(()=>rip.remove(),520);
+ },{passive:true});
  // Native scrolling is retained; no wheel/touch interception.
  window.addEventListener('pageshow',()=>{document.querySelectorAll('.motion-enter').forEach(el=>el.classList.remove('motion-enter'))});
 })();
