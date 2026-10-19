@@ -4,17 +4,19 @@ import os
 import secrets
 import sqlite3
 import string
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
 from backend.autonomous_agent import run_autonomous_task
+import edge_tts
 
 logger = logging.getLogger("nox.provider")
 app = FastAPI(title="NOX AI API", version="0.1.0")
@@ -31,6 +33,11 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     mode: str
+
+class TTSRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=2500)
+    language: Literal["en-US", "hi-IN", "ur-PK"] = "en-US"
+    rate: float = Field(default=1.0, ge=0.65, le=1.4)
 
 
 class TaskCreateRequest(BaseModel):
@@ -695,6 +702,53 @@ async def health_details():
         "task_database_error": task_database_error,
     }
 
+
+_tts_rate_windows: dict[str, list[float]] = {}
+
+@app.post("/api/tts")
+async def synthesize_speech(payload: TTSRequest, request: Request):
+    """Return actual neural speech audio so the browser can meter its real waveform."""
+    client_key = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    recent = [stamp for stamp in _tts_rate_windows.get(client_key, []) if now - stamp < 60]
+    if len(recent) >= 12:
+        raise HTTPException(status_code=429, detail="Speech limit reached. Please wait a moment.")
+    recent.append(now)
+    _tts_rate_windows[client_key] = recent
+
+    voices = {
+        "en-US": "en-US-GuyNeural",
+        "hi-IN": "hi-IN-MadhurNeural",
+        "ur-PK": "ur-PK-AsadNeural",
+    }
+    voice = voices[payload.language]
+    rate_percent = round((payload.rate - 1.0) * 100)
+    try:
+        synthesizer = edge_tts.Communicate(
+            text=payload.text,
+            voice=voice,
+            rate=f"{rate_percent:+d}%",
+        )
+        audio_parts = []
+        async for chunk in synthesizer.stream():
+            if chunk.get("type") == "audio" and chunk.get("data"):
+                audio_parts.append(chunk["data"])
+        audio_bytes = b"".join(audio_parts)
+        if not audio_bytes:
+            raise RuntimeError("Speech provider returned no audio.")
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={
+                "Cache-Control": "no-store",
+                "X-NOX-TTS-Engine": "edge-neural",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Neural TTS unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Neural speech is temporarily unavailable.")
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest):
