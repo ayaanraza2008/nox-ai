@@ -719,7 +719,15 @@ function App() {
           body: JSON.stringify({ message: value, language, history }),
           signal: controller.signal
         });
-        data = await response.json();
+        const responseText = await response.text();
+        if (!responseText.trim()) {
+          throw new Error("Server returned an empty response (HTTP " + response.status + "). Check Render logs for the backend crash.");
+        }
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error("Server returned an invalid response (HTTP " + response.status + "). Check Render logs.");
+        }
       } catch (requestError) {
         if (requestError.name === "AbortError") {
           throw new Error("AI response timed out. Please try again; if it repeats, check the Render logs and OpenRouter model/key.");
