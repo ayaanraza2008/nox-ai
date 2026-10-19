@@ -12,6 +12,7 @@ import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from pathlib import PurePosixPath
 
 
@@ -25,6 +26,20 @@ def _now() -> str:
 
 def _db_path() -> str:
     return os.environ.get("NOX_WORKSPACE_DB", "/tmp/nox_workspace.sqlite3")
+
+
+@contextmanager
+def _db():
+    db = _connect()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def _connect():
@@ -93,7 +108,7 @@ def _project(db, project_id: str, owner_id: str):
 
 
 def list_projects(owner_id: str) -> list[dict]:
-    with _connect() as db:
+    with _db() as db:
         rows = db.execute(
             "SELECT id FROM workspace_projects WHERE owner_id=? ORDER BY updated_at DESC LIMIT 20",
             (owner_id,),
@@ -105,7 +120,7 @@ def create_project(name: str, owner_id: str) -> dict:
     name = " ".join(name.split()) if isinstance(name, str) else ""
     if not 1 <= len(name) <= 80:
         raise WorkspaceError("Project name must contain 1–80 characters.")
-    with _connect() as db:
+    with _db() as db:
         count = db.execute("SELECT COUNT(*) FROM workspace_projects WHERE owner_id=?", (owner_id,)).fetchone()[0]
         if count >= 20:
             raise WorkspaceError("A browser session can keep at most 20 workspace projects.")
@@ -118,12 +133,12 @@ def create_project(name: str, owner_id: str) -> dict:
 
 
 def get_project(project_id: str, owner_id: str) -> dict | None:
-    with _connect() as db:
+    with _db() as db:
         return _project(db, project_id, owner_id)
 
 
 def list_files(project_id: str, owner_id: str) -> list[dict] | None:
-    with _connect() as db:
+    with _db() as db:
         if not _project(db, project_id, owner_id):
             return None
         rows = db.execute(
@@ -137,7 +152,7 @@ def save_file(project_id: str, path: str, content: str, owner_id: str) -> dict |
     path = validate_path(path)
     if not isinstance(content, str) or len(content) > 50000:
         raise WorkspaceError("File content must be text no larger than 50,000 characters.")
-    with _connect() as db:
+    with _db() as db:
         project = _project(db, project_id, owner_id)
         if not project:
             return None
@@ -160,7 +175,7 @@ def save_file(project_id: str, path: str, content: str, owner_id: str) -> dict |
 
 def read_file(project_id: str, path: str, owner_id: str) -> dict | None:
     path = validate_path(path)
-    with _connect() as db:
+    with _db() as db:
         if not _project(db, project_id, owner_id):
             return None
         row = db.execute(
@@ -177,7 +192,7 @@ def create_patch(project_id: str, path: str, proposed_content: str, summary: str
     summary = " ".join(summary.split()) if isinstance(summary, str) else ""
     if not 1 <= len(summary) <= 240:
         raise WorkspaceError("Patch summary must contain 1–240 characters.")
-    with _connect() as db:
+    with _db() as db:
         project = _project(db, project_id, owner_id)
         if not project:
             return None
@@ -213,7 +228,7 @@ def _patch_dict(db, patch_id: str):
 
 
 def list_patches(project_id: str, owner_id: str) -> list[dict] | None:
-    with _connect() as db:
+    with _db() as db:
         if not _project(db, project_id, owner_id):
             return None
         rows = db.execute(
@@ -226,7 +241,7 @@ def list_patches(project_id: str, owner_id: str) -> list[dict] | None:
 def review_patch(patch_id: str, decision: str, owner_id: str) -> dict | None:
     if decision not in ("approved", "rejected"):
         raise WorkspaceError("Decision must be approved or rejected.")
-    with _connect() as db:
+    with _db() as db:
         patch = db.execute(
             "SELECT * FROM workspace_patches WHERE id=? AND owner_id=?", (patch_id, owner_id)
         ).fetchone()
