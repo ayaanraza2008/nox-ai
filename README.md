@@ -6,8 +6,9 @@ A futuristic, multilingual personal AI assistant with a responsive holographic c
 - Responsive dark interface with red accents
 - Spatial holographic command deck with a Three.js/WebGL particle core, draggable glass panels, real task/capability state, and reduced-motion support
 - Chat UI with Hindi, Urdu, English, and Hinglish language selection
-- Browser speech input/output where supported
-- Hands-free Voice Mode with automatic speech turn-taking, interruption, mute/end controls, browser voice selection, and speed/volume settings
+- Browser speech recognition plus neural TTS using Edge voices, with language-aware Hindi/Hinglish/Urdu/English routing
+- Hands-free Voice Mode with sentence-level speech queued while the AI response is still streaming, interruption, mute/end controls, selectable compatible voices, and speaking-speed settings
+- Optional voice timing diagnostics via `?debug=1`; timings are measured in the browser, while TTS generation duration is logged by the backend
 - FastAPI backend with optional OpenRouter-compatible AI provider
 - Bounded autonomous task worker with tool-calling public-web search and page reading
 - Demo fallback when no AI API key is configured
@@ -20,6 +21,16 @@ A futuristic, multilingual personal AI assistant with a responsive holographic c
 4. Open `http://127.0.0.1:8000`.
 
 The frontend is a dependency-free static dashboard in `frontend/dist/index.html`. FastAPI serves it from the same origin as `/api/*`, so no separate frontend server or Node build is required.
+
+## Voice quality and diagnostics
+
+NOX keeps its existing neural TTS defaults (Madhur for Devanagari Hindi, Guy for US English, and Asad for Urdu) unless the user selects another voice in the Voice panel. The selectable list includes Hindi Madhur/Swara, Indian English Prabhat/Neerja, US English Guy, and Urdu Asad. Voice IDs are allowlisted server-side. The app cannot validate subjective voice quality without listening to generated audio on the target device; provider voice availability may change.
+
+For Roman Hinglish sent to a Hindi neural voice, the backend transliterates a conservative set of common Hindi words to Devanagari while leaving technical/product words in Latin script. This is intentionally not advertised as full transliteration: uncommon spellings and names may still need better handling. For example, `Mera laptop slow chal raha hai` becomes a mixed-script TTS phrase rather than forcing every English technical word into Hindi.
+
+Voice mode begins speaking each complete sentence as soon as it arrives from the AI stream, instead of waiting for the entire answer before starting TTS. The TTS endpoint still buffers each sentence's audio before browser playback, so this is overlapped AI/TTS generation rather than true chunked-audio playback. Browser SpeechRecognition controls its own endpointing and language model; this project does not claim custom VAD or a guaranteed 300–800 ms reply.
+
+Open NOX with `?debug=1` to show per-turn browser timings for speech-end/final transcript, recognition completion, first AI token, first TTS audio ready, and first playback start (a proxy for audible onset). TTS generation duration and selected voice are logged server-side. Compare these timings on the actual deployment/device; automated CI cannot verify subjective pronunciation or physical speaker latency.
 
 ## AI provider and image input
 Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed responses. Optionally set `OPENROUTER_MODEL`. Without a key, the app uses a simple demo response; it is not a full AI model.
