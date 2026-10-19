@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
 from backend.agent_swarm import SwarmManager
+from backend.safe_tools import SafeToolError, run_tool
 from backend import knowledge
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
@@ -110,6 +111,11 @@ class TaskCreateRequest(BaseModel):
 class SwarmCreateRequest(BaseModel):
     goal: str = Field(min_length=8, max_length=6000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
+
+class SafeToolRequest(BaseModel):
+    tool: Literal["calculator", "text_analysis", "json_validator"]
+    input: str = Field(max_length=10000)
 
 
 class PairCreateRequest(BaseModel):
@@ -698,6 +704,17 @@ async def cancel_swarm_job(job_id: str, request: Request):
     if not job:
         raise HTTPException(status_code=404, detail="Swarm job not found.")
     return {"job": job}
+
+
+@app.post("/api/tools/execute")
+async def execute_safe_tool(payload: SafeToolRequest, request: Request):
+    """Run one deterministic allowlisted utility in the current browser session."""
+    session_owner(request)
+    try:
+        result = run_tool(payload.tool, payload.input)
+    except SafeToolError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"result": result}
 
 
 @app.post("/api/pairing/create")
