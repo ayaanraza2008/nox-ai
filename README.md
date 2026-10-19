@@ -26,6 +26,8 @@ Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed r
 Create a **Web Service** from this repository. The included `render.yaml` defines the build/start commands and checks `/api/health` for service health. Add `OPENROUTER_API_KEY` as a secret environment variable in Render to enable provider-backed AI replies. Free hosting and third-party AI free tiers may have usage limits or sleep.
 
 ### Persistent cross-device storage
+
+**Supabase setup (PostgreSQL):** Supabase is compatible with NOX's PostgreSQL storage. Create a Supabase project, open **Connect** in its dashboard, and copy the PostgreSQL connection string (prefer the Session pooler/connection option recommended for your hosting environment). In Render → your NOX service → **Environment**, add `SUPABASE_DB_URL` with that full connection string, including the password and any required SSL parameters. Use the server-side database connection string, **not** the publishable/anon key or service-role API key. Never put the database URL in frontend code or commit it to GitHub. Save and redeploy, then check `/api/health` for `"storage_backend": "postgresql"`. If `SUPABASE_DB_URL` is unset, NOX continues to use `DATABASE_URL` for existing PostgreSQL deployments.
 The backend supports PostgreSQL for pairing sessions, device registrations, command relay records, and shared chat history. To enable it:
 
 1. Create a PostgreSQL database with a provider you choose. Check its price, expiry, storage, and connection limits first; do not assume a free tier is permanent.
