@@ -79,7 +79,7 @@ export default function SpatialDashboard({
   useEffect(() => { try { localStorage.setItem("nox-spatial-panel-pinned", JSON.stringify(pinned)); } catch {} }, [pinned]);
   useEffect(() => { try { localStorage.setItem("nox-spatial-panel-minimized", JSON.stringify(minimized)); } catch {} }, [minimized]);
   useEffect(() => { try { localStorage.setItem("nox-spatial-panel-hidden", JSON.stringify(hidden)); } catch {} }, [hidden]);
-  useEffect(() => { try { localStorage.setItem("nox-motion-intensity", String(motionIntensity)); } catch {} }, [motionIntensity]);
+  useEffect(() => {\n    try { localStorage.setItem("nox-motion-preset", motionPreset); } catch {}\n    document.documentElement.dataset.noxMotion = motionPreset;\n    document.documentElement.style.setProperty("--nox-motion-scale", motionPreset === "off" ? "0" : motionPreset === "enhanced" ? "1.25" : "0.7");\n  }, [motionPreset]);
   useEffect(() => { try { localStorage.setItem("nox-reduced-motion", String(reducedMotion)); } catch {} }, [reducedMotion]);
 
   const dragStart = (event, id, position, isPinned) => {
@@ -133,7 +133,7 @@ export default function SpatialDashboard({
       <div><span className="spatial-kicker"><i /> HOLOGRAPHIC COMMAND DECK</span><h2>Systems <em>in motion.</em></h2><p>One intelligence. Every active workspace.</p></div>
       <div className="spatial-deck-tools">
         <div className="spatial-clock"><Clock3 size={14} /><span>{clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span><small>{clock.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</small></div>
-        <label className="spatial-motion-control"><span>CORE MOTION</span><input aria-label="Core animation intensity" type="range" min="0.2" max="1.2" step="0.1" value={motionIntensity} onChange={(event) => setMotionIntensity(Number(event.target.value))} /><b>{Math.round(motionIntensity * 100)}%</b></label>
+        <div className="spatial-motion-control"><span>MOTION</span><div className="motion-preset-group" role="group" aria-label="Motion intensity">{[{ id: "off", label: "Off" }, { id: "subtle", label: "Subtle" }, { id: "enhanced", label: "Enhanced" }].map((preset) => <button key={preset.id} type="button" className={motionPreset === preset.id ? "active" : ""} aria-pressed={motionPreset === preset.id} onClick={() => setMotionPreset(preset.id)}>{preset.label}</button>)}</div></div>
         <button type="button" className={"spatial-motion-toggle" + (reducedMotion ? " active" : "")} onClick={() => setReducedMotion((old) => !old)} aria-pressed={reducedMotion} title="Toggle reduced motion"><Activity size={14} /> {reducedMotion ? "REDUCED" : "MOTION ON"}</button>
       </div>
     </div>
@@ -161,7 +161,7 @@ export default function SpatialDashboard({
       <div className="spatial-core-zone" aria-label="Central living holographic core">
         <div className="spatial-core-halo" aria-hidden="true" />
         <div className="spatial-core-topline"><span><i /> LIVE CORE</span><span>{modeLabel}</span></div>
-        <HolographicCore mode={coreVisualMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} motionIntensity={reducedMotion ? 0.12 : motionIntensity} userReducedMotion={reducedMotion} />
+        <HolographicCore mode={coreVisualMode} micLevelRef={micLevelRef} ttsLevelRef={ttsLevelRef} motionIntensity={reducedMotion || motionPreset === "off" ? 0.12 : motionIntensity} userReducedMotion={reducedMotion || motionPreset === "off"} />
         <div className="spatial-core-footer"><span><Bot size={13} /> NOX NEURAL INTERFACE</span><span>{voiceMode ? "AUDIO LINK ACTIVE" : "STANDING BY"}</span></div>
       </div>
 
