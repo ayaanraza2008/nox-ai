@@ -316,8 +316,8 @@ html[data-nox-motion="off"] .nox-cursor{display:none}
 .nox-ripple-host{position:relative;isolation:isolate;overflow:hidden}
 .nox-interaction-ripple{position:absolute;width:14px;height:14px;border-radius:50%;pointer-events:none;z-index:4;transform:translate(-50%,-50%) scale(0);background:radial-gradient(circle,rgba(180,166,255,.26),rgba(103,211,255,.08) 55%,transparent 72%);animation:noxRipple 520ms var(--nox-ease) forwards}
 @keyframes noxRipple{to{transform:translate(-50%,-50%) scale(15);opacity:0}}
-.nox-reveal-ready{opacity:0;transform:translateY(9px);transition:opacity 460ms var(--nox-ease),transform 460ms var(--nox-ease)}
-.nox-reveal-ready.nox-revealed{opacity:1;transform:translateY(0)}
+.nox-reveal-ready{opacity:0;translate:0 9px;transition:opacity 460ms var(--nox-ease),translate 460ms var(--nox-ease)}
+.nox-reveal-ready.nox-revealed{opacity:1;translate:0 0}
 .nox-arrival{animation:noxArrival 440ms var(--nox-ease) both}
 @keyframes noxArrival{0%{filter:blur(2px);opacity:.78;transform:translateY(7px) scale(.995)}100%{filter:blur(0);opacity:1;transform:translateY(0) scale(1)}}
 .spatial-panel.is-minimized .spatial-panel-body{animation:noxPanelFold 180ms ease both}
@@ -329,7 +329,7 @@ html[data-nox-motion="off"] .nox-cursor{display:none}
 .spatial-motion-control>span{font:8px 'DM Mono',monospace;letter-spacing:.8px;color:#777b94}
 @keyframes noxPanelFold{to{opacity:.72;transform:scale(.99)}}
 html[data-nox-motion="off"] *,html[data-nox-motion="off"] *::before,html[data-nox-motion="off"] *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
-html[data-nox-motion="off"] .nox-reveal-ready{opacity:1;transform:none}
+html[data-nox-motion="off"] .nox-reveal-ready{opacity:1;translate:none}
 @media(max-width:760px){
  .spatial-motion-control{width:100%;grid-template-columns:auto 1fr;align-items:center}
  .motion-preset-group{justify-content:space-between}
@@ -341,5 +341,9 @@ html[data-nox-motion="off"] .nox-reveal-ready{opacity:1;transform:none}
  html{scroll-behavior:auto!important}
  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}
  .nox-cursor,.nox-interaction-ripple{display:none!important}
- .nox-reveal-ready{opacity:1;transform:none}
+ .nox-reveal-ready{opacity:1;translate:none}
+}
+
+@media(hover:none){
+ button:active,.nav-item:active,.spatial-nav-action:active,.spatial-task-item:active{box-shadow:inset 0 0 0 1px #9b91ff55,0 0 18px #7b75ff12}
 }
