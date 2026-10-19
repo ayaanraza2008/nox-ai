@@ -114,7 +114,7 @@ class SwarmCreateRequest(BaseModel):
 
 
 class SafeToolRequest(BaseModel):
-    tool: Literal["calculator", "text_analysis", "json_validator"]
+    tool: Literal["calculator", "text_analysis", "json_validator", "python_syntax", "diff_preview"]
     input: str = Field(max_length=10000)
 
 
