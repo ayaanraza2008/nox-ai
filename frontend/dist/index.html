@@ -163,7 +163,7 @@ refreshKnowledge();
 const wave=$("wave");for(let i=0;i<35;i++){const b=document.createElement("i");wave.appendChild(b)}
 // Scratch-built NOX holographic core. Audio reactivity is derived only from live Web Audio analysers.
 const canvas=$("coreCanvas");
-let W=0,H=0,phase=0,lastFrameStamp=-1,coreRenderer=null,coreScene=null,coreCamera=null,particleCloud=null,particleMaterial=null,nucleus=null,nucleusInner=null,nucleusGlow=null,orbitRings=[],filaments=[],energyWaves=[],coreFallback=null,coreResizeObserver=null,coreVisible=true,coreRaf=0;
+let W=0,H=0,phase=0,lastFrameStamp=-1,lastFallbackTime=0,coreRenderer=null,coreScene=null,coreCamera=null,particleCloud=null,particleMaterial=null,nucleus=null,nucleusInner=null,nucleusGlow=null,orbitRings=[],filaments=[],energyWaves=[],coreFallback=null,coreResizeObserver=null,coreVisible=true,coreRaf=0;
 let smoothedEnergy=0,frequencyEnergy=0,userVoiceFrames=0,userQuietFrames=0,userSpeaking=false,lastMode="ambient",normalColor=null,whiteColor=null;
 let audioAnalyserCache=null,audioTimeData=null,audioFreqData=null,micTimeData=null;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -226,7 +226,7 @@ function initThreeCore(){
  coreResizeObserver=typeof ResizeObserver!=="undefined"?new ResizeObserver(resizeCore):null;if(coreResizeObserver)coreResizeObserver.observe(canvas);window.addEventListener("resize",resizeCore);resizeCore();
 }
 function drawFallback(now){
- if(!coreFallback)return;const dt=Math.min(.05,(now-(lastFrameStamp<0?now:lastFrameStamp))/1000);phase+=dt;
+ if(!coreFallback)return;const dt=Math.min(.05,Math.max(0,(now-(lastFallbackTime||now))/1000));lastFallbackTime=now;phase+=dt;
  const sample=sampleVoice();smoothedEnergy+=(sample.energy-smoothedEnergy)*(sample.energy>smoothedEnergy?.25:.07);
  const c=coreFallback,cx=W/2,cy=H*.49,r=Math.min(W,H)*.3,white=sample.kind==="user"?1:0;
  c.clearRect(0,0,W,H);const glow=c.createRadialGradient(cx,cy,2,cx,cy,r*1.6);glow.addColorStop(0,white?"rgba(255,255,255,"+(.18+smoothedEnergy*.3)+")":"rgba(65,220,255,"+(.17+smoothedEnergy*.24)+")");glow.addColorStop(1,"rgba(0,0,0,0)");c.fillStyle=glow;c.fillRect(0,0,W,H);
@@ -236,7 +236,7 @@ function drawFallback(now){
 function drawCore(now){
  if(!coreVisible||document.hidden)return;
  // The document has one legacy visibility callback too; ignore duplicate callbacks in the same RAF frame.
- if(now===lastFrameStamp)return;lastFrameStamp=now;
+ if(now===lastFrameStamp)return;lastFrameStamp=now;coreRaf=0;
  const dt=Math.min(.05,Math.max(0,(now-(drawCore.lastTime||now))/1000));drawCore.lastTime=now;phase+=dt;
  const sample=sampleVoice(),whiteTarget=sample.kind==="user"?1:0;
  smoothedEnergy+=(sample.energy-smoothedEnergy)*(sample.energy>smoothedEnergy?.26:.075);
@@ -262,7 +262,7 @@ function disposeCore(){
  coreVisible=false;if(coreRaf)cancelAnimationFrame(coreRaf);if(state.raf)cancelAnimationFrame(state.raf);if(coreResizeObserver)coreResizeObserver.disconnect();window.removeEventListener("resize",resizeCore);
  if(coreRenderer){if(coreScene)coreScene.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose()}});coreRenderer.dispose();coreRenderer=null}
 }
-function handleCoreVisibility(){if(document.hidden){coreVisible=false;if(coreRaf)cancelAnimationFrame(coreRaf);if(state.raf)cancelAnimationFrame(state.raf)}else{coreVisible=true;drawCore.lastTime=performance.now();if(!coreRaf)coreRaf=requestAnimationFrame(drawCore)}}
+function handleCoreVisibility(){if(document.hidden){coreVisible=false;if(coreRaf)cancelAnimationFrame(coreRaf);coreRaf=0;if(state.raf)cancelAnimationFrame(state.raf);state.raf=0}else{coreVisible=true;drawCore.lastTime=performance.now();if(!coreRaf)coreRaf=requestAnimationFrame(drawCore)}}
 try{initThreeCore()}catch(e){console.warn("Three.js core unavailable; using animated canvas fallback:",e);makeFallback();window.addEventListener("resize",resizeCore)}
 document.addEventListener("visibilitychange",handleCoreVisibility);window.addEventListener("beforeunload",disposeCore);
 const ac=$("analyticsCanvas"),ax=ac.getContext("2d");function drawAnalytics(){const r=ac.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,1.5);if(ac.width!==Math.floor(r.width*d)||ac.height!==Math.floor(r.height*d)){ac.width=Math.floor(r.width*d);ac.height=Math.floor(r.height*d)}ax.setTransform(d,0,0,d,0,0);ax.clearRect(0,0,r.width,r.height);const t=performance.now()/1600;ax.strokeStyle="#69e5f52b";ax.lineWidth=1;for(let j=0;j<3;j++){ax.beginPath();for(let i=0;i<80;i++){const x=i/79*r.width,y=r.height*.5+Math.sin(i*.18+t+j*1.3)*(10+j*8)+Math.cos(i*.08-t)*7;i?ax.lineTo(x,y):ax.moveTo(x,y)}ax.stroke()}if(!state.reduced)requestAnimationFrame(drawAnalytics)}
