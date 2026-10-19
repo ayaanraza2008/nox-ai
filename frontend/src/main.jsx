@@ -677,10 +677,15 @@ function App() {
       window.clearTimeout(ttsDecayRef.current);
       ttsDecayRef.current = window.setTimeout(() => { ttsLevelRef.current = 0; }, 220);
     };
-    utterance.onerror = () => {
+    utterance.onerror = (event) => {
       voiceSpeakingRef.current = false;
       window.clearInterval(speechPulseTimer);
       ttsLevelRef.current = 0;
+      if (event?.error === "canceled" || event?.error === "interrupted" || !voiceModeRef.current) {
+        if (!voiceModeRef.current) setVoiceState("idle");
+        return;
+      }
+      setVoiceState("error");
       setCoreMode("ERROR");
       setStatus("VOICE PLAYBACK ISSUE");
       window.setTimeout(() => setCoreMode("IDLE"), 900);
@@ -1081,7 +1086,7 @@ function App() {
         <div className={"voice-mode-panel " + (voiceMode ? "voice-mode-active" : "")} data-state={voiceState}>
           <div className="voice-orb-wrap"><div className={"voice-orb voice-orb-" + voiceState}><span /><span /><span /></div></div>
           <div className="voice-mode-copy"><b>{({ idle: "VOICE MODE", connecting: "CONNECTING", listening: "LISTENING", thinking: "THINKING", speaking: "NOX IS SPEAKING", interrupted: "PLAYBACK INTERRUPTED", muted: "MICROPHONE MUTED", error: "VOICE MODE ERROR" })[voiceState] || "VOICE MODE"}</b><small>{voiceMode ? "Microphone capture is active only during this session." : "Start a hands-free conversation with NOX."}</small>{voiceMode && <p className="voice-transcript" aria-live="polite">{voiceTranscript}</p>}</div>
-          <div className="voice-mode-controls">{!voiceMode ? <button type="button" className="voice-primary" onClick={startVoiceMode}><Mic size={15} /> Start Voice Mode</button> : <><button type="button" className={"voice-control " + (voiceMuted ? "active" : "")} onClick={toggleVoiceMute} title={voiceMuted ? "Unmute microphone" : "Mute microphone"} aria-label={voiceMuted ? "Unmute microphone" : "Mute microphone"}>{voiceMuted ? <VolumeX size={16} /> : <Mic size={16} />}</button><button type="button" className="voice-control" onClick={interruptVoice} title="Interrupt AI speech" aria-label="Interrupt AI speech"><Pause size={16} /></button><button type="button" className="voice-end" onClick={stopVoiceMode}><XCircle size={15} /> End</button></>}</div>
+          <div className="voice-mode-controls">{!voiceMode ? <button type="button" className="voice-primary" onClick={startVoiceMode} disabled={voiceState === "connecting"}><Mic size={15} /> {voiceState === "connecting" ? "Connecting…" : "Start Voice Mode"}</button> : <><button type="button" className={"voice-control " + (voiceMuted ? "active" : "")} onClick={toggleVoiceMute} title={voiceMuted ? "Unmute microphone" : "Mute microphone"} aria-label={voiceMuted ? "Unmute microphone" : "Mute microphone"}>{voiceMuted ? <VolumeX size={16} /> : <Mic size={16} />}</button><button type="button" className="voice-control" onClick={interruptVoice} title="Interrupt AI speech" aria-label="Interrupt AI speech"><Pause size={16} /></button><button type="button" className="voice-end" onClick={stopVoiceMode}><XCircle size={15} /> End</button></>}</div>
           <div className="voice-settings"><label>Speed <input aria-label="Voice speed" type="range" min="0.75" max="1.25" step="0.05" value={voiceSpeed} onChange={(e) => setVoiceSpeed(Number(e.target.value))} /><span>{voiceSpeed.toFixed(2)}×</span></label><label>Volume <input aria-label="Voice volume" type="range" min="0" max="1" step="0.1" value={voiceVolume} onChange={(e) => setVoiceVolume(Number(e.target.value))} /><span>{Math.round(voiceVolume * 100)}%</span></label><label>Voice <select aria-label="Speech voice" value={selectedVoiceName} onChange={(e) => setSelectedVoiceName(e.target.value)}><option value="">Auto select</option>{availableVoices.map((voice) => <option key={voice.voiceURI || voice.name} value={voice.name}>{voice.name} · {voice.lang}</option>)}</select></label></div>
         </div>
         <form className="composer" onSubmit={(e) => { e.preventDefault(); sendMessage(); }}><button type="button" className={"icon-button mic " + (listening ? "recording" : "")} title="Voice input (single turn)" aria-label="Voice input (single turn)" onClick={toggleMic}><Mic size={18} /></button><input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Message NOX... / NOX से कुछ पूछें" /><button type="button" className={"icon-button voice " + (speakReplies ? "enabled" : "")} title="Toggle voice replies" aria-label="Toggle voice replies" onClick={() => setSpeakReplies(!speakReplies)}>{speakReplies ? <Volume2 size={18} /> : <VolumeX size={18} />}</button><button className="send-button" type="submit" disabled={busy || !input.trim()}><Send size={17} /><span>Send</span></button></form>
