@@ -244,8 +244,11 @@ def index_text(owner_id: str, *, title: str, text: str, source_type: str,
     conn = _connect()
     try:
         duplicate = conn.execute(
-            "SELECT * FROM knowledge_sources WHERE owner_id=? AND content_hash=? LIMIT 1",
-            (owner_id, digest),
+            """SELECT * FROM knowledge_sources
+               WHERE owner_id=? AND content_hash=?
+                 AND ((source_url IS NULL AND ? IS NULL) OR source_url=?)
+               LIMIT 1""",
+            (owner_id, digest, source_url, source_url),
         ).fetchone()
         if duplicate:
             return {"source": _source_payload(duplicate), "duplicate": True, "chunks": conn.execute(
@@ -394,13 +397,15 @@ async def ingest_public_url(owner_id: str, url: str) -> dict:
         try:
             _validate_public_url(robots_url)
             robots = await client.get(robots_url)
-            if robots.status_code < 400:
+            if robots.status_code < 400 and not robots.is_redirect:
                 from urllib.robotparser import RobotFileParser
                 parser = RobotFileParser()
                 parser.set_url(robots_url)
                 parser.parse(robots.text.splitlines())
                 if not parser.can_fetch(headers["User-Agent"], url):
                     raise HTTPException(status_code=403, detail="This website's robots.txt disallows indexing this URL.")
+            elif robots.status_code not in (404, 410):
+                raise HTTPException(status_code=502, detail="Could not verify robots.txt for this site; indexing was not started.")
         except HTTPException:
             raise
         except Exception:
