@@ -106,6 +106,7 @@ function coreSetState(next){
     corePulse=next==='success'?1.2:next==='error'?.65:next==='working'?.45:.28;
     coreEnergy=next==='success'?1:next==='error'?.4:.18;
     coreLastEvent=performance.now();
+    window.dispatchEvent(new CustomEvent('nox:core-pulse',{detail:{power:next==='success'?1.2:next==='error'?.65:.35}}));
   }
 }
 (function canvasCore(){
@@ -129,6 +130,7 @@ function coreSetState(next){
  const ro=typeof ResizeObserver!=='undefined'?new ResizeObserver(resize):null;
  ro?.observe(c);window.addEventListener('resize',resize,{passive:true});resize();
  function addWave(power=1){waves.push({r:0,life:0,power});if(waves.length>5)waves.shift()}
+ window.addEventListener('nox:core-pulse',e=>addWave(Number(e.detail?.power)||1));
  function project(p,cx,cy,base,spin){
    const a=p.a+spin, z=p.z;
    const ring=Math.sqrt(Math.max(.02,1-z*z));
