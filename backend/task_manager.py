@@ -125,8 +125,24 @@ class TaskManager:
 
     async def start(self):
         # A process restart cannot safely resume an in-flight network request.
-        with self._connect() as db:
-            rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused')").fetchall()
+        # PostgreSQL may be reachable during import but unavailable when the
+        # ASGI startup hook runs. Never let an optional task database take the
+        # entire web service offline: fall back to temporary SQLite storage.
+        try:
+            with self._connect() as db:
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused')").fetchall()
+        except Exception as exc:
+            if not self.use_postgres:
+                raise
+            logging.getLogger("nox.tasks").exception(
+                "Task PostgreSQL unavailable during startup; switching to temporary SQLite (%s)",
+                type(exc).__name__,
+            )
+            self.use_postgres = False
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._init_db()
+            with self._connect() as db:
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused')").fetchall()
         for row in rows:
             item = self._row(row)
             if item["status"] == "running":
