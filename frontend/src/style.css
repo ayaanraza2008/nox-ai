@@ -403,3 +403,33 @@ html[data-nox-motion="off"] .nox-reveal-ready{opacity:1;translate:none}
  .spatial-panel:before{animation:none!important}
 }
 html[data-nox-motion="off"] .spatial-dashboard:after,html[data-nox-motion="off"] .spatial-core-zone:after{animation:none!important;opacity:.12}
+
+
+/* LIVING SINGULARITY — center-core-only finishing pass */
+.holo-stage{contain:layout paint;overflow:hidden;touch-action:pan-y;isolation:isolate}
+.holo-stage:before{content:"";position:absolute;left:50%;top:46%;width:min(64%,260px);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;background:radial-gradient(circle,rgba(113,224,255,.09),rgba(126,104,255,.045) 38%,transparent 72%);filter:blur(12px);opacity:.85}
+.holo-canvas{z-index:1}
+.holo-energy-shells,.holo-scan-plane,.holo-center-mark,.holo-caption{pointer-events:none}
+.holo-energy-shells{z-index:2}
+.holo-scan-plane{z-index:2;opacity:.18}
+.holo-center-mark{z-index:3;width:7px;height:7px;background:#e8fcff;box-shadow:0 0 9px 3px #7aeaff88,0 0 28px 12px #7b77ff35}
+.holo-center-mark:after{content:"";position:absolute;inset:-15px;border:1px solid #a5eaff28;border-radius:50%;animation:holoSingularityOrbit 8s linear infinite}
+.holo-center-mark i{position:absolute;left:50%;top:50%;width:2px;height:2px;transform:translate(-50%,-50%);border-radius:50%;background:#fff;box-shadow:0 0 10px 4px #b9f8ff88}
+.holo-caption{z-index:4;padding:7px 11px;border:1px solid #9dcfff1a;border-radius:8px;background:linear-gradient(135deg,#0b1020a6,#17132ca6);backdrop-filter:blur(8px);box-shadow:inset 0 1px 0 #ffffff08,0 8px 28px #0002}
+.holo-caption small{font-size:7px;letter-spacing:1.1px}
+.holo-user-listening .holo-center-mark span,.holo-nox-speaking .holo-center-mark span{border-color:#83eaff8c}
+.holo-processing .holo-center-mark,.holo-thinking .holo-center-mark{box-shadow:0 0 12px 4px #8a8aff70,0 0 32px 14px #756cff40}
+.holo-working .holo-center-mark{box-shadow:0 0 11px 4px #8fefff77,0 0 34px 14px #67cfff3a}
+.holo-success .holo-center-mark{box-shadow:0 0 12px 4px #d9faff99,0 0 34px 15px #8aeaff4d}
+.holo-error .holo-center-mark{background:#ffc0cb;box-shadow:0 0 10px 4px #ff647577,0 0 28px 12px #ff64772b}
+.holo-paused .holo-center-mark,.holo-interrupted .holo-center-mark{background:#aebbd0;box-shadow:0 0 8px 2px #91a6c844}
+@keyframes holoSingularityOrbit{to{transform:rotate(360deg)}}
+@media(max-width:600px){
+ .holo-stage:before{width:72%;filter:blur(9px)}
+ .holo-caption{bottom:11px;padding:6px 9px}
+}
+@media(prefers-reduced-motion:reduce){
+ .holo-center-mark:after{animation:none}
+ .holo-center-mark span{animation:none!important}
+}
+html[data-nox-motion="off"] .holo-center-mark:after{animation:none}
