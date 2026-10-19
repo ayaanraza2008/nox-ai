@@ -956,6 +956,50 @@ async def health():
 
 @app.get("/api/health/details")
 async def health_details():
+    """Detailed dependency readiness without exposing secrets or blocking liveness."""
+    database_configured = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+    database_connected = False
+    task_database_connected = False
+    database_error = None
+    task_database_error = None
+
+    try:
+        with pair_db() as conn:
+            conn.execute("SELECT 1").fetchone()
+        database_connected = True
+    except Exception:
+        database_error = "connection_failed"
+
+    try:
+        with task_manager._connect() as conn:
+            conn.execute("SELECT 1").fetchone()
+        task_database_connected = True
+    except Exception:
+        task_database_error = "connection_failed"
+
+    storage_healthy = database_connected and task_database_connected
+    ai_provider_flags = {
+        "openrouter": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
+        "groq": bool(os.getenv("GROQ_API_KEY", "").strip()),
+        "gemini": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+    }
+    ai_configured = any(ai_provider_flags.values())
+    return {
+        "status": "ok" if storage_healthy and ai_configured else "degraded",
+        "service": "NOX AI",
+        "ai_configured": ai_configured,
+        "ai_providers_configured": ai_provider_flags,
+        "ai_setup_message": None if ai_configured else "No AI provider key is configured. Add a valid provider key in the hosting environment to enable real AI replies.",
+        "storage_backend": "postgresql" if database_configured else "sqlite",
+        "task_storage_backend": "postgresql" if task_manager.use_postgres else "sqlite",
+        "durable_storage_configured": database_configured and task_manager.use_postgres,
+        "database_connected": database_connected,
+        "task_database_connected": task_database_connected,
+        "database_error": database_error,
+        "task_database_error": task_database_error,
+    }
+
+
     database_configured = DATABASE_URL.startswith(("postgres://", "postgresql://"))
     database_connected = False
     task_database_connected = False
