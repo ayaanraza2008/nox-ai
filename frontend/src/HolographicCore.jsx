@@ -120,6 +120,40 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
       ctx.arc(cx, cy, radius * 1.32, 0, Math.PI * 2);
       ctx.fill();
 
+      // A restrained outer containment field adds a more dimensional singularity silhouette.
+      // The ellipses are rendered on canvas (not DOM), with state-driven intensity and smooth motion.
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.globalCompositeOperation = "lighter";
+      const fieldTilt = 0.23 + pointerRef.current.y * (reducedMotion ? 0 : 0.035);
+      const fieldAlpha = paused ? 0.035 : 0.065 + energy * 0.075;
+      for (let ring = 0; ring < 3; ring += 1) {
+        const orbit = radius * (1.08 + ring * 0.115);
+        const phase = rotation * (ring % 2 ? -0.22 : 0.16) + ring * 0.68;
+        ctx.save();
+        ctx.rotate(phase);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, orbit, orbit * fieldTilt, rotation * (ring % 2 ? 0.18 : -0.12), 0.18 + ring * 0.7, Math.PI * (1.65 + ring * 0.08));
+        ctx.strokeStyle = ring === 1
+          ? `rgba(174, 144, 255, ${fieldAlpha * 0.82})`
+          : `rgba(111, 211, 255, ${fieldAlpha * (ring === 0 ? 1 : 0.56)})`;
+        ctx.lineWidth = ring === 0 ? 0.8 : 0.55;
+        ctx.stroke();
+        // A moving beacon on each orbital plane gives the ring a readable sense of travel.
+        const beaconAngle = time * (0.38 + ring * 0.13) * (paused ? 0.08 : 1) + ring * 2.1;
+        const bx = Math.cos(beaconAngle) * orbit;
+        const by = Math.sin(beaconAngle) * orbit * fieldTilt;
+        ctx.fillStyle = `rgba(211, 247, 255, ${0.34 + energy * 0.42})`;
+        ctx.shadowColor = "rgba(100, 213, 255, 0.7)";
+        ctx.shadowBlur = 4 + energy * 5;
+        ctx.beginPath();
+        ctx.arc(bx, by, 0.8 + energy * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
       // State-triggered expanding wavefronts; they decay quickly and never run on a random timer.
       shockwaves = shockwaves.filter((wave) => time - wave.born < 2.1);
       shockwaves.forEach((wave) => {
