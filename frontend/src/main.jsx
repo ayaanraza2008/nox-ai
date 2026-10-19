@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Activity, AudioLines, Bot, ChevronDown, Command, Mic, Pause, Play, Send, ShieldCheck, Sparkles, Volume2, VolumeX, XCircle, Zap } from "lucide-react";
 import "./style.css";
+import "./command-center.css";
 import SpatialDashboard from "./SpatialDashboard.jsx";
 
 function MotionEnhancements() {
