@@ -182,20 +182,43 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
             messages.append({"role": role, "content": content[:4000]})
     messages.append({"role": "user", "content": message})
 
-    async with httpx.AsyncClient(timeout=45) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": os.getenv("APP_URL", "https://nox-ai.onrender.com"),
-                "X-Title": "NOX AI",
-            },
-            json={"model": model, "messages": messages, "temperature": 0.7},
-        )
+    request_headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": os.getenv("APP_URL", "https://nox-ai-vcqx.onrender.com"),
+        "X-Title": "NOX AI",
+    }
+    # A single retry helps recover from short-lived network/TLS resets on free hosting.
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0), trust_env=True) as client:
+        response = None
+        for attempt in range(2):
+            try:
+                response = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=request_headers,
+                    json={"model": model, "messages": messages, "temperature": 0.7},
+                )
+                break
+            except httpx.RequestError as exc:
+                logger.warning("OpenRouter request attempt %s failed: %s: %s",
+                               attempt + 1, type(exc).__name__, str(exc))
+                if attempt == 1:
+                    raise
+    if response is None:
+        raise HTTPException(status_code=502, detail="AI provider connection failed. Please try again.")
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail="AI provider request failed. Check the provider key/model and try again.")
-    data = response.json()
+        # Keep provider diagnostics in Render logs; do not log request headers or secrets.
+        logger.error("OpenRouter returned HTTP %s: %s", response.status_code, response.text[:1200])
+        if response.status_code in (401, 403):
+            raise HTTPException(status_code=502, detail="OpenRouter rejected the API key. Check OPENROUTER_API_KEY in Render.")
+        if response.status_code == 429:
+            raise HTTPException(status_code=503, detail="OpenRouter rate limit or credit limit reached. Check your provider usage and credits.")
+        raise HTTPException(status_code=502, detail=f"AI provider request failed (HTTP {response.status_code}). Check Render logs.")
+    try:
+        data = response.json()
+    except ValueError as exc:
+        logger.error("OpenRouter returned invalid JSON (HTTP %s)", response.status_code)
+        raise HTTPException(status_code=502, detail="AI provider returned an invalid response. Please retry.") from exc
     try:
         return data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
