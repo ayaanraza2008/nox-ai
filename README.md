@@ -203,3 +203,13 @@ The Agent Swarm workspace includes a **Safe Tool Bench** with three bounded, det
 - **JSON validate / format:** validates standard JSON and returns an indented representation plus top-level type and keys.
 
 The tools are available through `POST /api/tools/execute` with `{"tool":"calculator","input":"(125 * 8) / 4"}`. Calls require the existing browser-session cookie. Input size and expression complexity are bounded. Tool execution is local and deterministic: it does not call an AI provider or access the shell, filesystem, or network. Results are returned to the requesting browser and are not saved as a separate history.
+
+
+### Code Review Lab (safe preview tools)
+
+The Safe Tool Bench also includes:
+
+- **Python syntax check:** parses Python source into an AST and reports syntax errors with line/column details, or basic structural counts when parsing succeeds. It never executes the submitted code and cannot prove runtime correctness.
+- **Code diff preview:** accepts a JSON object with string fields `original` and `proposed`, then shows a bounded unified diff with added/removed line counts. It is preview-only; NOX does not write files or apply patches.
+
+Both utilities enforce input limits and are covered by automated tests. This is a review aid, not a sandbox or a repository editing/execution environment.
