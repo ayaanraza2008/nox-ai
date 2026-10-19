@@ -293,3 +293,53 @@ footer{color:#707c98}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #aaa1ffb8;outline-offset:3px}
 @media(max-width:760px){.sidebar{backdrop-filter:none;-webkit-backdrop-filter:none}.hero h1{letter-spacing:-1.5px}.capability-panel,.task-panel,.chat-panel,.pairing-panel{border-radius:13px}.composer{border-radius:12px}}
 @media(prefers-reduced-motion:reduce){.nav-item,.capability-card,.task-create button,.pair-primary,.icon-button,.send-button{transition:none!important}}
+
+
+/* NOX signature motion system: restrained, accessible, and hardware-aware */
+:root{--nox-motion-scale:.7;--nox-motion-fast:160ms;--nox-motion-medium:280ms;--nox-motion-slow:440ms;--nox-ease:cubic-bezier(.22,1,.36,1);--nox-glass-edge:rgba(170,157,255,.24)}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+button,a,summary,.nav-item,.spatial-nav-action,.spatial-panel,.capability-card,.task-row,.chat-history-item{ -webkit-tap-highlight-color:transparent}
+button,.nav-item,.spatial-nav-action,.spatial-task-item,.chat-history-item,.pair-primary,.pair-secondary,.pair-disconnect,.send-button,.icon-button,.spatial-voice-controls button,.spatial-panel-actions button{transition:transform var(--nox-motion-medium) var(--nox-ease),background-color var(--nox-motion-fast) ease,border-color var(--nox-motion-fast) ease,box-shadow var(--nox-motion-medium) ease,color var(--nox-motion-fast) ease}
+button:active,.nav-item:active,.spatial-nav-action:active,.spatial-task-item:active,.chat-history-item:active{transform:scale(.975)}
+button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #9b91ff;outline-offset:3px}
+.spatial-panel,.capability-card,.task-row,.pairing-panel,.chat-panel,.task-panel{transition:transform var(--nox-motion-slow) var(--nox-ease),border-color var(--nox-motion-medium) ease,box-shadow var(--nox-motion-medium) ease,background-color var(--nox-motion-medium) ease}
+@media(hover:hover) and (pointer:fine){
+ .spatial-panel:not(.is-maximized):hover,.capability-card:hover,.task-row:hover{border-color:var(--nox-glass-edge);box-shadow:0 14px 42px #03030b55,0 0 24px #8d82ff0b}
+ .spatial-nav-action:hover,.spatial-task-item:hover{transform:translateX(2px)}
+ .pair-primary:hover,.send-button:hover,.spatial-voice-start:hover{transform:translateY(-1px);box-shadow:0 7px 22px #8d82ff24}
+ .spatial-panel-actions button:hover,.icon-button:hover{box-shadow:0 0 18px #a99cff1c}
+}
+.nox-cursor{position:fixed;z-index:9999;left:0;top:0;width:13px;height:13px;margin:-6px 0 0 -6px;border:1px solid #b7aaffaa;border-radius:50%;pointer-events:none;opacity:0;transition:opacity 180ms ease,width 180ms ease,height 180ms ease,background-color 180ms ease;will-change:transform;background:#a99cff12;box-shadow:0 0 16px #8e82ff22}
+body.nox-fine-pointer .nox-cursor{opacity:.75}
+body.nox-fine-pointer:has(button:hover) .nox-cursor{width:19px;height:19px;margin:-9px 0 0 -9px;background:#91dcff18;border-color:#91dcffcc}
+html[data-nox-motion="off"] .nox-cursor{display:none}
+.nox-ripple-host{position:relative;isolation:isolate;overflow:hidden}
+.nox-interaction-ripple{position:absolute;width:14px;height:14px;border-radius:50%;pointer-events:none;z-index:4;transform:translate(-50%,-50%) scale(0);background:radial-gradient(circle,rgba(180,166,255,.26),rgba(103,211,255,.08) 55%,transparent 72%);animation:noxRipple 520ms var(--nox-ease) forwards}
+@keyframes noxRipple{to{transform:translate(-50%,-50%) scale(15);opacity:0}}
+.nox-reveal-ready{opacity:0;transform:translateY(9px);transition:opacity 460ms var(--nox-ease),transform 460ms var(--nox-ease)}
+.nox-reveal-ready.nox-revealed{opacity:1;transform:translateY(0)}
+.nox-arrival{animation:noxArrival 440ms var(--nox-ease) both}
+@keyframes noxArrival{0%{filter:blur(2px);opacity:.78;transform:translateY(7px) scale(.995)}100%{filter:blur(0);opacity:1;transform:translateY(0) scale(1)}}
+.spatial-panel.is-minimized .spatial-panel-body{animation:noxPanelFold 180ms ease both}
+.spatial-panel.is-maximized{z-index:20}
+.motion-preset-group{display:flex;gap:3px;padding:3px;border:1px solid #343347;border-radius:9px;background:#101019}
+.motion-preset-group button{border:1px solid transparent;border-radius:6px;padding:6px 8px;background:transparent;color:#898ba0;font-size:9px;white-space:nowrap;cursor:pointer}
+.motion-preset-group button.active{border-color:#9187ff55;background:linear-gradient(135deg,#8878ff26,#65d9ff10);color:#eeecff;box-shadow:inset 0 1px 0 #ffffff0c}
+.spatial-motion-control{display:grid;gap:6px;align-content:center}
+.spatial-motion-control>span{font:8px 'DM Mono',monospace;letter-spacing:.8px;color:#777b94}
+@keyframes noxPanelFold{to{opacity:.72;transform:scale(.99)}}
+html[data-nox-motion="off"] *,html[data-nox-motion="off"] *::before,html[data-nox-motion="off"] *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+html[data-nox-motion="off"] .nox-reveal-ready{opacity:1;transform:none}
+@media(max-width:760px){
+ .spatial-motion-control{width:100%;grid-template-columns:auto 1fr;align-items:center}
+ .motion-preset-group{justify-content:space-between}
+ .motion-preset-group button{flex:1;padding:8px 5px}
+ .nox-cursor{display:none!important}
+ .nox-reveal-ready{transform:translateY(4px)}
+}
+@media(prefers-reduced-motion:reduce){
+ html{scroll-behavior:auto!important}
+ *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.001ms!important}
+ .nox-cursor,.nox-interaction-ripple{display:none!important}
+ .nox-reveal-ready{opacity:1;transform:none}
+}
