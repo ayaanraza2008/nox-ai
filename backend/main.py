@@ -631,10 +631,11 @@ async def health():
         task_database_error = "connection_failed"
 
     storage_healthy = database_connected and task_database_connected
+    ai_configured = any(os.getenv(key, "").strip() for key in ("OPENROUTER_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"))
     return {
         "status": "ok" if storage_healthy else "degraded",
         "service": "NOX AI",
-        "ai_configured": bool(os.getenv("OPENROUTER_API_KEY")),
+        "ai_configured": ai_configured,
         "storage_backend": "postgresql" if database_configured else "sqlite",
         "task_storage_backend": "postgresql" if task_manager.use_postgres else "sqlite",
         "durable_storage_configured": database_configured and task_manager.use_postgres,
@@ -674,7 +675,7 @@ async def chat(payload: ChatRequest):
 @app.get("/api/capabilities")
 async def capabilities():
     """Return truthful implementation/setup status for the current NOX build."""
-    ai_configured = bool(os.getenv("OPENROUTER_API_KEY"))
+    ai_configured = any(os.getenv(key, "").strip() for key in ("OPENROUTER_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"))
     modules = [
         {"id": "chat", "name": "AI Chat", "status": "ready" if ai_configured else "setup_required", "detail": "Provider-backed chat configured." if ai_configured else "Add OPENROUTER_API_KEY in the hosting environment for real AI responses."},
         {"id": "tasks", "name": "Autonomous Task Orchestration", "status": "ready", "detail": "Persistent task queue with progress, event history, pause/resume/cancel, bounded retries, and a bounded tool-using web research loop. Public web search and page reading only; no login, form submission, purchases, or local-device control."},
