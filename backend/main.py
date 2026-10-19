@@ -477,26 +477,39 @@ async def pairing_command_status(command_id: str, session_id: str, x_nox_device_
 async def health():
     database_configured = DATABASE_URL.startswith(("postgres://", "postgresql://"))
     database_connected = False
+    task_database_connected = False
     database_error = None
+    task_database_error = None
 
-    if database_configured:
-        try:
-            # Exercise the real connection and ensure required storage tables exist.
-            with pair_db() as conn:
-                conn.execute("SELECT 1").fetchone()
-            database_connected = True
-        except Exception:
-            # Never expose connection strings, passwords, or provider error details.
-            database_error = "connection_failed"
+    # Pairing/history and task orchestration use separate connection adapters.
+    # Probe both so health cannot claim storage is healthy when one subsystem is broken.
+    try:
+        with pair_db() as conn:
+            conn.execute("SELECT 1").fetchone()
+        database_connected = True
+    except Exception:
+        # Never expose connection strings, passwords, or provider error details.
+        database_error = "connection_failed"
 
+    try:
+        with task_manager._connect() as conn:
+            conn.execute("SELECT 1").fetchone()
+        task_database_connected = True
+    except Exception:
+        task_database_error = "connection_failed"
+
+    storage_healthy = database_connected and task_database_connected
     return {
-        "status": "ok" if (not database_configured or database_connected) else "degraded",
+        "status": "ok" if storage_healthy else "degraded",
         "service": "NOX AI",
         "ai_configured": bool(os.getenv("OPENROUTER_API_KEY")),
         "storage_backend": "postgresql" if database_configured else "sqlite",
-        "durable_storage_configured": database_configured,
-        "database_connected": database_connected if database_configured else False,
+        "task_storage_backend": "postgresql" if task_manager.use_postgres else "sqlite",
+        "durable_storage_configured": database_configured and task_manager.use_postgres,
+        "database_connected": database_connected,
+        "task_database_connected": task_database_connected,
         "database_error": database_error,
+        "task_database_error": task_database_error,
     }
 
 
