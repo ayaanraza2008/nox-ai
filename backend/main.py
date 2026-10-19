@@ -1121,7 +1121,7 @@ async def chat_stream(payload: ChatRequest, request: Request):
             raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
 
     async def events():
-        async for item in stream_provider_reply(message, payload.language, payload.history, payload.images, _retrieved_context(request, message))
+        async for item in stream_provider_reply(message, payload.language, payload.history, payload.images, _retrieved_context(request, message)):
             yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
 
     return StreamingResponse(
