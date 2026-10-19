@@ -101,3 +101,10 @@ The latest frontend/backend adds an authenticated shared conversation store for 
 ## What “from anywhere” requires
 
 NOX is a growing, permissioned assistant, not yet a universal remote-control layer. The hosted web app can chat and route supported commands; local app/device actions require the appropriate companion to be installed, paired, running, and granted OS permissions. Browsers and mobile operating systems intentionally block unrestricted background access. Purchases, sending messages, destructive edits, and other consequential actions should keep explicit confirmation. Do not put API keys or device tokens in public repositories.
+
+
+## Streaming chat and provider routing
+
+NOX exposes `POST /api/chat/stream` using Server-Sent Events so assistant text appears while the provider is generating it. The existing `POST /api/chat` endpoint remains available for compatibility. Recent user/assistant turns are sent as bounded context (up to 12 turns at the provider), and image requests use the configured vision model.
+
+Provider selection is configurable with `NOX_CHAT_PROVIDER=auto|openrouter|groq|gemini`. The default `auto` keeps the OpenRouter → Groq → Gemini fallback order; selecting a provider moves it to the front while other configured providers remain fallbacks. Model names remain configured separately with `OPENROUTER_MODEL`, `GROQ_MODEL`, and `GEMINI_MODEL`; vision models use `OPENROUTER_VISION_MODEL`, `GROQ_VISION_MODEL`, and `GEMINI_VISION_MODEL`. Keep API keys only in the hosting environment, never in frontend code. Streaming reduces perceived wait time but does not make a slow provider faster, and provider/model availability and quotas still apply.
