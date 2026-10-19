@@ -17,6 +17,8 @@ class FakeProvider:
         ]}
         self.calls = []
         self.fail_roles = set()
+        self.active_specialists = 0
+        self.max_active_specialists = 0
 
     async def __call__(self, messages, timeout=90):
         self.calls.append(messages)
@@ -26,8 +28,13 @@ class FakeProvider:
             return json.dumps(self.planner)
         if "integration and qa lead" in messages[0]["content"].lower():
             return "Unified deliverable with limitations."
-        await asyncio.sleep(0.01)
-        return "Specialist artifact."
+        self.active_specialists += 1
+        self.max_active_specialists = max(self.max_active_specialists, self.active_specialists)
+        try:
+            await asyncio.sleep(0.03)
+            return "Specialist artifact."
+        finally:
+            self.active_specialists -= 1
 
 
 class SwarmTests(unittest.IsolatedAsyncioTestCase):
@@ -69,6 +76,14 @@ class SwarmTests(unittest.IsolatedAsyncioTestCase):
         qa_call = next(m for m in self.provider.calls if "Testing and QA Agent" in m[0]["content"])
         self.assertIn("dependency_artifacts", qa_call[1]["content"])
         self.assertIn("Specialist artifact.", qa_call[1]["content"])
+
+    async def test_concurrency_limit_is_shared_across_multiple_jobs(self):
+        first = await self.manager.create("Plan a secure login and dashboard feature", "en", "owner-a")
+        second = await self.manager.create("Plan a secure upload and review feature", "en", "owner-a")
+        final_first, final_second = await asyncio.gather(self._wait(first["id"]), self._wait(second["id"]))
+        self.assertEqual(final_first["status"], "completed")
+        self.assertEqual(final_second["status"], "completed")
+        self.assertLessEqual(self.provider.max_active_specialists, 3)
 
     async def test_failed_dependency_blocks_downstream_agent(self):
         self.provider.fail_roles.add("Security Agent")
