@@ -229,7 +229,16 @@ for(let i=0;i<28;i++){const s=document.createElement('span');s.style.setProperty
      return true;
    }catch(err){console.warn('NOX WebGL core unavailable; using graceful visual fallback.',err);gl=null;canvas.classList.add('core-webgl-fallback');return false}
  }
- const hasGL=initGL();
+ function ensureFallbackCanvas(){
+   if(fallbackCanvas||!canvas.parentElement)return fallbackCanvas;
+   fallbackCanvas=document.createElement('canvas');fallbackCanvas.className='core-fallback-canvas';fallbackCanvas.setAttribute('aria-hidden','true');
+   Object.assign(fallbackCanvas.style,{position:'absolute',inset:'0',width:'100%',height:'100%',display:'block',pointerEvents:'none',zIndex:'1'});
+   canvas.parentElement.insertBefore(fallbackCanvas,canvas.nextSibling);
+   fallbackContext=fallbackCanvas.getContext('2d');return fallbackCanvas;
+ }
+ let fallbackCanvas=null,fallbackContext=null;
+ let hasGL=initGL();
+ if(!hasGL){canvas.classList.add('core-webgl-fallback');ensureFallbackCanvas()}
  const uniforms=hasGL?Object.fromEntries(['u_resolution','u_time','u_level','u_pulse','u_mode','u_mouse','u_color','u_reduced'].map(n=>[n,gl.getUniformLocation(program,n)])):{};
  const particleVertex=String.raw`precision highp float;
  attribute vec3 a_particlePosition; attribute float a_particlePhase; attribute float a_particleSize;
@@ -319,11 +328,13 @@ for(let i=0;i<28;i++){const s=document.createElement('span');s.style.setProperty
  }
 
  initParticles();
+ canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();hasGL=false;gl=null;canvas.classList.add('core-webgl-fallback');ensureFallbackCanvas();resize();console.warn('NOX WebGL context lost; switched to 2D fallback.')},{passive:false});
  function resize(){
    const b=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,mobile()?1.2:1.6);pixelRatio=dpr;
    const w=Math.max(1,Math.floor(b.width*dpr)),h=Math.max(1,Math.floor(b.height*dpr));
    if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h}
-   if(gl){gl.viewport(0,0,w,h);gl.uniform2f(uniforms.u_resolution,w,h)}
+   if(fallbackCanvas&&(fallbackCanvas.width!==w||fallbackCanvas.height!==h)){fallbackCanvas.width=w;fallbackCanvas.height=h}
+   if(gl&&hasGL){gl.viewport(0,0,w,h);gl.uniform2f(uniforms.u_resolution,w,h)}
  }
  function setMode(next){
    mode=palette[next]?next:'idle';
@@ -346,8 +357,13 @@ for(let i=0;i<28;i++){const s=document.createElement('span');s.style.setProperty
      const c=palette[mode]||palette.idle;gl.uniform3f(uniforms.u_color,c[0],c[1],c[2]);gl.uniform1f(uniforms.u_reduced,reduced()?1:0);
      gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);gl.drawArrays(gl.TRIANGLES,0,6);drawParticles(mode==='listening'?micLevel:mode==='speaking'?ttsLevel:0,c);
    }else{
-     // Graceful fallback if WebGL is unavailable; this is not the primary renderer.
-     const ctx=canvas.getContext('2d');if(ctx){const w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);const g=ctx.createRadialGradient(w/2,h/2,1,w/2,h/2,w*.38);const c=palette[mode]||palette.idle;g.addColorStop(0,'rgba(225,242,255,.9)');g.addColorStop(.22,'rgba('+c.map(v=>Math.round(v*255)).join(',')+',.7)');g.addColorStop(1,'rgba(90,70,180,0)');ctx.fillStyle=g;ctx.fillRect(0,0,w,h)}
+     // Use a separate 2D canvas: browsers cannot switch an existing WebGL canvas to 2D.
+     if(!fallbackContext)ensureFallbackCanvas();
+     const ctx=fallbackContext;if(ctx&&fallbackCanvas){const w=fallbackCanvas.width,h=fallbackCanvas.height;ctx.clearRect(0,0,w,h);const c=palette[mode]||palette.idle;const t=elapsed*.001;const cx=w/2,cy=h/2,r=Math.min(w,h)*(.23+.012*Math.sin(t*1.4)+.04*(mode==='listening'?micLevel:mode==='speaking'?ttsLevel:0));
+       const glow=ctx.createRadialGradient(cx,cy,1,cx,cy,Math.max(1,r*1.8));glow.addColorStop(0,'rgba(225,242,255,.96)');glow.addColorStop(.28,'rgba('+c.map(v=>Math.round(v*255)).join(',')+',.72)');glow.addColorStop(1,'rgba(90,70,180,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,w,h);
+       ctx.save();ctx.translate(cx,cy);ctx.rotate(t*.16);for(let i=0;i<4;i++){ctx.rotate(Math.PI/4);ctx.beginPath();ctx.ellipse(0,0,r*(1+i*.11),r*(.28+i*.035),0,0,Math.PI*2);ctx.strokeStyle='rgba('+c.map(v=>Math.round(v*255)).join(',')+','+(.38-i*.06)+')';ctx.lineWidth=Math.max(1,pixelRatio);ctx.stroke()}ctx.restore();
+       ctx.beginPath();ctx.arc(cx,cy,r*.3,0,Math.PI*2);ctx.fillStyle='rgba(226,246,255,.85)';ctx.shadowBlur=24*pixelRatio;ctx.shadowColor='rgba(146,120,255,.85)';ctx.fill();ctx.shadowBlur=0;
+     }
    }
  }
  function start(){if(running||document.hidden||disposed)return;running=true;last=0;raf=requestAnimationFrame(draw)}
