@@ -413,18 +413,28 @@ async def pairing_next_command(session_id: str, x_nox_device_token: str | None =
 
 @app.post("/api/pairing/commands/{command_id}/result")
 async def pairing_command_result(command_id: str, result: str, x_nox_device_token: str | None = None):
+    # The companion reports compact JSON. Bound input before parsing so a paired
+    # device cannot accidentally submit an unbounded result payload.
+    if len(result) > 5000:
+        raise HTTPException(status_code=413, detail="Command result is too large (maximum 5000 characters).")
     with pair_db() as conn:
         current = device_from_token(conn, x_nox_device_token)
         row = conn.execute("SELECT * FROM pair_commands WHERE command_id=? AND target_device=? AND session_id=?",
                            (command_id, current["device_id"], current["session_id"])).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Command not found for this device.")
-        # Report execution truthfully. A delivered command is not the same as a
-        # successful action; preserve the companion's actual result status.
+        # Make result retries idempotent: a duplicate report must not overwrite
+        # the first terminal outcome if the companion retries after a timeout.
+        if row["status"] in ("completed", "reported", "failed"):
+            return {"status": "already_recorded", "command_status": row["status"]}
         try:
             result_data = json.loads(result)
         except (TypeError, ValueError):
-            result_data = {"status": "error", "message": "Companion returned an unreadable result."}
+            result_data = None
+        if not isinstance(result_data, dict):
+            raise HTTPException(status_code=400, detail="Command result must be a JSON object.")
+        # Report execution truthfully. A delivered command is not the same as a
+        # successful action; preserve the companion's actual result status.
         action_status = str(result_data.get("status", "error")).lower()
         if action_status == "success":
             command_status = "completed"
@@ -445,7 +455,7 @@ async def pairing_command_result(command_id: str, result: str, x_nox_device_toke
                 if key in result_data:
                     stored_result[key] = value
         encoded_result = json.dumps(stored_result, ensure_ascii=False)
-        conn.execute("UPDATE pair_commands SET status=?,result=? WHERE command_id=?",
+        conn.execute("UPDATE pair_commands SET status=?,result=? WHERE command_id=? AND status IN ('queued','delivered')",
                      (command_status, encoded_result, command_id))
     return {"status": "recorded", "command_status": command_status}
 
