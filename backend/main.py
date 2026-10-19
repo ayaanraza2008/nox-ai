@@ -245,6 +245,28 @@ def _prioritize_providers(providers: list[dict]) -> list[dict]:
     return sorted(providers, key=lambda item: 0 if item["name"].lower() == preferred else 1)
 
 
+def _stream_retry_provider(provider: dict, status_code: int | None = None, connection_failure: bool = False) -> dict | None:
+    """Return one bounded streaming retry or an OpenRouter free-model fallback."""
+    if (
+        provider.get("name") == "OpenRouter"
+        and provider.get("model") != "openrouter/free"
+        and status_code in (400, 404, 422)
+        and not provider.get("_stream_fallback_model")
+    ):
+        fallback = dict(provider)
+        fallback["model"] = "openrouter/free"
+        fallback["_stream_fallback_model"] = True
+        fallback.pop("_stream_retried", None)
+        return fallback
+
+    transient = status_code in (408, 429, 500, 502, 503, 504)
+    if (transient or connection_failure) and not provider.get("_stream_retried"):
+        retry = dict(provider)
+        retry["_stream_retried"] = True
+        return retry
+    return None
+
+
 def build_nox_system_prompt(language: str) -> str:
     """One shared instruction set for streaming and non-streaming chat."""
     return (
@@ -483,8 +505,10 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
         return
 
     failures = []
+    pending = list(providers)
     async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=12.0), trust_env=True) as client:
-        for provider in providers:
+        while pending:
+            provider = pending.pop(0)
             produced = False
             try:
                 async with client.stream(
@@ -496,6 +520,10 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
                         body = (await response.aread()).decode("utf-8", errors="replace")[:400]
                         logger.warning("%s streaming HTTP %s: %s", provider["name"], response.status_code, body)
                         failures.append(f"{provider['name']}: HTTP {response.status_code}")
+                        retry_provider = _stream_retry_provider(provider, status_code=response.status_code)
+                        if retry_provider:
+                            pending.append(retry_provider)
+                            logger.info("Queueing bounded streaming fallback for %s", provider["name"])
                         continue
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
@@ -520,12 +548,18 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
                         yield {"type": "done", "mode": "ai"}
                         return
                     failures.append(f"{provider['name']}: empty stream")
+                retry_provider = _stream_retry_provider(provider, connection_failure=True)
+                if retry_provider:
+                    pending.append(retry_provider)
             except (httpx.TimeoutException, httpx.RequestError) as exc:
                 logger.warning("%s streaming request failed (%s)", provider["name"], type(exc).__name__)
                 failures.append(f"{provider['name']}: connection/timeout")
                 if produced:
                     yield {"type": "error", "message": "The connection ended before the full response arrived."}
                     return
+                retry_provider = _stream_retry_provider(provider, connection_failure=True)
+                if retry_provider:
+                    pending.append(retry_provider)
             except Exception as exc:
                 logger.exception("%s stream parsing failed (%s)", provider["name"], type(exc).__name__)
                 failures.append(f"{provider['name']}: stream error")
