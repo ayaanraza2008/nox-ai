@@ -700,7 +700,9 @@ function App() {
     const voices = synth.getVoices();
     if (voices.length) {
       const prefix = lang.toLowerCase().split("-")[0];
-      utterance.voice = voices.find((voice) => voice.lang?.toLowerCase() === lang.toLowerCase())
+      const preferred = voices.find((voice) => voice.name === selectedVoiceName && voice.lang?.toLowerCase().startsWith(prefix));
+      utterance.voice = preferred
+        || voices.find((voice) => voice.lang?.toLowerCase() === lang.toLowerCase())
         || voices.find((voice) => voice.lang?.toLowerCase().startsWith(prefix))
         || null;
       synth.speak(utterance);
