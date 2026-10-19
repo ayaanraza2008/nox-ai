@@ -2,6 +2,8 @@ name: Verify and package NOX AI
 
 on:
   push:
+    branches: [main, "nox/**"]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
