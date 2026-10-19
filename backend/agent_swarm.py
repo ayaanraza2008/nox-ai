@@ -73,6 +73,8 @@ class SwarmManager:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.provider = provider or self._provider_call
         self.runners: dict[str, asyncio.Task] = {}
+        # Shared across jobs so concurrent submissions cannot multiply the model-call budget.
+        self._agent_semaphore = asyncio.Semaphore(MAX_AGENTS)
         self._init_db()
 
     @contextmanager
@@ -324,7 +326,7 @@ class SwarmManager:
             job["status"] = "running"
             self._save(job)
             by_id = {agent["id"]: agent for agent in job["agents"]}
-            semaphore = asyncio.Semaphore(MAX_AGENTS)
+            semaphore = self._agent_semaphore
             pending = set(by_id)
             finished = set()
             while pending and job["status"] != "cancelled":
