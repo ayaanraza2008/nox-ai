@@ -40,7 +40,9 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 8 : 8;
-      const count = reducedMotion ? 90 : width < 600 ? (cores <= 4 ? 120 : 170) : (cores <= 4 ? 260 : 520);
+      // Adaptive density adds depth without thousands of DOM nodes.
+      const count = reducedMotion ? 84 : width < 420 ? (cores <= 4 ? 150 : 210)
+        : width < 760 ? (cores <= 4 ? 230 : 320) : (cores <= 4 ? 430 : 760);
       particles = Array.from({ length: count }, (_, i) => {
         const z = Math.random() * 2 - 1;
         const a = Math.random() * Math.PI * 2;
@@ -60,7 +62,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
       if (document.hidden) { raf = 0; return; }
       const activeMode = modeRef.current;
       // Cap expensive canvas work on high-refresh displays; animation remains smooth.
-      if (timestamp - lastFrame < 1000 / (reducedMotion ? 18 : 50)) {
+      if (timestamp - lastFrame < 1000 / (reducedMotion ? 18 : 60)) {
         raf = window.requestAnimationFrame(draw);
         return;
       }
@@ -231,6 +233,33 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
       ctx.arc(cx, cy, radius * corePulse * 0.58, 0, Math.PI * 2);
       ctx.fill();
 
+      // Layered singularity nucleus: cool-white center, violet corona and fine contours.
+      const nucleusRadius = radius * (0.105 + energy * 0.025) * corePulse;
+      const nucleus = ctx.createRadialGradient(
+        cx - nucleusRadius * 0.22, cy - nucleusRadius * 0.28, nucleusRadius * 0.025,
+        cx, cy, nucleusRadius * 2.7
+      );
+      nucleus.addColorStop(0, `rgba(235, 253, 255, ${0.9 + energy * 0.08})`);
+      nucleus.addColorStop(0.12, `rgba(124, 228, 255, ${0.82 + energy * 0.12})`);
+      nucleus.addColorStop(0.38, `rgba(91, 129, 255, ${0.28 + energy * 0.18})`);
+      nucleus.addColorStop(0.72, `rgba(150, 92, 255, ${0.12 + energy * 0.12})`);
+      nucleus.addColorStop(1, "rgba(80, 150, 255, 0)");
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = nucleus;
+      ctx.beginPath();
+      ctx.arc(cx, cy, nucleusRadius * 2.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(202, 246, 255, ${0.24 + energy * 0.28})`;
+      ctx.lineWidth = 0.65;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, nucleusRadius * 1.8, nucleusRadius * 0.72, time * 0.18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, nucleusRadius * 1.42, nucleusRadius * 0.9, -time * 0.13, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
       // Delicate rotating orbital arcs add depth without replacing the particle field.
       ctx.save();
       ctx.translate(cx, cy);
@@ -265,6 +294,36 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAud
         ctx.fillStyle = `rgba(145, 224, 255, ${0.38 + energy * 0.35})`;
         ctx.fill();
       }
+      ctx.restore();
+
+      // Bright couriers travel on elliptical paths with short, fading light trails.
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 3; i += 1) {
+        const angle = time * (0.58 + i * 0.17) + i * (Math.PI * 2 / 3);
+        const orbitX = radius * (0.82 + i * 0.12);
+        const orbitY = radius * (0.22 + i * 0.055);
+        const px = cx + Math.cos(angle) * orbitX;
+        const py = cy + Math.sin(angle * 0.86 + i) * orbitY;
+        const tailX = px - Math.cos(angle) * (7 + energy * 9);
+        const tailY = py - Math.sin(angle * 0.86 + i) * (3 + energy * 5);
+        const trail = ctx.createLinearGradient(tailX, tailY, px, py);
+        trail.addColorStop(0, "rgba(104, 196, 255, 0)");
+        trail.addColorStop(1, `rgba(204, 247, 255, ${0.42 + energy * 0.35})`);
+        ctx.strokeStyle = trail;
+        ctx.lineWidth = 0.8 + energy * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(225, 251, 255, ${0.65 + energy * 0.3})`;
+        ctx.shadowColor = "rgba(91, 216, 255, 0.8)";
+        ctx.shadowBlur = 5 + energy * 7;
+        ctx.beginPath();
+        ctx.arc(px, py, 1.05 + energy * 0.75, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
       ctx.restore();
 
       // The equalizer remains nearly still in silence and follows the same energy.
