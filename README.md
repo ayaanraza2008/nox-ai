@@ -14,6 +14,36 @@ A futuristic, multilingual personal AI assistant with a responsive holographic c
 - Demo fallback when no AI API key is configured
 - Render deployment configuration
 
+
+## Knowledge Index (initial implementation)
+
+NOX includes a session-scoped knowledge index for user-provided documents and individual public URLs.
+
+- **Ingestion:** public HTML/plain-text/JSON URLs (only after checking the site's `robots.txt`) and uploaded TXT, Markdown, CSV, JSON, HTML, common source-code/text formats, PDF, DOCX, and XLSX.
+- **Extraction and indexing:** normalized text, SHA-256 duplicate detection, bounded overlapping chunks, source metadata, and SQLite FTS5 lexical search.
+- **RAG integration:** both normal and streaming chat retrieve up to four matching passages from the current browser session and pass them to the model as untrusted evidence. The model is instructed to cite the source title/location and not to follow instructions embedded in retrieved pages.
+- **Privacy:** sources, chunks, searches, and deletion are scoped to the server-issued `nox_session` cookie. A source ID alone does not grant access to another session's indexed data.
+- **Dashboard:** the Knowledge Index workspace shows actual source/chunk counts, stored bytes, source links, search passages, and per-source deletion.
+
+### Knowledge Index configuration and limitations
+
+- Install dependencies with `pip install -r backend/requirements.txt`; PDF extraction uses `pypdf`, and browser file uploads use `python-multipart`.
+- The default database path is `nox_knowledge.sqlite3` at the repository root. Set `NOX_KNOWLEDGE_DB` to a path on a persistent mounted disk if the hosting platform provides one. **Render's default ephemeral filesystem can lose this index on redeploy/restart**, so configure durable storage before relying on it.
+- Upload size defaults to 10 MiB per file (`NOX_KNOWLEDGE_MAX_UPLOAD_BYTES`); extracted text is capped at 1,000,000 characters per source (`NOX_KNOWLEDGE_MAX_TEXT_CHARS`).
+- Search currently uses SQLite FTS5 and a keyword fallback. **Vector embeddings, semantic vector search, OCR for scanned PDFs, scheduled synchronization, multi-page crawling, and OAuth connectors (Drive/OneDrive/Notion/email/calendar/private GitHub) are not implemented or configured yet.** This release must not be described as indexing the entire internet or as a complete universal connector engine.
+- URL ingestion refuses private/local IP ranges and redirects, and fails closed if it cannot verify `robots.txt`. Sites may still block requests or return content the extractor cannot read.
+- Only index material you are authorized to access. Retrieved web/document content is treated as evidence, not instructions. No credentials are collected for third-party services by this initial implementation.
+
+### Knowledge Index API
+
+- `GET /api/knowledge` — source list and live index counts.
+- `POST /api/knowledge/urls` with JSON `{"url":"https://example.org/docs"}` — index one permitted public URL.
+- `POST /api/knowledge/upload` with multipart field `file` — index one supported document.
+- `POST /api/knowledge/search` with JSON `{"query":"your question","limit":6}` — retrieve source passages.
+- `DELETE /api/knowledge/sources/{source_id}` — remove the source, chunks, and searchable index entries.
+
+Every endpoint requires the current browser session cookie. No counts in the UI are hardcoded.
+
 ## Run locally
 1. Install Python 3.11+.
 2. Install backend dependencies: `pip install -r backend/requirements.txt`
