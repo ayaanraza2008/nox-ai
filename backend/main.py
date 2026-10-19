@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import secrets
 import sqlite3
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
 from backend.autonomous_agent import run_autonomous_task
 
+logger = logging.getLogger("nox.provider")
 app = FastAPI(title="NOX AI API", version="0.1.0")
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -584,10 +586,14 @@ async def chat(payload: ChatRequest):
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
     try:
         answer = await provider_reply(message, payload.language, payload.history)
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as exc:
+        logger.warning("AI provider timed out (%s)", type(exc).__name__)
         raise HTTPException(status_code=504, detail="The AI provider timed out. Please try again.")
-    except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Could not reach the AI provider. Please try again.")
+    except httpx.RequestError as exc:
+        # Log the exception class and safe message so hosting logs identify DNS,
+        # TLS, connection, or proxy failures without logging API keys or headers.
+        logger.exception("AI provider connection failed (%s): %s", type(exc).__name__, str(exc))
+        raise HTTPException(status_code=502, detail="Could not reach the AI provider. Check Render logs for the connection error.")
     if answer:
         return ChatResponse(reply=answer, mode="ai")
     return ChatResponse(
