@@ -152,6 +152,7 @@ function App() {
   const [pairBusy, setPairBusy] = useState(false);
   const endRef = useRef(null);
   const recognitionRef = useRef(null);
+  const sendMessageRef = useRef(null);
   const voiceRecognitionRef = useRef(null);
   const voiceModeRef = useRef(false);
   const voiceMutedRef = useRef(false);
@@ -810,6 +811,8 @@ function App() {
     }
   }
 
+  sendMessageRef.current = sendMessage;
+
   function scheduleVoiceRecognition(delay = 350) {
     window.clearTimeout(voiceRestartRef.current);
     voiceRestartRef.current = window.setTimeout(() => {
@@ -855,7 +858,7 @@ function App() {
           voiceTranscriptRef.current = "";
           voiceRequestPendingRef.current = true;
           try { voiceRecognitionRef.current?.stop(); } catch {}
-          try { await sendMessage(transcript, true); }
+          try { await sendMessageRef.current?.(transcript, true); }
           finally { voiceRequestPendingRef.current = false; }
         }, 850);
       } else if (interimChunk.trim()) {
