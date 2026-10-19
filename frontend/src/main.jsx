@@ -823,6 +823,10 @@ function App() {
     window.clearTimeout(ttsDecayRef.current);
     stopTtsAudio();
     const lang = getSpeechLanguage(text);
+    if (text.length > 2500) {
+      speakWithBrowserSynthesis(text, lang);
+      return;
+    }
     let fallbackStarted = false;
     const startFallbackOnce = () => {
       if (fallbackStarted) return;
@@ -839,7 +843,7 @@ function App() {
         response = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: text.slice(0, 2500), language: lang, rate: voiceSpeed }),
+          body: JSON.stringify({ text, language: lang, rate: voiceSpeed }),
           signal: ttsController.signal
         });
       } finally {
