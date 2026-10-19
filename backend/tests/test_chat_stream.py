@@ -36,6 +36,22 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen["language"], "hinglish")
         self.assertEqual(seen["history"][-1]["content"], "Hello")
 
+    async def test_stream_endpoint_emits_safe_error_event_for_unexpected_failure(self):
+        async def broken_stream(message, language, history, images=None, knowledge_context=None):
+            if False:
+                yield {"type": "delta", "text": "unreachable"}
+            raise RuntimeError("private internal detail")
+
+        transport = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            with patch.object(main, "stream_provider_reply", broken_stream):
+                response = await client.post("/api/chat/stream", json={"message": "Hello", "images": []})
+
+        packets = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(packets[-1]["type"], "error")
+        self.assertIn("Please retry", packets[-1]["message"])
+        self.assertNotIn("private internal detail", response.text)
     async def test_stream_endpoint_rejects_invalid_image_before_streaming(self):
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
