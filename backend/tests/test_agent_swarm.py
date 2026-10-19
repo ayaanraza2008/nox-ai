@@ -16,9 +16,12 @@ class FakeProvider:
             {"id": "a3", "role": "qa", "title": "Validate plan", "instruction": "Use the plan and security review.", "depends_on": ["a1", "a2"]},
         ]}
         self.calls = []
+        self.fail_roles = set()
 
     async def __call__(self, messages, timeout=90):
         self.calls.append(messages)
+        if any(role in messages[0]["content"] for role in self.fail_roles):
+            raise RuntimeError("simulated specialist failure")
         if "task planner" in messages[0]["content"].lower():
             return json.dumps(self.planner)
         if "integration and qa lead" in messages[0]["content"].lower():
@@ -66,6 +69,17 @@ class SwarmTests(unittest.IsolatedAsyncioTestCase):
         qa_call = next(m for m in self.provider.calls if "Testing and QA Agent" in m[0]["content"])
         self.assertIn("dependency_artifacts", qa_call[1]["content"])
         self.assertIn("Specialist artifact.", qa_call[1]["content"])
+
+    async def test_failed_dependency_blocks_downstream_agent(self):
+        self.provider.fail_roles.add("Security Agent")
+        created = await self.manager.create("Plan a secure login and dashboard feature", "en", "owner-a")
+        final = await self._wait(created["id"])
+        self.assertEqual(final["status"], "failed")
+        qa = next(a for a in final["agents"] if a["id"] == "a3")
+        self.assertEqual(qa["status"], "failed")
+        self.assertIn("dependency", qa["error"])
+        self.assertIsNone(final["result"])
+        self.assertFalse(any("integration and QA lead" in call[0]["content"] for call in self.provider.calls))
 
     async def test_invalid_circular_plan_is_rejected_before_agent_execution(self):
         self.provider.planner = {"tasks": [
