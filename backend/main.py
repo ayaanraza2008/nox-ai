@@ -695,6 +695,36 @@ async def get_swarm_job(job_id: str, request: Request):
     return {"job": job}
 
 
+async def _swarm_event_stream(job_id: str, owner_id: str, request: Request):
+    """Yield session-scoped job snapshots only when the persisted job changes."""
+    last_updated = None
+    while True:
+        if await request.is_disconnected():
+            return
+        job = swarm_manager.get(job_id, owner_id=owner_id)
+        if not job:
+            return
+        updated_at = job.get("updated_at")
+        if updated_at != last_updated:
+            last_updated = updated_at
+            yield "data: " + json.dumps({"job": job}, ensure_ascii=False) + "\n\n"
+        if job.get("status") in ("completed", "failed", "cancelled"):
+            return
+        await asyncio.sleep(1)
+
+
+@app.get("/api/swarm/jobs/{job_id}/events")
+async def stream_swarm_job_events(job_id: str, request: Request):
+    owner_id = session_owner(request)
+    if not swarm_manager.get(job_id, owner_id=owner_id):
+        raise HTTPException(status_code=404, detail="Swarm job not found.")
+    return StreamingResponse(
+        _swarm_event_stream(job_id, owner_id, request),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.post("/api/swarm/jobs/{job_id}/cancel")
 async def cancel_swarm_job(job_id: str, request: Request):
     try:
