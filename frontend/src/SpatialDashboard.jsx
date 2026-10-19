@@ -55,7 +55,7 @@ export default function SpatialDashboard({
   status, coreMode, busy, micLevelRef, ttsLevelRef, voiceMode, voiceMuted, voiceState,
   voiceTranscript, chatHistory, currentChatId, onNewChat, onOpenChat, onJump,
   capabilities, capabilityError, tasks, taskNotice, pairing,
-  onStartVoiceMode, onStopVoiceMode, onToggleVoiceMute, onInterruptVoice
+  onStartVoiceMode, onStopVoiceMode, onToggleVoiceMute, onInterruptVoice, onControlTask
 }) {
   const [clock, setClock] = useState(() => new Date());
   const [positions, setPositions] = useState(() => readStored("nox-spatial-panel-positions", {}));
@@ -115,6 +115,8 @@ export default function SpatialDashboard({
   });
   const liveTasks = tasks.filter((task) => ["queued", "running", "paused"].includes(task.status));
   const readyCount = capabilities?.modules?.filter((module) => module.status === "ready").length;
+  const linkedDeviceOnline = pairing?.devices?.some((device) => { const seen = Date.parse(device.last_seen || ""); return Number.isFinite(seen) && Date.now() - seen >= 0 && Date.now() - seen < 30000 && !device.disconnected; });
+  const dashboardTasks = [...liveTasks, ...tasks.filter((task) => !liveTasks.some((active) => active.id === task.id))].slice(0, 3);
   const modeLabel = voiceMode
     ? (voiceMuted ? "MICROPHONE MUTED" : ({ connecting: "CONNECTING", listening: "LISTENING", thinking: "THINKING", speaking: "SPEAKING", interrupted: "INTERRUPTED", error: "VOICE ERROR" }[voiceState] || "VOICE ACTIVE"))
     : busy ? "THINKING"
@@ -141,7 +143,7 @@ export default function SpatialDashboard({
         <div className="spatial-metric-grid">
           <div><small>AI MODULES READY</small><b>{capabilityError ? "—" : readyCount ?? "…"}</b></div>
           <div><small>ACTIVE TASKS</small><b>{liveTasks.length}</b></div>
-          <div><small>DEVICE LINK</small><b>{pairing ? "PAIRED" : "LOCAL"}</b></div>
+          <div><small>DEVICE LINK</small><b>{linkedDeviceOnline ? "ONLINE" : pairing ? "PAIRED" : "LOCAL"}</b></div>
         </div>
         <div className="spatial-system-foot"><span><span className="spatial-status-led is-live" /> Browser session</span><span>{capabilityError ? "CAPABILITIES OFFLINE" : capabilities ? "CAPABILITIES SYNCED" : "SYNCING…"}</span></div>
       </FloatingPanel>}
@@ -165,7 +167,7 @@ export default function SpatialDashboard({
       {!hidden.includes("activity") && <FloatingPanel id="activity" title="Active operations" eyebrow="TASK TELEMETRY" subtitle="Actual task queue · refreshes from backend" className="spatial-grid-activity" {...panelProps("activity")}>
         <div className="spatial-activity-summary"><div><small>IN QUEUE</small><b>{liveTasks.length}</b></div><div><small>COMPLETED</small><b>{tasks.filter((task) => task.status === "completed").length}</b></div><div><small>FAILED</small><b>{tasks.filter((task) => task.status === "failed").length}</b></div><button type="button" onClick={() => onJump("task-panel")}>OPEN QUEUE <ChevronRight size={12} /></button></div>
         {taskNotice && <p className="spatial-notice">{taskNotice}</p>}
-        <div className="spatial-task-list">{tasks.slice(0, 3).map((task) => <button type="button" className="spatial-task-item" key={task.id} onClick={() => onJump("task-panel")}><span className={"spatial-task-dot task-" + task.status} /><span className="spatial-task-copy"><b>{task.goal}</b><small>{task.status.replaceAll("_", " ").toUpperCase()} · {task.progress || 0}%</small></span><span className="spatial-task-progress"><i style={{ width: clamp(Number(task.progress) || 0, 0, 100) + "%" }} /></span></button>)}{tasks.length === 0 && <p className="spatial-empty">No task activity yet. Task state will appear here when work starts.</p>}</div>
+        <div className="spatial-task-list">{dashboardTasks.map((task) => <div className="spatial-task-row" key={task.id}><button type="button" className="spatial-task-item" onClick={() => onJump("task-panel")}><span className={"spatial-task-dot task-" + task.status} /><span className="spatial-task-copy"><b>{task.goal}</b><small>{task.status.replaceAll("_", " ").toUpperCase()} · {task.progress || 0}%</small><span className="spatial-task-progress"><i style={{ width: clamp(Number(task.progress) || 0, 0, 100) + "%" }} /></span></span></button>{["queued", "running", "paused"].includes(task.status) && <button type="button" className="spatial-task-cancel" onClick={() => onControlTask(task.id, "cancel")} aria-label={"Cancel task " + task.goal} title="Cancel task"><X size={12} /></button>}</div>)}{tasks.length === 0 && <p className="spatial-empty">No task activity yet. Task state will appear here when work starts.</p>}</div>
       </FloatingPanel>}
 
       {!hidden.includes("voice") && <FloatingPanel id="voice" title="Voice link" eyebrow="CONVERSATION CONTROL" subtitle="Real browser voice session state" className="spatial-grid-voice" {...panelProps("voice")}>
