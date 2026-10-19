@@ -5,7 +5,7 @@ import React, { useEffect, useRef } from "react";
  * normalized 0..1 levels. Browser speechSynthesis does not expose its rendered
  * audio stream, so TTS animation is explicitly a playback/boundary fallback.
  */
-export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motionIntensity = 1, userReducedMotion = false }) {
+export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, ttsAudioReactiveRef, motionIntensity = 1, userReducedMotion = false }) {
   const canvasRef = useRef(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -282,7 +282,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
 
       canvas.dataset.mode = activeMode;
       canvas.dataset.audioSource = activeMode === "USER_SPEAKING" ? "microphone-amplitude"
-        : activeMode === "NOX_SPEAKING" ? "tts-playback-fallback" : "none";
+        : activeMode === "NOX_SPEAKING" ? (ttsAudioReactiveRef?.current ? "neural-tts-measured-rms" : "browser-speech-estimated-fallback") : "none";
       canvas.dataset.activity = thinking ? "thinking-animation" : working ? "working-animation"
         : error ? "error-state" : paused ? "paused" : listening ? "listening" : success ? "success" : "idle";
       raf = window.requestAnimationFrame(draw);
@@ -318,7 +318,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
   }, [micLevelRef, ttsLevelRef, reducedMotion, motionIntensity]);
 
   const label = mode === "USER_SPEAKING" ? "MIC AUDIO REACTIVE"
-    : mode === "NOX_SPEAKING" ? "VOICE PLAYBACK · ESTIMATED"
+    : mode === "NOX_SPEAKING" ? (ttsAudioReactiveRef?.current ? "LIVE AUDIO REACTIVE" : "VOICE · FALLBACK MODE")
       : mode === "USER_LISTENING" ? "LISTENING"
         : mode === "PROCESSING" || mode === "THINKING" ? "THINKING"
           : mode === "WORKING" ? "EXECUTING TASK"
