@@ -12,6 +12,7 @@ from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
@@ -178,6 +179,14 @@ def device_from_token(conn, token):
 
 
 
+def _prioritize_providers(providers: list[dict]) -> list[dict]:
+    """Honor an optional preferred provider while preserving safe fallback order."""
+    preferred = os.getenv("NOX_CHAT_PROVIDER", "auto").strip().lower()
+    if preferred not in {"openrouter", "groq", "gemini"}:
+        return providers
+    return sorted(providers, key=lambda item: 0 if item["name"].lower() == preferred else 1)
+
+
 async def provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None) -> str | None:
     images = images or []
     messages = [
@@ -244,6 +253,7 @@ async def provider_reply(message: str, language: str, history: list[dict], image
             "headers": {},
         })
 
+    providers = _prioritize_providers(providers)
     if not providers:
         return None
 
@@ -321,6 +331,129 @@ async def provider_reply(message: str, language: str, history: list[dict], image
         detail = "AI providers returned errors. Check provider key validity, free-model availability, quotas, and the latest Render logs."
 
     raise HTTPException(status_code=503, detail=detail)
+
+
+async def stream_provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None):
+    """Yield structured deltas from OpenAI-compatible provider streaming APIs."""
+    images = images or []
+    messages = [{
+        "role": "system",
+        "content": (
+            "You are NOX, a helpful, natural, concise multilingual assistant and proactive executor. "
+            "Understand Hindi, Urdu, English, and Hinglish; match the user's language when possible. "
+            "Use recent conversation history for follow-up references, but do not invent memories or facts. "
+            "Adapt respectfully to emotional context without diagnosing or claiming certainty. "
+            "For voice replies, use natural concise phrasing. Never claim an action you did not perform. "
+            "Require explicit confirmation for consequential external actions, purchases, deletion, or sharing private data. "
+            f"Preferred language: {language}."
+        ),
+    }]
+    for item in history[-12:]:
+        role = item.get("role")
+        content = item.get("content")
+        if role in ("user", "assistant") and isinstance(content, str):
+            messages.append({"role": role, "content": content[:4000]})
+    user_content = [{"type": "text", "text": message}]
+    user_content.extend({"type": "image_url", "image_url": {"url": image}} for image in images)
+    messages.append({"role": "user", "content": user_content if images else message})
+
+    providers = []
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if openrouter_key:
+        providers.append({
+            "name": "OpenRouter", "url": "https://openrouter.ai/api/v1/chat/completions",
+            "key": openrouter_key,
+            "model": (os.getenv("OPENROUTER_VISION_MODEL", os.getenv("OPENROUTER_MODEL", "openrouter/free"))
+                      if images else os.getenv("OPENROUTER_MODEL", "openrouter/free")),
+            "headers": {"HTTP-Referer": os.getenv("APP_URL", "https://nox-ai-vcqx.onrender.com"), "X-Title": "NOX AI"},
+        })
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    groq_vision_model = os.getenv("GROQ_VISION_MODEL", "").strip()
+    if groq_key and (not images or groq_vision_model):
+        providers.append({
+            "name": "Groq", "url": "https://api.groq.com/openai/v1/chat/completions",
+            "key": groq_key,
+            "model": groq_vision_model if images else os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "headers": {},
+        })
+    gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        providers.append({
+            "name": "Gemini", "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            "key": gemini_key,
+            "model": (os.getenv("GEMINI_VISION_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+                      if images else os.getenv("GEMINI_MODEL", "gemini-2.5-flash")),
+            "headers": {},
+        })
+    providers = _prioritize_providers(providers)
+
+    if not providers:
+        demo = ("NOX is online in demo mode. Add a valid OPENROUTER_API_KEY, GROQ_API_KEY, or "
+                "GEMINI_API_KEY in the hosting environment to enable real AI responses. "
+                "I received your message: " + message)
+        yield {"type": "delta", "text": demo}
+        yield {"type": "done", "mode": "demo"}
+        return
+
+    failures = []
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=12.0), trust_env=True) as client:
+        for provider in providers:
+            produced = False
+            try:
+                async with client.stream(
+                    "POST", provider["url"],
+                    headers={"Authorization": f"Bearer {provider['key']}", "Content-Type": "application/json", **provider["headers"]},
+                    json={"model": provider["model"], "messages": messages, "temperature": 0.7, "stream": True},
+                ) as response:
+                    if response.status_code >= 400:
+                        body = (await response.aread()).decode("utf-8", errors="replace")[:400]
+                        logger.warning("%s streaming HTTP %s: %s", provider["name"], response.status_code, body)
+                        failures.append(f"{provider['name']}: HTTP {response.status_code}")
+                        continue
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if not data:
+                            continue
+                        if data == "[DONE]":
+                            break
+                        try:
+                            packet = json.loads(data)
+                            delta = packet.get("choices", [{}])[0].get("delta", {}).get("content")
+                        except (ValueError, TypeError, KeyError, IndexError):
+                            continue
+                        if isinstance(delta, list):
+                            delta = "".join(part.get("text", "") for part in delta if isinstance(part, dict))
+                        if isinstance(delta, str) and delta:
+                            produced = True
+                            yield {"type": "delta", "text": delta}
+                    if produced:
+                        logger.info("Streaming chat served by %s", provider["name"])
+                        yield {"type": "done", "mode": "ai"}
+                        return
+                    failures.append(f"{provider['name']}: empty stream")
+            except (httpx.TimeoutException, httpx.RequestError) as exc:
+                logger.warning("%s streaming request failed (%s)", provider["name"], type(exc).__name__)
+                failures.append(f"{provider['name']}: connection/timeout")
+                if produced:
+                    yield {"type": "error", "message": "The connection ended before the full response arrived."}
+                    return
+            except Exception as exc:
+                logger.exception("%s stream parsing failed (%s)", provider["name"], type(exc).__name__)
+                failures.append(f"{provider['name']}: stream error")
+                if produced:
+                    yield {"type": "error", "message": "The response stream was interrupted."}
+                    return
+
+    logger.error("All streaming providers failed: %s", "; ".join(failures))
+    if any("HTTP 401" in item or "HTTP 403" in item for item in failures):
+        detail = "An AI provider rejected its API key. Check the saved hosting environment variables."
+    elif any("HTTP 402" in item or "HTTP 429" in item for item in failures):
+        detail = "An AI provider quota or rate limit was reached. Wait or configure another provider."
+    else:
+        detail = "All configured AI providers failed. Check provider model availability and the hosting logs."
+    yield {"type": "error", "message": detail}
 
 task_manager = TaskManager(run_autonomous_task)
 
@@ -830,6 +963,28 @@ async def chat(payload: ChatRequest):
             "environment variable in your hosting dashboard. I received your message: " + message
         ),
         mode="demo",
+    )
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(payload: ChatRequest):
+    """Server-sent events endpoint for incremental chat responses."""
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    if payload.images:
+        allowed_prefixes = ("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")
+        if any(not image.startswith(allowed_prefixes) or len(image) > 7_000_000 for image in payload.images):
+            raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
+
+    async def events():
+        async for item in stream_provider_reply(message, payload.language, payload.history, payload.images):
+            yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
 
 
