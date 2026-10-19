@@ -12,6 +12,7 @@ import os
 import re
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -23,11 +24,25 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class _TaskConnection:
+    def __init__(self, connection, postgres=False):
+        self.connection = connection
+        self.postgres = postgres
+
+    def execute(self, query, params=()):
+        if self.postgres:
+            query = query.replace("?", "%s")
+        return self.connection.execute(query, params)
+
+
 class TaskManager:
     def __init__(self, processor: Processor):
         self.processor = processor
+        self.database_url = (os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or "").strip()
+        self.use_postgres = self.database_url.startswith(("postgres://", "postgresql://"))
         self.db_path = Path(os.getenv("NOX_TASK_DB", "/tmp/nox_tasks.sqlite3"))
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self.use_postgres:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.runners: dict[str, asyncio.Task] = {}
         self.pause_events: dict[str, asyncio.Event] = {}
@@ -35,10 +50,28 @@ class TaskManager:
         self.worker: asyncio.Task | None = None
         self._init_db()
 
+    @contextmanager
     def _connect(self):
-        db = sqlite3.connect(self.db_path, timeout=10)
-        db.row_factory = sqlite3.Row
-        return db
+        raw = None
+        try:
+            if self.use_postgres:
+                import psycopg
+                from psycopg.rows import dict_row
+                raw = psycopg.connect(self.database_url, row_factory=dict_row, connect_timeout=10)
+                db = _TaskConnection(raw, postgres=True)
+            else:
+                raw = sqlite3.connect(self.db_path, timeout=10)
+                raw.row_factory = sqlite3.Row
+                db = _TaskConnection(raw)
+            yield db
+            raw.commit()
+        except Exception:
+            if raw is not None:
+                raw.rollback()
+            raise
+        finally:
+            if raw is not None:
+                raw.close()
 
     def _init_db(self):
         with self._connect() as db:
