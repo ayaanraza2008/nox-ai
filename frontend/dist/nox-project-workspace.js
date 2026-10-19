@@ -36,7 +36,7 @@
     </section>`;
   document.body.append(layer);
   const $ = id => document.getElementById(id);
-  let projectId = "", selectedPath = "", selectedPatch = "", busy = false;
+  let projectId = "", selectedPath = "", selectedPatch = "", selectedPatchStatus = "", busy = false;
   const status = message => { $("npStatus").textContent = message; };
   async function api(url, options = {}) {
     const response = await fetch(url, {credentials:"same-origin", cache:"no-store", ...options,
