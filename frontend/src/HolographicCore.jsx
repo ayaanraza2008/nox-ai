@@ -5,12 +5,13 @@ import React, { useEffect, useRef } from "react";
  * normalized 0..1 levels. Browser speechSynthesis does not expose its rendered
  * audio stream, so TTS animation is explicitly a playback/boundary fallback.
  */
-export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
+export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motionIntensity = 1, userReducedMotion = false }) {
   const canvasRef = useRef(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
-  const reducedMotion = typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const reducedMotion = userReducedMotion || (typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+  const pointerRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -36,7 +37,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = reducedMotion ? 160 : (width < 420 ? 280 : 520);
+      const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 8 : 8;
+      const count = reducedMotion ? 90 : width < 600 ? (cores <= 4 ? 120 : 170) : (cores <= 4 ? 260 : 520);
       particles = Array.from({ length: count }, (_, i) => {
         const z = Math.random() * 2 - 1;
         const a = Math.random() * Math.PI * 2;
@@ -53,6 +55,7 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
     };
 
     const draw = (timestamp = 0) => {
+      if (document.hidden) { raf = 0; return; }
       const activeMode = modeRef.current;
       // Cap expensive canvas work on high-refresh displays; animation remains smooth.
       if (timestamp - lastFrame < 1000 / (reducedMotion ? 18 : 50)) {
@@ -79,10 +82,10 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
       // Ease state changes in and out instead of snapping between visual presets.
       statePulse += (targetStatePulse - statePulse) * (targetStatePulse > statePulse ? 0.045 : 0.025);
       const energy = Math.max(smoothed, statePulse);
-      const idleMotion = reducedMotion ? 0.15 : 1;
+      const idleMotion = reducedMotion ? 0.15 : motionIntensity;
       const speed = (0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : 0)) * idleMotion;
       rotation += speed * delta;
-      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta;
+      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta * (reducedMotion ? 0.35 : motionIntensity);
       ctx.clearRect(0, 0, width, height);
 
       const cx = width / 2;
@@ -121,8 +124,8 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
         const z = p.x * Math.sin(rotation) + p.z * Math.cos(rotation);
         const perspective = 1.0 / (1.65 - (z + wobble) * 0.42);
         return {
-          x: cx + x * radius * perspective,
-          y: cy + (p.y + wobble) * radius * perspective,
+          x: cx + x * radius * perspective + pointerRef.current.x * (reducedMotion ? 0 : 9 * motionIntensity) * perspective,
+          y: cy + (p.y + wobble) * radius * perspective + pointerRef.current.y * (reducedMotion ? 0 : 7 * motionIntensity) * perspective,
           z,
           depth: perspective,
           size: p.size * perspective * (1 + energy * 0.65),
@@ -250,12 +253,31 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef }) {
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
+    const onPointerMove = (event) => {
+      if (reducedMotion) return;
+      pointerRef.current = {
+        x: (event.clientX / Math.max(1, window.innerWidth) - 0.5) * 2,
+        y: (event.clientY / Math.max(1, window.innerHeight) - 0.5) * 2
+      };
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        if (raf) window.cancelAnimationFrame(raf);
+        raf = 0;
+      } else if (!raf) {
+        raf = window.requestAnimationFrame(draw);
+      }
+    };
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    document.addEventListener("visibilitychange", onVisibilityChange);
     raf = window.requestAnimationFrame(draw);
     return () => {
-      window.cancelAnimationFrame(raf);
+      if (raf) window.cancelAnimationFrame(raf);
       observer.disconnect();
+      window.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [micLevelRef, ttsLevelRef, reducedMotion]);
+  }, [micLevelRef, ttsLevelRef, reducedMotion, motionIntensity]);
 
   const label = mode === "USER_SPEAKING" ? "MIC AUDIO REACTIVE"
     : mode === "NOX_SPEAKING" ? "VOICE PLAYBACK · ESTIMATED"
