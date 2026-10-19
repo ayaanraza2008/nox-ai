@@ -154,3 +154,19 @@ Provider selection is configurable with `NOX_CHAT_PROVIDER=auto|openrouter|groq|
 ## Response relevance and context handling
 
 Streaming and non-streaming chat now share the same system prompt and context builder. The prompt prioritizes answering the current question directly, resolving follow-ups from recent turns, matching Hindi/Urdu/English/Hinglish naturally, avoiding unrelated filler, and acknowledging/correcting a reply when the user says it missed the point. The builder filters malformed turns and bounds history text so old messages are less likely to crowd out the current request. This improves behavior but cannot guarantee every model/provider will follow instructions perfectly; model quality and context limits still matter.
+
+
+## Particle Transformation & Holographic Globe Lab (initial phase)
+
+Open **3D LAB** from the command deck to explore the separate Three.js workspace. Built-in examples (sports car, motorcycle, heart, robot head, and Earth) use procedural Three.js geometry; the particle targets are sampled from mesh triangles, with curved interpolation between the previous and next formation. The viewer supports particle/solid display modes, rotation, zoom, pause/resume, density adjustment, reset, and return-to-core. Recognized commands typed or spoken through the existing chat pipeline can open the lab and trigger supported local actions.
+
+### Geography and privacy boundaries
+
+- The globe uses a sphere plus Natural Earth land-boundary GeoJSON from `nvkelso/natural-earth-vector` when that public source is reachable. This is not satellite imagery and is not live Earth data.
+- Place lookup uses OpenStreetMap Nominatim and may be rate-limited or unavailable. Lookup markers are based on geocoder results or user-entered coordinates and are not live device positions.
+- The phone field only validates international-format input and matches a small built-in set of calling-code prefixes. A phone number alone cannot reveal a subscriber's precise or live GPS location.
+- Authorized live-device sharing, OBJ/GLB imports, and a text-to-3D provider adapter are not part of this initial phase.
+
+### Realistic model generation limits
+
+Solid mode displays the procedural mesh and its materials; it does not mean NOX has generated a photorealistic AI model. No text-to-3D API key or paid provider is required for the built-in examples. An actual AI model-generation provider and supported GLB/GLTF import can be added as a later phase after selecting a provider and reviewing its pricing, quotas, licensing, and key-storage requirements.
