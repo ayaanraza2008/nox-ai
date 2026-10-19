@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
 from backend.agent_swarm import SwarmManager
 from backend.safe_tools import SafeToolError, run_tool
+from backend import project_workspace as workspace
 from backend import knowledge
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
@@ -116,6 +117,29 @@ class SwarmCreateRequest(BaseModel):
 class SafeToolRequest(BaseModel):
     tool: Literal["calculator", "text_analysis", "json_validator", "python_syntax", "diff_preview"]
     input: str = Field(max_length=10000)
+
+
+class WorkspaceProjectCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class WorkspaceFileSave(BaseModel):
+    path: str = Field(min_length=1, max_length=240)
+    content: str = Field(max_length=50000)
+
+
+class WorkspacePatchCreate(BaseModel):
+    path: str = Field(min_length=1, max_length=240)
+    proposed_content: str = Field(max_length=50000)
+    summary: str = Field(min_length=1, max_length=240)
+
+
+class WorkspacePatchReview(BaseModel):
+    decision: Literal["approved", "rejected"]
+
+
+class WorkspaceValidateRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=240)
 
 
 class PairCreateRequest(BaseModel):
@@ -745,6 +769,101 @@ async def execute_safe_tool(payload: SafeToolRequest, request: Request):
     except SafeToolError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"result": result}
+
+
+@app.get("/api/workspace/projects")
+async def list_workspace_projects(request: Request):
+    return {"projects": workspace.list_projects(session_owner(request))}
+
+
+@app.post("/api/workspace/projects", status_code=201)
+async def create_workspace_project(payload: WorkspaceProjectCreate, request: Request):
+    try:
+        project = workspace.create_project(payload.name, session_owner(request))
+    except workspace.WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"project": project}
+
+
+@app.get("/api/workspace/projects/{project_id}")
+async def get_workspace_project(project_id: str, request: Request):
+    project = workspace.get_project(project_id, session_owner(request))
+    if not project:
+        raise HTTPException(status_code=404, detail="Workspace project not found.")
+    return {"project": project}
+
+
+@app.get("/api/workspace/projects/{project_id}/files")
+async def list_workspace_files(project_id: str, request: Request):
+    files = workspace.list_files(project_id, session_owner(request))
+    if files is None:
+        raise HTTPException(status_code=404, detail="Workspace project not found.")
+    return {"files": files}
+
+
+@app.get("/api/workspace/projects/{project_id}/files/{path:path}")
+async def read_workspace_file(project_id: str, path: str, request: Request):
+    try:
+        file = workspace.read_file(project_id, path, session_owner(request))
+    except workspace.WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if file is None:
+        raise HTTPException(status_code=404, detail="Workspace project or file not found.")
+    return {"file": file}
+
+
+@app.put("/api/workspace/projects/{project_id}/files")
+async def save_workspace_file(project_id: str, payload: WorkspaceFileSave, request: Request):
+    try:
+        saved = workspace.save_file(project_id, payload.path, payload.content, session_owner(request))
+    except workspace.WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if saved is None:
+        raise HTTPException(status_code=404, detail="Workspace project not found.")
+    return {"file": saved}
+
+
+@app.post("/api/workspace/projects/{project_id}/patches", status_code=201)
+async def create_workspace_patch(project_id: str, payload: WorkspacePatchCreate, request: Request):
+    try:
+        patch = workspace.create_patch(
+            project_id, payload.path, payload.proposed_content, payload.summary, session_owner(request)
+        )
+    except workspace.WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if patch is None:
+        raise HTTPException(status_code=404, detail="Workspace project not found.")
+    return {"patch": patch}
+
+
+@app.get("/api/workspace/projects/{project_id}/patches")
+async def list_workspace_patches(project_id: str, request: Request):
+    patches = workspace.list_patches(project_id, session_owner(request))
+    if patches is None:
+        raise HTTPException(status_code=404, detail="Workspace project not found.")
+    return {"patches": patches}
+
+
+@app.post("/api/workspace/patches/{patch_id}/review")
+async def review_workspace_patch(patch_id: str, payload: WorkspacePatchReview, request: Request):
+    try:
+        patch = workspace.review_patch(patch_id, payload.decision, session_owner(request))
+    except workspace.WorkspaceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if patch is None:
+        raise HTTPException(status_code=404, detail="Workspace patch not found.")
+    return {"patch": patch}
+
+
+@app.post("/api/workspace/projects/{project_id}/validate")
+async def validate_workspace_file(project_id: str, payload: WorkspaceValidateRequest, request: Request):
+    try:
+        result = workspace.validate_file(project_id, payload.path, session_owner(request))
+    except workspace.WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Workspace project or file not found.")
+    return {"validation": result}
 
 
 @app.post("/api/pairing/create")
