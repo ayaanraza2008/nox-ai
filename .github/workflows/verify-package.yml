@@ -54,7 +54,7 @@ jobs:
           parser.feed(Path("frontend/dist/index.html").read_text(encoding="utf-8"))
           if not parser.scripts:
               raise SystemExit("No inline JavaScript found")
-          Path("/tmp/nox-inline.js").write_text("\\n;\\n".join(parser.scripts), encoding="utf-8")
+          Path("/tmp/nox-inline.js").write_text("\n;\n".join(parser.scripts), encoding="utf-8")
           print(f"Extracted {len(parser.scripts)} inline script block(s)")
           PY
           node --check /tmp/nox-inline.js
