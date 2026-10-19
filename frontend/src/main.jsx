@@ -735,6 +735,10 @@ function App() {
     if (!value || busy) return;
     if (fromVoice || voiceModeRef.current) {
       voiceRequestPendingRef.current = true;
+      if (!fromVoice) {
+        window.clearTimeout(voiceDebounceRef.current);
+        voiceTranscriptRef.current = "";
+      }
       if (fromVoice) setVoiceTranscript(value);
       setVoiceState("thinking");
       setCoreMode("PROCESSING");
@@ -907,6 +911,7 @@ function App() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       if (!stream.getAudioTracks().length) throw new Error("No microphone track is available.");
       startMicMeter(stream);
+      voiceTranscriptRef.current = "";
       voiceModeRef.current = true;
       voiceMutedRef.current = false;
       setVoiceMode(true);
@@ -937,6 +942,7 @@ function App() {
     listeningRef.current = false;
     window.clearTimeout(voiceDebounceRef.current);
     window.clearTimeout(voiceRestartRef.current);
+    voiceTranscriptRef.current = "";
     try { voiceRecognitionRef.current?.abort(); } catch {}
     voiceRecognitionRef.current = null;
     try { recognitionRef.current?.stop(); } catch {}
@@ -953,6 +959,8 @@ function App() {
     setVoiceMuted(nextMuted);
     window.clearTimeout(voiceRestartRef.current);
     if (nextMuted) {
+      window.clearTimeout(voiceDebounceRef.current);
+      voiceTranscriptRef.current = "";
       try { voiceRecognitionRef.current?.abort(); } catch {}
       voiceRecognitionRef.current = null;
       stopMicMeter();
