@@ -268,11 +268,26 @@ async def provider_reply(message: str, language: str, history: list[dict]) -> st
                     failures.append(f"{provider['name']}: connection failure")
                     break
 
-    logger.error("All configured AI providers failed: %s", "; ".join(failures))
-    raise HTTPException(
-        status_code=503,
-        detail="All configured AI providers are unavailable right now. Check API keys, model access, quotas, and Render logs.",
-    )
+    failure_summary = "; ".join(failures)
+    logger.error("All configured AI providers failed: %s", failure_summary)
+    failure_codes = set()
+    for failure in failures:
+        if "HTTP " in failure:
+            try:
+                failure_codes.add(int(failure.rsplit("HTTP ", 1)[1].split()[0]))
+            except (ValueError, IndexError):
+                pass
+
+    if failure_codes.intersection({401, 403}):
+        detail = "An AI provider rejected its API key (HTTP 401/403). Check that the key is valid and saved in Render Environment variables."
+    elif failure_codes.intersection({402, 429}):
+        detail = "An AI provider quota or rate limit was reached (HTTP 402/429). Wait for the limit to reset or configure another provider key."
+    elif any("connection failure" in failure or "timeout" in failure for failure in failures):
+        detail = "NOX could not connect to the AI provider. Check Render outbound connectivity and the latest service logs."
+    else:
+        detail = "AI providers returned errors. Check provider key validity, free-model availability, quotas, and the latest Render logs."
+
+    raise HTTPException(status_code=503, detail=detail)
 
 task_manager = TaskManager(run_autonomous_task)
 
@@ -637,11 +652,18 @@ async def health():
         task_database_error = "connection_failed"
 
     storage_healthy = database_connected and task_database_connected
-    ai_configured = any(os.getenv(key, "").strip() for key in ("OPENROUTER_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"))
+    ai_provider_flags = {
+        "openrouter": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
+        "groq": bool(os.getenv("GROQ_API_KEY", "").strip()),
+        "gemini": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+    }
+    ai_configured = any(ai_provider_flags.values())
     return {
         "status": "ok" if storage_healthy else "degraded",
         "service": "NOX AI",
         "ai_configured": ai_configured,
+        "ai_providers_configured": ai_provider_flags,
+        "ai_setup_message": None if ai_configured else "No AI provider key is configured. Add a valid provider key in the hosting environment to enable real AI replies.",
         "storage_backend": "postgresql" if database_configured else "sqlite",
         "task_storage_backend": "postgresql" if task_manager.use_postgres else "sqlite",
         "durable_storage_configured": database_configured and task_manager.use_postgres,
