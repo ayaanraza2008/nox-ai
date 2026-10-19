@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Activity, AudioLines, Bot, ChevronRight, Clock3, Command, Grip,
+  Activity, AudioLines, Bot, ChevronRight, Clock3, Command, Grip, Send,
   Maximize2, Minimize2, Mic, Pin, PinOff, RotateCcw, ShieldCheck, Sparkles,
   X, Zap
 } from "lucide-react";
@@ -54,7 +54,7 @@ function FloatingPanel({
 export default function SpatialDashboard({
   status, coreMode, busy, micLevelRef, ttsLevelRef, voiceMode, voiceMuted, voiceState,
   voiceTranscript, chatHistory, currentChatId, onNewChat, onOpenChat, onJump,
-  capabilities, capabilityError, tasks, taskNotice, pairing,
+  capabilities, capabilityError, tasks, taskNotice, pairing, input, onInputChange, onSendMessage,
   onStartVoiceMode, onStopVoiceMode, onToggleVoiceMute, onInterruptVoice, onControlTask, onStopGeneration, canStopGeneration
 }) {
   const [clock, setClock] = useState(() => new Date());
@@ -174,6 +174,7 @@ export default function SpatialDashboard({
       {!hidden.includes("voice") && <FloatingPanel id="voice" title="Voice link" eyebrow="CONVERSATION CONTROL" subtitle="Real browser voice session state" className="spatial-grid-voice" {...panelProps("voice")}>
         <div className="spatial-voice-state"><div className={"spatial-voice-orb " + (voiceMode ? "active " + voiceState : "")}><AudioLines size={18} /></div><div><b>{modeLabel}</b><small>{voiceMode ? voiceTranscript || "Microphone session active." : "Voice mode is stopped; microphone is not requested."}</small></div></div>
         <div className="spatial-voice-controls">{canStopGeneration && <button type="button" className="spatial-stop-generation" onClick={onStopGeneration}><X size={14} /> STOP REPLY</button>}{voiceMode ? <><button type="button" onClick={onToggleVoiceMute} className={voiceMuted ? "active" : ""}><Mic size={14} /> {voiceMuted ? "UNMUTE" : "MUTE"}</button><button type="button" onClick={onInterruptVoice}><Activity size={14} /> INTERRUPT</button><button type="button" onClick={onStopVoiceMode}><X size={14} /> END SESSION</button></> : <button type="button" className="spatial-voice-start" onClick={onStartVoiceMode}><Mic size={15} /> START VOICE MODE</button>}</div>
+        <form className="spatial-quick-composer" onSubmit={(event) => { event.preventDefault(); onSendMessage(); }}><input aria-label="Quick message to NOX" value={input} onChange={(event) => onInputChange(event.target.value)} placeholder="Message NOX…" /><button type="submit" disabled={busy || !input.trim()} aria-label="Send message to NOX" title="Send message"><Send size={14} /></button></form>
         <p className="spatial-privacy-note"><ShieldCheck size={12} /> Microphone permission is requested only when Voice Mode starts. Browser speech services may process audio remotely.</p>
       </FloatingPanel>}
     </div>
