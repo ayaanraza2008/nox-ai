@@ -121,7 +121,7 @@ export default function SpatialDashboard({
       : liveTasks.some((task) => task.status === "running") ? "WORKING"
         : status.includes("FAILED") || status.includes("UNAVAILABLE") ? "ATTENTION NEEDED" : "IDLE";
   const recentlyCompleted = tasks.some((task) => task.status === "completed" && Number.isFinite(Date.parse(task.updated_at || "")) && Date.now() - Date.parse(task.updated_at) < 2600);
-  const coreVisualMode = busy && coreMode !== "NOX_SPEAKING" ? "PROCESSING" : liveTasks.some((task) => task.status === "running") ? "WORKING" : recentlyCompleted ? "SUCCESS" : coreMode;
+  const coreVisualMode = coreMode === "NOX_SPEAKING" ? coreMode : busy ? "PROCESSING" : liveTasks.some((task) => task.status === "running") ? "WORKING" : recentlyCompleted ? "SUCCESS" : coreMode;
   const hiddenCount = hidden.length;
 
   return <section className={"spatial-dashboard" + (reducedMotion ? " motion-reduced" : "")} aria-label="NOX spatial command center">
