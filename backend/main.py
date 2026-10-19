@@ -63,7 +63,7 @@ _HINGLISH_TTS_WORDS = {
     "kar": "कर", "karo": "करो", "karta": "करता", "karti": "करती",
     "karte": "करते", "karna": "करना", "karunga": "करूँगा",
     "karungi": "करूँगी", "sakta": "सकता", "sakti": "सकती",
-    "sakte": "सकते", "raha": "रहा", "rahi": "रही", "rahe": "रहे",
+    "sakte": "सकते", "raha": "रहा", "rahi": "रही", "rahe": "रहे", "chal": "चल", "chalta": "चलता", "chalti": "चलती", "chale": "चले",
     "mera": "मेरा", "ka": "का", "ki": "की", "ke": "के", "ko": "को",
     "se": "से", "par": "पर", "aur": "और", "lekin": "लेकिन",
     "liye": "लिए", "kyunki": "क्योंकि", "jab": "जब", "ab": "अब",
