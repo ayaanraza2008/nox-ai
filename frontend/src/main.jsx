@@ -733,11 +733,12 @@ function App() {
   async function sendMessage(text = input, fromVoice = false) {
     const value = text.trim();
     if (!value || busy) return;
-    if (fromVoice) {
+    if (fromVoice || voiceModeRef.current) {
       voiceRequestPendingRef.current = true;
-      setVoiceTranscript(value);
+      if (fromVoice) setVoiceTranscript(value);
       setVoiceState("thinking");
       setCoreMode("PROCESSING");
+      try { voiceRecognitionRef.current?.stop(); } catch {}
     }
 
     // Route explicit action/search commands from chat through the same real command handler as Task Orchestrator.
@@ -758,7 +759,7 @@ function App() {
         setMessages((old) => [...old, { role: "assistant", content: "Command failed: " + error.message }]);
       } finally {
         setBusy(false);
-        if (fromVoice) voiceRequestPendingRef.current = false;
+        if (fromVoice || voiceModeRef.current) voiceRequestPendingRef.current = false;
       }
       return;
     }
