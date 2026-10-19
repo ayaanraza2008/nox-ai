@@ -1,6 +1,6 @@
 # NOX AI
 
-A futuristic, multilingual personal AI assistant starter built with React, Vite, and FastAPI.
+A futuristic, multilingual personal AI assistant with a responsive holographic command deck served by FastAPI.
 
 ## Features
 - Responsive dark interface with red accents
@@ -14,12 +14,12 @@ A futuristic, multilingual personal AI assistant starter built with React, Vite,
 - Render deployment configuration
 
 ## Run locally
-1. Install Node.js 20+ and Python 3.11+.
+1. Install Python 3.11+.
 2. Install backend dependencies: `pip install -r backend/requirements.txt`
-3. Install frontend dependencies: `cd frontend && npm install`
-4. Build frontend: `npm run build`
-5. From the repository root run: `uvicorn backend.main:app --reload`
-6. Open `http://127.0.0.1:8000`.
+3. From the repository root run: `uvicorn backend.main:app --reload`
+4. Open `http://127.0.0.1:8000`.
+
+The frontend is a dependency-free static dashboard in `frontend/dist/index.html`. FastAPI serves it from the same origin as `/api/*`, so no separate frontend server or Node build is required.
 
 ## AI provider
 Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed responses. Optionally set `OPENROUTER_MODEL`. Without a key, the app uses a simple demo response; it is not a full AI model.
@@ -28,11 +28,9 @@ Set `OPENROUTER_API_KEY` in your hosting environment to enable provider-backed r
 
 ## Spatial holographic command deck
 
-The dashboard uses the existing `frontend/src/HolographicCore.jsx` canvas renderer and a new `frontend/src/SpatialDashboard.jsx` composition; it adds no rendering dependency. The central core uses a lightweight projected 3D particle field, orbiting arcs, proximity links, pointer parallax, and live application state. Microphone visuals use measured input levels where available; browser speech-synthesis output is labelled as estimated playback activity because the browser does not expose its rendered output stream to this UI.
+The dashboard lives in `frontend/dist/index.html` and is served by the existing FastAPI static mount. It includes a responsive floating glass-panel layout, a canvas-rendered holographic core with orbital rings and particles, real backend health/capability/task data, chat via `/api/chat`, task creation and cancellation, browser speech recognition/synthesis where supported, panel pin/minimize/hide controls, local motion and language preferences, and a reduced-motion mode. Core state is connected to real UI activity; visual animation does not claim that a task is running. The core uses Canvas 2D rather than requiring WebGL or a new runtime dependency, and pauses rendering while the page is hidden.
 
-Panels show existing NOX data only: saved conversation history, backend-reported capabilities, task queue state, pairing status, and browser voice-session state. The dashboard quick composer shares the same input/chat pipeline; Stop Reply aborts the active browser chat request, and task rows expose cancellation through the existing task API. Camera preview, OS telemetry, and a 3D model editor are intentionally not displayed because those integrations are not currently exposed by the web app. Panel position, pin state, minimized/hidden panels, motion intensity, and reduced-motion preference are saved locally in this browser. Use panel header controls to move, pin, minimize, expand, hide, or restore panels. On narrow screens the dashboard becomes a stacked layout.
-
-The canvas lowers its particle count on smaller/low-core-count devices, caps rendering resolution/frame rate, and pauses its animation loop while the page is hidden. WebGL is not required; if a 2D canvas context is unavailable, the core drawing is omitted while the rest of NOX remains usable.
+Camera preview, OS telemetry, a 3D model editor, and full desktop control are not shown because those integrations are not exposed by the web app.
 
 ## Voice Mode: setup and limitations
 
