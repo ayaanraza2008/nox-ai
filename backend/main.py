@@ -1081,7 +1081,11 @@ async def chat(payload: ChatRequest, request: Request):
         if any(not image.startswith(allowed_prefixes) or len(image) > 7_000_000 for image in payload.images):
             raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
     try:
-        answer = await provider_reply(message, payload.language, payload.history, payload.images, _retrieved_context(request, message))
+        retrieved = _retrieved_context(request, message)
+        if retrieved:
+            answer = await provider_reply(message, payload.language, payload.history, payload.images, retrieved)
+        else:
+            answer = await provider_reply(message, payload.language, payload.history, payload.images)
     except httpx.TimeoutException as exc:
         logger.warning("AI provider timed out (%s)", type(exc).__name__)
         raise HTTPException(status_code=504, detail="The AI provider timed out. Please try again.")
@@ -1120,8 +1124,14 @@ async def chat_stream(payload: ChatRequest, request: Request):
         if any(not image.startswith(allowed_prefixes) or len(image) > 7_000_000 for image in payload.images):
             raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
 
+    retrieved = _retrieved_context(request, message)
+
     async def events():
-        async for item in stream_provider_reply(message, payload.language, payload.history, payload.images, _retrieved_context(request, message)):
+        if retrieved:
+            stream = stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved)
+        else:
+            stream = stream_provider_reply(message, payload.language, payload.history, payload.images)
+        async for item in stream:
             yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
 
     return StreamingResponse(
