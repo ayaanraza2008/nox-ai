@@ -1,10 +1,9 @@
 """Persistent, bounded task orchestration for NOX AI.
 
-The processor is a bounded autonomous public-web research agent. It can search
-and read public pages, but it does not log in, submit forms, purchase items,
-execute shell commands, or control the user's device. SQLite persistence can
-be redirected with NOX_TASK_DB; on ephemeral hosts, use a persistent disk or
-external database for survival across redeploys.
+The processor can research public information, but does not log in, submit
+forms, purchase items, execute shell commands, or control the user's device.
+Tasks use PostgreSQL when SUPABASE_DB_URL or DATABASE_URL is configured;
+otherwise SQLite is used at NOX_TASK_DB (default /tmp/nox_tasks.sqlite3).
 """
 import asyncio
 import json
