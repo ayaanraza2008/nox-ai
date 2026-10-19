@@ -84,10 +84,10 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
       // Ease state changes in and out instead of snapping between visual presets.
       statePulse += (targetStatePulse - statePulse) * (targetStatePulse > statePulse ? 0.045 : 0.025);
       const energy = Math.max(smoothed, statePulse);
-      const idleMotion = reducedMotion ? 0.15 : motionIntensity;
+      const idleMotion = reducedMotion ? 0.12 : Math.max(0.32, motionIntensity);
       const speed = (0.0025 + energy * 0.024 + (thinking ? 0.002 : working ? 0.006 : 0)) * idleMotion;
       rotation += speed * delta;
-      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta * (reducedMotion ? 0.35 : motionIntensity);
+      time += (reducedMotion ? 0.004 : 0.012 + energy * 0.035) * delta * (reducedMotion ? 0.35 : Math.max(0.32, motionIntensity));
       ctx.clearRect(0, 0, width, height);
 
       const cx = width / 2;
@@ -295,7 +295,9 @@ export default function HolographicCore({ mode, micLevelRef, ttsLevelRef, motion
 
   return <div className={`holo-stage holo-${mode.toLowerCase().replaceAll("_", "-")}`} aria-label={`NOX holographic core: ${label}`}>
     <canvas className="holo-canvas" ref={canvasRef} aria-hidden="true" />
-    <div className="holo-center-mark"><span /></div>
+    <div className="holo-energy-shells" aria-hidden="true"><span /><span /><span /><i /><i /></div>
+    <div className="holo-scan-plane" aria-hidden="true" />
+    <div className="holo-center-mark"><span /><i /></div>
     <div className="holo-caption"><i /> NOX CORE <small>{label}</small></div>
   </div>;
 }
