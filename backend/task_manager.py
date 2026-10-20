@@ -159,7 +159,7 @@ class TaskManager:
         # entire web service offline: fall back to temporary SQLite storage.
         try:
             with self._connect() as db:
-                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused') AND owner_id <> ''").fetchall()
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused','cancelling') AND owner_id <> ''").fetchall()
         except Exception as exc:
             if not self.use_postgres:
                 raise
@@ -260,7 +260,7 @@ class TaskManager:
 
     def emergency_status(self, owner_id: str) -> dict[str, Any]:
         if not owner_id:
-            return {"stopped": False, "stopped_at": None, "details": {}, "state_persistent": bool(self.use_postgres)}
+            return {"stopped": False, "stopped_at": None, "details": {}, "state_persistent": True}
         with self._connect() as db:
             row = db.execute("SELECT * FROM emergency_state WHERE owner_id=?", (owner_id,)).fetchone()
         if not row:
@@ -369,8 +369,12 @@ class TaskManager:
         return item
 
     async def resume(self, task_id: str, owner_id: str | None = None):
-        if owner_id is not None and self.is_stopped(owner_id):
-            raise ValueError("NOX Emergency Stop is latched. Resume the system first; cancelled tasks are not restarted.")
+        async with self.emergency_lock:
+            if owner_id is not None and self.is_stopped(owner_id):
+                raise ValueError("NOX Emergency Stop is latched. Resume the system first; cancelled tasks are not restarted.")
+            return await self._resume_unlocked(task_id, owner_id)
+
+    async def _resume_unlocked(self, task_id: str, owner_id: str | None = None):
         item = self._get(task_id)
         if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
             return None
