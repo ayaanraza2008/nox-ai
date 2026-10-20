@@ -76,9 +76,9 @@
       ripple = { x: e.clientX - r.left, y: e.clientY - r.top, start: performance.now() };
       targetEnergy = Math.min(1, Math.max(targetEnergy, 0.42));
     };
-    canvas.addEventListener("pointermove", pointerMove, { passive: true });
-    canvas.addEventListener("pointerleave", pointerLeave, { passive: true });
-    canvas.addEventListener("pointerdown", pointerDown, { passive: true });
+    panel.addEventListener("pointermove", pointerMove, { passive: true });
+    panel.addEventListener("pointerleave", pointerLeave, { passive: true });
+    panel.addEventListener("pointerdown", pointerDown, { passive: true });
     const draw = (now) => {
       if (disposed) return;
       raf = 0;
@@ -216,7 +216,7 @@
     reduce?.addEventListener?.("change",visibility);
     document.addEventListener("visibilitychange",visibility);
     window.addEventListener("resize",resize,{passive:true});
-    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);canvas.removeEventListener("pointermove",pointerMove);canvas.removeEventListener("pointerleave",pointerLeave);canvas.removeEventListener("pointerdown",pointerDown);document.removeEventListener("visibilitychange",visibility);reduce?.removeEventListener?.("change",visibility);motionObserver.disconnect();},{once:true});
+    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);panel.removeEventListener("pointermove",pointerMove);panel.removeEventListener("pointerleave",pointerLeave);panel.removeEventListener("pointerdown",pointerDown);document.removeEventListener("visibilitychange",visibility);reduce?.removeEventListener?.("change",visibility);motionObserver.disconnect();},{once:true});
     resize();
     if(!reduce?.matches && !document.body.classList.contains("reduced")) raf=requestAnimationFrame(draw);
   };
