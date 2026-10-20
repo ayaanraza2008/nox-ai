@@ -1,0 +1,2 @@
+# Optional local browser-automation dependency. Install separately from the hosted API requirements.
+playwright>=1.50,<2.0

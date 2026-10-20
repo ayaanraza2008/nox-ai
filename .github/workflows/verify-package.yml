@@ -20,12 +20,27 @@ jobs:
           python-version: "3.12"
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
+      - name: Install optional Playwright browser dependency
+        run: |
+          pip install -r backend/requirements-browser.txt
+          python -m playwright install --with-deps chromium
       - name: Validate Python syntax
         run: python -m compileall -q backend desktop-companion
       - name: Test backend storage regressions
         run: python -m unittest discover -s backend/tests -v
       - name: Test defensive security tools
         run: python -m unittest discover -s desktop-companion/tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install optional RuView CLI companion
+        run: npm install --prefix ruview-companion --ignore-scripts --no-package-lock --no-audit --no-fund
+      - name: Verify official RuView CLI entry point
+        run: node ruview-companion/node_modules/@ruvnet/ruview/bin/cli.js --help
+      - name: Validate NOX Live Browser JavaScript syntax
+        run: node --check frontend/dist/nox-live-browser.js
+      - name: Validate NOX communications JavaScript syntax
+        run: node --check frontend/dist/nox-communications.js
       - name: Validate deployed frontend
         run: test -s frontend/dist/index.html
       - name: Validate inline frontend JavaScript syntax
@@ -62,6 +77,8 @@ jobs:
           node --check /tmp/nox-inline.js
       - name: Validate 3D lab JavaScript syntax
         run: node --check frontend/dist/nox-3d-lab.js
+      - name: Validate connectivity intelligence JavaScript syntax
+        run: node --check frontend/dist/nox-connectivity.js
       - name: Validate agent swarm JavaScript syntax
         run: node --check frontend/dist/nox-agent-swarm.js
       - name: Validate project workspace JavaScript syntax
@@ -89,13 +106,13 @@ jobs:
         run: gradle -p android-companion assembleDebug
       - name: Package project source
         run: |
-          zip -r nox-ai-hologram.zip . \
+          zip -r nox-ai-live-browser.zip . \
             -x '.git/*' 'frontend/node_modules/*' \
                '**/__pycache__/*' '**/*.pyc' 'android-companion/**/build/*' '.env' '**/.env'
       - uses: actions/upload-artifact@v4
         with:
-          name: nox-ai-hologram-project
-          path: nox-ai-hologram.zip
+          name: nox-ai-live-browser-project
+          path: nox-ai-live-browser.zip
           retention-days: 7
       - uses: actions/upload-artifact@v4
         with:

@@ -42,7 +42,7 @@ NOX includes a session-scoped knowledge index for user-provided documents and in
 - Install dependencies with `pip install -r backend/requirements.txt`; PDF extraction uses `pypdf`, and browser file uploads use `python-multipart`.
 - The default database path is `nox_knowledge.sqlite3` at the repository root. Set `NOX_KNOWLEDGE_DB` to a path on a persistent mounted disk if the hosting platform provides one. **Render's default ephemeral filesystem can lose this index on redeploy/restart**, so configure durable storage before relying on it.
 - Upload size defaults to 10 MiB per file (`NOX_KNOWLEDGE_MAX_UPLOAD_BYTES`); extracted text is capped at 1,000,000 characters per source (`NOX_KNOWLEDGE_MAX_TEXT_CHARS`).
-- Search currently uses SQLite FTS5 and a keyword fallback. **Vector embeddings, semantic vector search, OCR for scanned PDFs, scheduled synchronization, multi-page crawling, and OAuth connectors (Drive/OneDrive/Notion/email/calendar/private GitHub) are not implemented or configured yet.** This release must not be described as indexing the entire internet or as a complete universal connector engine.
+- Search currently uses SQLite FTS5 and a keyword fallback. **Vector embeddings, semantic vector search, OCR for scanned PDFs, scheduled synchronization, multi-page crawling, and OAuth connectors for Drive/OneDrive/Notion/calendar/private GitHub are not implemented; Gmail is available separately through Connected Apps when configured.** This release must not be described as indexing the entire internet or as a complete universal connector engine.
 - URL ingestion refuses private/local IP ranges and redirects, and fails closed if it cannot verify `robots.txt`. Sites may still block requests or return content the extractor cannot read.
 - Only index material you are authorized to access. Retrieved web/document content is treated as evidence, not instructions. No credentials are collected for third-party services by this initial implementation.
 
@@ -326,3 +326,209 @@ All routes use the existing server-issued HttpOnly `nox_session` cookie as the d
 - Retrieval currently uses bounded keyword matching, not embeddings. The browser capability report is approximate and reflects browser-exposed metadata only; it is not a full hardware inventory.
 - Do not save sensitive personal information or secrets. Use the delete control to remove an entry. Disabling memory prevents retrieval and new writes; existing entries remain available for later re-enabling or deletion.
 - Automated regression tests live in `backend/tests/test_brain.py`. Run the backend suite with `python -m unittest discover -s backend/tests`.
+
+## Consent-based connectivity intelligence and Wi-Fi signal hologram
+
+The connectivity workspace is available from the left-side **Connectivity Intelligence** panel. It is deliberately user-initiated: no connectivity inspection runs until the user presses a control.
+
+### Website capabilities available now
+
+- **Inspect connection:** sends only browser-visible observations (navigator.onLine and, where implemented by the browser, coarse navigator.connection estimates) to the connectivity analysis API. The API validates and classifies these observations. The online flag does not prove that the internet or a specific destination is reachable.
+- **One-time issue notices:** issue fingerprints and notification/acknowledgement state are stored in this browser's local storage. An unresolved issue is not repeatedly notified; after it disappears from a later inspection and then reappears, it may be reported again. Browser notifications require an explicit permission grant. Because websites cannot read the SSID in this implementation, deduplication is per observable issue type in this browser—not per verified Wi-Fi network. Clearing browser storage resets this local history.
+- **Bluetooth chooser:** on supported HTTPS browsers, a user click opens the browser's native Web Bluetooth chooser. NOX only sees the device the user selects. This is not a complete nearby-device scan, pairing, or remote-device access.
+- **Device location:** only after the user clicks the location control does the browser request its own geolocation permission. Coordinates, reported accuracy, and timestamp are displayed in the page only; this panel does not upload or persist them. This is device geolocation, not Wi-Fi-based positioning.
+- **3D signal hologram:** Three.js renders an interactive illustrative room, access-point marker, and animated wavefronts. The geometry, waves, reflection-like effects, and room presets are explicitly simulated. Optional coarse browser connection estimates are shown separately; they are not Wi-Fi signal strength or radio measurements. Drag to rotate, use the wheel to zoom, and select a scene preset.
+
+### Website limitations and native companion requirements
+
+A website cannot reliably retrieve Wi-Fi SSID, RSSI, radio channel, encryption/security mode, gateway, DNS configuration, hotspot client lists, or complete network history. It cannot turn Wi-Fi/hotspots on or off, force network connections/disconnections, pair/forget Bluetooth devices, or perform a router security audit. The current feature intentionally does not scan networks, probe other devices, collect credentials, activate a camera, or execute shell commands. These operations require a separately installed, permissioned native companion for the target OS; that companion is **not included by this web-only implementation**. iOS and Android permissions and available APIs vary by OS version and application entitlement.
+
+### API and testing
+
+- POST /api/connectivity/analyze requires the NOX browser session and accepts bounded browser observation fields only. It returns evidence-labelled findings plus limitations; it cannot perform device control.
+- Run tests with python -m unittest backend.tests.test_connectivity.
+- Browser Bluetooth, geolocation, and WebGL checks must be manually verified on the actual target browser/device. CI does not prove that OS permissions or native device control work.
+
+
+
+## Optional RuView Wi-Fi CSI integration
+
+NOX can invoke the official published `@ruvnet/ruview` CLI through an opt-in local
+companion adapter. The current integration exposes fixed operations for local
+diagnostics, device inventory, and a bounded 45-second ESP32 CSI capture with a
+stop control. It does not accept shell commands or arbitrary executable arguments.
+
+### Local setup (Windows PowerShell)
+
+From the repository root:
+
+```powershell
+node --version
+npm --prefix .\ruview-companion install --ignore-scripts
+$env:NOX_RUVIEW_ENABLED = "1"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Then open http://127.0.0.1:8000. Keep the service bound to loopback. The adapter is
+disabled by default and requires a NOX session, a loopback client, a loopback URL,
+and a same-origin request for POST operations. Do not expose this local server to
+the public internet or through a tunnel/reverse proxy.
+
+### RuView capability boundaries
+
+- The official CLI package is pinned to version 0.9.2 in `ruview-companion/package.json`.
+  The package is MIT-licensed and requires Node.js 20 or newer.
+- The CLI diagnostics and device inventory are actual RuView commands. The capture
+  operation invokes RuView's ESP32 CSI pipeline; NOX displays bounded CLI output and
+  parses only structured per-node CSI frame counts, mean RSSI, frame rate, and packet-loss
+  estimates into the hologram's provenance panel. It does not invent measurements or
+  present device vitals/pose as validated outputs.
+- Live CSI requires a supported, provisioned sensor/source and local network access.
+  The optional RuView kernel may be needed for additional analysis. Host Wi-Fi RSSI
+  is not CSI and cannot substantiate pose, breathing, heart-rate, or precise location.
+- The NOX web hologram remains a clearly labeled simulation when no real measurement
+  source is connected. RuView's own simulated mode is synthetic too.
+- The full RuView Rust workspace, firmware, pretrained models, and original native
+  UI are not copied into NOX. This is a CLI/process integration, not a claim that
+  every RuView feature is embedded. The companion package is optional and is not
+  required for hosted NOX deployment.
+- Hardware tests require the actual local sensor and are not established by hosted CI.
+
+Run adapter tests with `python -m unittest backend.tests.test_ruview_companion`.
+
+
+## Optional NOX Live Browser (local Playwright)
+
+NOX now has an opt-in Live Browser panel backed by a real Playwright Chromium session.
+It is deliberately disabled by default and the API refuses browser-control requests
+unless NOX is running on loopback and the same-origin browser session is valid.
+Do not enable or expose this endpoint on Render, a public server, a tunnel, or a
+reverse proxy. Browser-control routes are intended for the local computer only.
+
+### Windows PowerShell setup
+
+Run from the repository root in a local terminal:
+
+```powershell
+python --version
+node --version
+pip install -r backend/requirements.txt -r backend/requirements-browser.txt
+python -m playwright install chromium
+$env:NOX_BROWSER_ENABLED = "1"
+$env:NOX_BROWSER_HEADLESS = "0"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`, sign in to NOX if prompted, and click **LIVE BROWSER**.
+`NOX_BROWSER_HEADLESS=0` opens a visible local Chromium window so you can complete
+legitimate login, MFA, or CAPTCHA steps yourself. To use screenshot-only headless mode,
+set `NOX_BROWSER_HEADLESS=1`. Browser profiles are temporary and are not persisted across
+server restarts; this avoids storing login cookies or passwords in NOX task history.
+
+### Supported command examples
+
+- `Open https://example.com`
+- `Search the web for free open source browser automation`
+- `Open https://example.com then inspect this page then scroll down`
+- `Click More`
+- `Type "NOX test" into "Search"`
+- `Select "United States" in "Country"`
+
+The panel shows a screenshot of the actual Playwright page, current URL/title, step
+status, results/errors, and pending questions. It includes pause/resume/stop controls,
+back/forward navigation, page inspection, and a confirmation prompt before clicks whose
+labels indicate consequential actions (for example submit, pay, publish, delete, or buy).
+This is an initial bounded command grammar, **not** a guarantee of universal website
+automation or a fully autonomous general-purpose planner. Complex tasks outside the
+supported grammar ask for clarification instead of pretending they were completed.
+Browser session/task history is kept in process memory only and disappears when NOX
+restarts. Field values are not included in step result logs.
+
+### Security and limitations
+
+- Only HTTP(S) URLs resolving to public IP addresses are allowed by default. Local/private,
+  reserved, credential-bearing, file, and JavaScript URLs are blocked. The local loopback
+  exception used by the isolated CI test is enabled only by `NOX_BROWSER_ALLOW_LOCAL_TESTS=1`;
+  do not set that variable for normal use.
+- Browser-control endpoints require `NOX_BROWSER_ENABLED=1`, a NOX session cookie,
+  loopback client and host, and same-origin POST requests. Keep Uvicorn bound to
+  `127.0.0.1`. Do not add these routes to a public deployment.
+- Website content is untrusted data; it cannot override NOX policies. NOX does not bypass
+  CAPTCHAs, MFA, paywalls, login requirements, or access controls.
+- Authentication pages pause the workflow. Use a visible local browser window to finish
+  sign-in, then resume the task.
+- Playwright's browser session is not attached to the user's everyday Chrome profile and
+  does not inherit existing cookies. Importing or copying personal browser cookies is not
+  supported.
+- Downloads, file uploads, screenshots, and file generation are not exposed as a complete
+  workflow yet. The initial release focuses on real navigation, inspection, accessible
+  clicks, labelled fields, dropdowns, scrolling, and safe task control.
+- Hosted Render instances cannot control the user's local browser, Wi-Fi, or USB hardware.
+  This local browser service requires no paid API key, but uses local CPU, disk, and memory.
+
+### Tests
+
+```powershell
+python -m unittest backend.tests.test_live_browser -v
+python -m unittest discover -s backend/tests -v
+node --check frontend/dist/nox-live-browser.js
+```
+
+The CI workflow installs Playwright Chromium and runs a real browser integration test
+against an isolated local test page. That test does not visit a third-party website or
+use a real user account.
+
+
+## Connected Apps and Communication Engine (initial Gmail adapter)
+
+NOX now includes a provider-adapter registry and a Connected Apps workspace. Gmail is the first implemented official API adapter; other provider cards explicitly show that their integrations are not configured rather than claiming unsupported capabilities.
+
+### Gmail OAuth setup
+
+1. In Google Cloud Console, create/select a project, enable the Gmail API, and configure the OAuth consent screen.
+2. Create an OAuth Client ID for a Web application. Add the exact redirect URI `https://YOUR-NOX-HOST/api/connected/gmail/callback` to Authorized redirect URIs. For local development, `http://127.0.0.1:8000/api/connected/gmail/callback` is accepted.
+3. Set these backend environment variables (never in frontend code):
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_REDIRECT_URI` (must exactly match the Google Console redirect URI)
+   - `NOX_TOKEN_ENCRYPTION_KEY` (Fernet key used to encrypt refresh/access tokens at rest)
+   - `NOX_PUBLIC_BASE_URL` (public HTTPS NOX origin, e.g. `https://YOUR-NOX-HOST`, used after OAuth returns)
+   - `NOX_CONNECTED_APPS_DB` (SQLite file path on persistent storage for production)
+4. Generate an encryption key locally with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and store the output as a secret. Keep the same key across restarts and backups; changing it makes stored credentials unreadable.
+5. Open NOX, choose **CONNECTED APPS → Connect Gmail**, sign in directly with Google, and approve the requested Gmail scopes. NOX never asks the user to paste a Google password or token into chat.
+6. Confirm the connected account identity. Use Gmail Compose to save a real provider draft, search inbox metadata, or review and explicitly confirm sending.
+
+### Communication API and honest status
+
+- `GET /api/connected/status` — connected-provider status and implemented capabilities.
+- `GET /api/connected/gmail/connect` — creates a short-lived, session-bound Google OAuth authorization URL.
+- `GET /api/connected/gmail/callback` — validates state and stores encrypted tokens.
+- `POST /api/connected/gmail/drafts` — create a Gmail draft.
+- `POST /api/connected/gmail/send` — sends only with `confirmed: true`; result means Gmail accepted the request, not that the recipient received it.
+- `POST /api/connected/gmail/search` — searches authorized Gmail and returns message metadata/snippets.
+- `POST /api/connected/gmail/disconnect` — remove NOX's stored connection.
+- `GET/DELETE /api/connected/audit` — review or clear metadata-only communication events.
+
+Credentials are encrypted at rest with Fernet. OAuth state is random, short-lived, single-use, and bound to the current NOX session/account. Audit records exclude message bodies and tokens. Do not log secrets. Use HTTPS in production. The default SQLite path under `/tmp` is not durable; configure a persistent path/disk for production. OAuth consent screen publishing/testing requirements are controlled by Google.
+
+### Current limitations
+
+- Gmail draft creation, inbox search metadata, and send-request acceptance use the real Gmail API and require OAuth credentials plus user consent; they have not been tested against this project's real Google account in CI.
+- Attachments, full thread reply/forward, Outlook/Microsoft Graph, WhatsApp messaging, SMS, telephone calls, LinkedIn messages, calendar invitations, and generic desktop app control are not implemented by this release.
+- The frontend voice/text router can open the communications workspace and fill explicit email fields, but does not autonomously invent recipient/body details or send without the review action.
+- The communication audit database is separate from the NOX account database. Use persistent storage and backups appropriate to the deployment. OAuth access depends on the Google app's consent configuration and granted scopes.
+
+
+## Background Task Monitor and Platform Boundaries
+
+The existing task manager stores task records and event history in PostgreSQL when `DATABASE_URL` / `SUPABASE_DB_URL` is configured, and otherwise uses SQLite. Cloud research tasks can continue after the dashboard tab closes while the backend process is running. They are not a guarantee of continuous execution on a sleeping/free host. For durable production jobs, configure PostgreSQL and persistent hosting appropriate to the expected workload.
+
+The task dashboard uses a session-scoped Server-Sent Events endpoint (`GET /api/tasks/{task_id}/events`) for live status updates, with existing polling as a fallback. `POST /api/tasks/pause-all` and `POST /api/tasks/stop-all` apply only to tasks belonging to the current browser session. Individual task pause/resume/cancel remains available. Task creation accepts an `Idempotency-Key` header and stores the owner-scoped key in the task database, so retries of the same request do not enqueue duplicate work.
+
+- **Web/cloud:** bounded public-web research and planning run on the backend; this does not control the user's PC after the tab closes.
+- **Windows:** the optional local desktop companion supports only the explicitly allow-listed actions documented in `desktop-companion/README.md`; it is not general remote desktop control.
+- **Android:** the native companion provides only the actions listed in its own UI and manifest. Accessibility-based control is not enabled by this backend task queue.
+- **iOS:** no unrestricted background or arbitrary cross-app control is implemented. Use permitted Shortcuts/App Intents or provider integrations.
+- **Local browser:** Playwright control is opt-in and loopback-only; it must not be exposed through public tunnels or Render.
+
+The dashboard reports real backend task states; the animated holographic interface is not evidence of background work. On service restart, in-flight research tasks are re-queued rather than claiming their prior request completed. Provider calls already in flight may not be interruptible, so pause/stop takes effect at the next safe checkpoint.

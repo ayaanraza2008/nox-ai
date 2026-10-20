@@ -37,11 +37,47 @@ class TaskManagerStorageTests(unittest.TestCase):
                 asyncio.run(manager.create("Second research task", "en"))
                 self.assertEqual(len(manager.list(limit=1)), 1)
 
+    def test_idempotency_key_returns_same_task_for_same_owner(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
+                manager = TaskManager(unused_processor)
+                first = asyncio.run(manager.create("Research one goal", "en", owner_id="one", idempotency_key="req-123"))
+                retry = asyncio.run(manager.create("Research one goal", "en", owner_id="one", idempotency_key="req-123"))
+                other_owner = asyncio.run(manager.create("Research one goal", "en", owner_id="two", idempotency_key="req-123"))
+                self.assertEqual(first["id"], retry["id"])
+                self.assertNotEqual(first["id"], other_owner["id"])
+                self.assertEqual(len(manager.list(limit=10, owner_id="one")), 1)
+
+
     def test_unknown_task_returns_none(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
                 manager = TaskManager(unused_processor)
                 self.assertIsNone(manager.get("missing-task-id"))
+
+
+    def test_cancel_all_is_scoped_to_owner(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
+                manager = TaskManager(unused_processor)
+                first = asyncio.run(manager.create("Research for owner one", "en", owner_id="one"))
+                second = asyncio.run(manager.create("Research for owner two", "en", owner_id="two"))
+                stopped = asyncio.run(manager.cancel_all(owner_id="one"))
+                self.assertEqual([item["id"] for item in stopped], [first["id"]])
+                self.assertEqual(manager.get(first["id"])["status"], "cancelled")
+                self.assertEqual(manager.get(second["id"])["status"], "queued")
+
+
+    def test_pause_all_is_scoped_to_owner(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
+                manager = TaskManager(unused_processor)
+                first = asyncio.run(manager.create("Research for owner one", "en", owner_id="one"))
+                second = asyncio.run(manager.create("Research for owner two", "en", owner_id="two"))
+                paused = asyncio.run(manager.pause_all(owner_id="one"))
+                self.assertEqual([item["id"] for item in paused], [first["id"]])
+                self.assertEqual(manager.get(first["id"])["status"], "paused")
+                self.assertEqual(manager.get(second["id"])["status"], "queued")
 
 
 if __name__ == "__main__":
