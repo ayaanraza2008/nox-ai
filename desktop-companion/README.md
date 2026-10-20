@@ -152,3 +152,24 @@ If ADB is missing, install Platform-Tools or set `NOX_ADB_PATH`. If the device i
 **Implemented now:** Windows-side ADB enumeration, authorization-state reporting, and confirmation-gated app launch; read-only Windows Wi-Fi interface status.
 
 **Not implemented yet:** USB file push/pull endpoints, screen capture, generic screen tap/type automation, Bluetooth Classic/BLE scanning or GATT, automatic LAN discovery, one-tap ADB-over-Wi-Fi pairing, iOS control, and a dedicated NOX dashboard UI for these new local endpoints. The hosted Render backend cannot directly see a USB device attached to your PC; the local Windows companion must be installed and running.
+
+
+## Emergency Stop and Windows tray controls
+
+Install the current optional tray dependencies with the companion requirements:
+
+```powershell
+pip install -r requirements.txt
+```
+
+On Windows, the companion attempts to add a notification-area icon with **EMERGENCY STOP**, **Resume NOX**, and **Open NOX Dashboard** menu items. If tray dependencies or the desktop notification area are unavailable, the loopback API remains available and logs a warning.
+
+The local companion stores its own fail-closed latch in `%LOCALAPPDATA%\NOX AI\emergency-state.json` (override with `NOX_COMPANION_STATE_PATH`). Its authenticated endpoints are:
+
+- `GET /v1/emergency/status`
+- `POST /v1/emergency/stop`
+- `POST /v1/emergency/resume`
+
+All mutating local companion HTTP endpoints require the existing `X-NOX-Token` and return HTTP 423 while locally stopped, except the explicit stop/resume controls. The paired relay loop also pauses command polling while stopped and checks the latch again before executing a fetched command. If a fetched command was not executed because the latch engaged, it reports cancellation instead of executing it later.
+
+**Important scope boundary:** the local Windows latch and hosted NOX dashboard latch are separate stores today. A local tray stop blocks the local companion and its relay, while the hosted dashboard stop cancels the current account/session's backend task queue, swarm jobs, and remote browser session. Do not assume a stop in one process has reached the other process unless the UI explicitly confirms it. No unrelated Windows process is killed. The tray is an interactive user-session helper, not a Windows service; it does not guarantee startup before login or run while Windows is powered off.
