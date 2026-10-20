@@ -44,5 +44,17 @@ class TaskManagerStorageTests(unittest.TestCase):
                 self.assertIsNone(manager.get("missing-task-id"))
 
 
+    def test_cancel_all_is_scoped_to_owner(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
+                manager = TaskManager(unused_processor)
+                first = asyncio.run(manager.create("Research for owner one", "en", owner_id="one"))
+                second = asyncio.run(manager.create("Research for owner two", "en", owner_id="two"))
+                stopped = asyncio.run(manager.cancel_all(owner_id="one"))
+                self.assertEqual([item["id"] for item in stopped], [first["id"]])
+                self.assertEqual(manager.get(first["id"])["status"], "cancelled")
+                self.assertEqual(manager.get(second["id"])["status"], "queued")
+
+
 if __name__ == "__main__":
     unittest.main()
