@@ -37,6 +37,18 @@ class TaskManagerStorageTests(unittest.TestCase):
                 asyncio.run(manager.create("Second research task", "en"))
                 self.assertEqual(len(manager.list(limit=1)), 1)
 
+    def test_idempotency_key_returns_same_task_for_same_owner(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
+                manager = TaskManager(unused_processor)
+                first = asyncio.run(manager.create("Research one goal", "en", owner_id="one", idempotency_key="req-123"))
+                retry = asyncio.run(manager.create("Research one goal", "en", owner_id="one", idempotency_key="req-123"))
+                other_owner = asyncio.run(manager.create("Research one goal", "en", owner_id="two", idempotency_key="req-123"))
+                self.assertEqual(first["id"], retry["id"])
+                self.assertNotEqual(first["id"], other_owner["id"])
+                self.assertEqual(len(manager.list(limit=10, owner_id="one")), 1)
+
+
     def test_unknown_task_returns_none(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
