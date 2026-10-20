@@ -48,6 +48,17 @@
       else signedView.appendChild(button);
       button.addEventListener("click", exportBrainBackup);
     }
+    if (!$("accountLogoutOthers")) {
+      const button = document.createElement("button");
+      button.id = "accountLogoutOthers";
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = "Sign out other sessions";
+      button.style.cssText = "width:100%;margin:0 0 8px";
+      if (logout && logout.parentNode) logout.parentNode.insertBefore(button, logout);
+      else signedView.appendChild(button);
+      button.addEventListener("click", revokeOtherSessions);
+    }
     if (!$("accountImportBackup")) {
       const button = document.createElement("button");
       button.id = "accountImportBackup";
@@ -197,6 +208,20 @@
       submit.disabled = false;
     }
   });
+
+  async function revokeOtherSessions() {
+    if (!window.confirm("Sign out NOX on all other devices and browsers? This browser will stay signed in.")) return;
+    const button = $("accountLogoutOthers");
+    if (button) { button.disabled = true; button.textContent = "Revoking sessions…"; }
+    try {
+      const result = await api("/api/account/logout-others", { method: "POST", body: "{}" });
+      notice("Signed out " + result.sessions_revoked + " other session(s). This session remains active.");
+    } catch (error) {
+      notice("Could not revoke other sessions: " + error.message, true);
+    } finally {
+      if (button) { button.disabled = false; button.textContent = "Sign out other sessions"; }
+    }
+  }
 
   $("accountLogout").addEventListener("click", async () => {
     try {
