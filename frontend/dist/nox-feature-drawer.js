@@ -1,0 +1,148 @@
+(() => {
+  "use strict";
+  if (window.NOXFeatureDrawer) return;
+  const $ = (id) => document.getElementById(id);
+  const groups = [
+    { title: "AI WORKSPACE", subtitle: "Voice, tasks and creation", ids: ["voicePanel", "taskPanel", "researchPanel", "knowledgePanel", "codePanel"] },
+    { title: "VISION & RESEARCH", subtitle: "Camera intelligence and public-source research", ids: ["visionPanel", "publicResearchPanel", "analyticsPanel"] },
+    { title: "SYSTEM & PREFERENCES", subtitle: "Memory, connected tools, privacy and diagnostics", ids: ["memoryPanel", "toolsPanel", "networkPanel", "systemPanel"] }
+  ];
+  const layer = document.createElement("div");
+  layer.id = "noxFeatureLayer";
+  layer.className = "nox-feature-layer";
+  layer.setAttribute("aria-hidden", "true");
+  layer.innerHTML = `
+    <button class="nox-feature-backdrop" type="button" aria-label="Close feature panel"></button>
+    <aside class="nox-feature-drawer" role="dialog" aria-modal="true" aria-labelledby="noxFeatureTitle" tabindex="-1">
+      <header class="nox-feature-head">
+        <div><div class="nox-feature-kicker">NOX MODULES</div><h2 id="noxFeatureTitle">Feature Center</h2><p>Dedicated tools, grouped in one place.</p></div>
+        <button class="nox-feature-close" type="button" aria-label="Close features">×</button>
+      </header>
+      <nav class="nox-feature-nav" aria-label="Feature groups">
+        <button type="button" data-group-target="noxGroup0">AI Workspace</button>
+        <button type="button" data-group-target="noxGroup1">Vision & Research</button>
+        <button type="button" data-group-target="noxGroup2">System</button>
+      </nav>
+      <div class="nox-feature-content"></div>
+      <footer class="nox-feature-foot">Modules open only when selected. Camera access still requires your explicit permission.</footer>
+    </aside>`;
+  const style = document.createElement("style");
+  style.textContent = `
+    .nox-feature-layer{position:fixed;inset:0;z-index:10000;pointer-events:none;visibility:hidden}
+    .nox-feature-layer.open{pointer-events:auto;visibility:visible}
+    .nox-feature-backdrop{position:absolute;inset:0;width:100%;height:100%;border:0;background:rgba(2,7,15,.72);opacity:0;transition:opacity .22s;backdrop-filter:blur(5px)}
+    .nox-feature-layer.open .nox-feature-backdrop{opacity:1}
+    .nox-feature-drawer{position:absolute;right:0;top:0;bottom:0;width:min(600px,94vw);padding:20px 18px 14px;background:linear-gradient(160deg,#0d1726f7,#070c16fc 72%);border-left:1px solid rgba(90,210,236,.25);box-shadow:-25px 0 90px #0009;display:flex;flex-direction:column;transform:translateX(102%);transition:transform .26s cubic-bezier(.2,.75,.25,1);overflow:hidden}
+    .nox-feature-layer.open .nox-feature-drawer{transform:translateX(0)}
+    .nox-feature-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:3px 2px 15px;border-bottom:1px solid var(--line,#203145)}
+    .nox-feature-kicker{font-size:9px;letter-spacing:.22em;color:var(--cyan,#6ee7f9);font-weight:800}
+    .nox-feature-head h2{font-size:20px;letter-spacing:.02em;margin:5px 0}
+    .nox-feature-head p{font-size:11px;color:var(--muted,#8ea2b8);margin:0}
+    .nox-feature-close{width:36px;height:36px;border-radius:11px;border:1px solid var(--line,#203145);background:#111e30;color:#d7f8ff;font-size:24px;cursor:pointer}
+    .nox-feature-nav{display:flex;gap:7px;overflow:auto;padding:12px 0;flex-shrink:0}
+    .nox-feature-nav button{white-space:nowrap;border:1px solid var(--line,#203145);border-radius:999px;background:#0e1b2b;color:#b8c9da;padding:8px 11px;font-size:10px;cursor:pointer}
+    .nox-feature-nav button:hover,.nox-feature-nav button:focus-visible{border-color:var(--cyan,#6ee7f9);color:var(--cyan,#6ee7f9)}
+    .nox-feature-content{overflow:auto;min-height:0;flex:1;padding:0 2px 18px;scroll-behavior:smooth}
+    .nox-feature-group{scroll-margin-top:10px;margin:8px 0 20px}
+    .nox-feature-group-head{padding:8px 2px 10px}
+    .nox-feature-group-head h3{font-size:10px;letter-spacing:.16em;color:var(--cyan,#6ee7f9);margin:0 0 5px}
+    .nox-feature-group-head p{font-size:11px;color:var(--muted,#8ea2b8);margin:0}
+    .nox-feature-group .panel{margin:0 0 10px;width:100%;min-width:0}
+    .nox-feature-group .panelbody{min-width:0}
+    .nox-feature-foot{padding:11px 2px 2px;border-top:1px solid var(--line,#203145);font-size:10px;color:var(--muted,#8ea2b8);flex-shrink:0}
+    .nox-feature-trigger{display:inline-flex;align-items:center;gap:7px}
+    .nox-feature-trigger .feature-count{font-size:9px;border:1px solid #254154;border-radius:20px;padding:2px 6px;color:var(--cyan,#6ee7f9)}
+    .mobiletabs{display:none!important}
+    .layout.nox-home-layout{grid-template-columns:minmax(0,1fr);max-width:1500px}
+    .layout.nox-home-layout .leftstack[hidden],.layout.nox-home-layout .rightstack[hidden]{display:none!important}
+    .layout.nox-home-layout .mainstack{grid-column:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.78fr);align-items:start;gap:12px}
+    .layout.nox-home-layout #corePanel{grid-row:span 2}
+    .layout.nox-home-layout #chatPanel{min-width:0}
+    .layout.nox-home-layout #corePanel,.layout.nox-home-layout #chatPanel{width:100%;min-width:0}
+    @media(max-width:760px){.nox-feature-drawer{width:100%;padding:14px 12px 10px}.layout.nox-home-layout .mainstack{display:flex;flex-direction:column}.layout.nox-home-layout #corePanel{order:0}.layout.nox-home-layout #chatPanel{order:1}.nox-feature-group .panel{border-radius:12px}}
+    @media(prefers-reduced-motion:reduce){.nox-feature-backdrop,.nox-feature-drawer{transition:none}}
+  `;
+  document.head.append(style);
+  document.body.append(layer);
+  const content = layer.querySelector(".nox-feature-content");
+  groups.forEach((group, index) => {
+    const section = document.createElement("section");
+    section.className = "nox-feature-group";
+    section.id = "noxGroup" + index;
+    section.innerHTML = '<div class="nox-feature-group-head"><h3></h3><p></p></div>';
+    section.querySelector("h3").textContent = group.title;
+    section.querySelector("p").textContent = group.subtitle;
+    group.ids.forEach(id => {
+      const panel = $(id);
+      if (panel) section.append(panel);
+    });
+    content.append(section);
+  });
+  const layout = $("dashboard");
+  if (layout) {
+    layout.classList.add("nox-home-layout");
+    layout.querySelectorAll(":scope > .leftstack, :scope > .rightstack").forEach(stack => {
+      if (!stack.querySelector(".panel")) stack.hidden = true;
+    });
+  }
+  const mobileTabs = document.querySelector(".mobiletabs");
+  if (mobileTabs) mobileTabs.setAttribute("aria-hidden", "true");
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.id = "noxFeatureTrigger";
+  trigger.className = "iconbtn nox-feature-trigger";
+  trigger.innerHTML = '<span aria-hidden="true">☷</span> Features <span class="feature-count">12</span>';
+  trigger.setAttribute("aria-haspopup", "dialog");
+  trigger.setAttribute("aria-expanded", "false");
+  const topRight = document.querySelector(".topright");
+  if (topRight) topRight.prepend(trigger);
+  const closeButton = layer.querySelector(".nox-feature-close");
+  const backdrop = layer.querySelector(".nox-feature-backdrop");
+  let previousFocus = null;
+  function close() {
+    layer.classList.remove("open");
+    layer.setAttribute("aria-hidden", "true");
+    trigger.setAttribute("aria-expanded", "false");
+    document.body.style.overflow = "";
+    if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+  }
+  function open(panelId) {
+    previousFocus = document.activeElement;
+    layer.classList.add("open");
+    layer.setAttribute("aria-hidden", "false");
+    trigger.setAttribute("aria-expanded", "true");
+    document.body.style.overflow = "hidden";
+    if (panelId) {
+      const panel = $(panelId);
+      const group = panel && panel.closest(".nox-feature-group");
+      if (group) group.scrollIntoView({block:"start", behavior:"auto"});
+      if (panel) panel.scrollIntoView({block:"start", behavior:"smooth"});
+    }
+    closeButton.focus();
+  }
+  trigger.addEventListener("click", () => open());
+  closeButton.addEventListener("click", close);
+  backdrop.addEventListener("click", close);
+  layer.querySelectorAll("[data-group-target]").forEach(button => button.addEventListener("click", () => {
+    const target = $(button.dataset.groupTarget);
+    if (target) target.scrollIntoView({block:"start", behavior:"smooth"});
+  }));
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && layer.classList.contains("open")) close();
+    if (event.key === "Tab" && layer.classList.contains("open")) {
+      const focusable = [...layer.querySelectorAll('button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(el => el.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  });
+  // Legacy quick-launch controls still work, but open the feature drawer first.
+  document.addEventListener("click", event => {
+    const button = event.target.closest("[data-open]");
+    if (!button) return;
+    const id = button.dataset.open;
+    if ($(id) && !layer.classList.contains("open")) open(id);
+  }, true);
+  window.NOXFeatureDrawer = { open, close };
+})();
