@@ -47,6 +47,9 @@
   const $ = (id) => document.getElementById(id);
   let poller = null;
   let lastState = "";
+  let lastSnapshot = null;
+  let speakQuestionsForTask = false;
+  let spokenQuestion = "";
   async function api(path, options = {}) {
     const response = await fetch(path, {credentials:"same-origin", cache:"no-store", ...options, headers:{"Content-Type":"application/json", ...(options.headers || {})}});
     const data = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
@@ -55,6 +58,7 @@
   }
   function render(data) {
     if (!data) return;
+    lastSnapshot = data;
     lastState = data.state || "idle";
     $("noxLbMode").textContent = data.enabled
       ? (data.headless ? "LOCAL BROWSER · HEADLESS PREVIEW" : "LOCAL BROWSER · VISIBLE WINDOW")
@@ -69,6 +73,14 @@
     const question = $("noxLbQuestion");
     question.hidden = !data.pending_question;
     question.textContent = data.pending_question || "";
+    if (speakQuestionsForTask && data.pending_question && data.pending_question !== spokenQuestion && "speechSynthesis" in window) {
+      spokenQuestion = data.pending_question;
+      const language = document.getElementById("language")?.value || "auto";
+      const utterance = new SpeechSynthesisUtterance(data.pending_question);
+      utterance.lang = language === "hi" || language === "hinglish" ? "hi-IN" : language === "ur" ? "ur-PK" : "en-US";
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }
     $("noxLbAnswerRow").hidden = data.state !== "awaiting_input";
     $("noxLbConfirmRow").hidden = data.state !== "awaiting_confirmation";
     $("noxLbPause").disabled = !["running"].includes(data.state);
@@ -103,4 +115,43 @@
   $("noxLbAnswerSend").onclick = () => { const answer = $("noxLbAnswer").value.trim(); if (answer) { act("/api/browser/answer", {answer}); $("noxLbAnswer").value = ""; } };
   $("noxLbConfirm").onclick = () => act("/api/browser/confirm", {approved:true});
   $("noxLbDecline").onclick = () => act("/api/browser/confirm", {approved:false});
+  const browserControl = /^(?:nox[, ]*)?(?:stop browser(?: task)?|pause browser(?: task)?|resume browser(?: task)?|continue browser(?: task)?|cancel browser(?: task)?)$/i;
+  const yesAnswer = /^(?:yes|yes confirm|confirm|approve|go ahead|proceed)$/i;
+  const noAnswer = /^(?:no|no cancel|decline|don't|do not|cancel)$/i;
+  window.NOXLiveBrowser = {
+    shouldHandle(text) {
+      const value = String(text || "").trim();
+      if (!value) return false;
+      if (lastSnapshot?.state === "awaiting_input" || lastSnapshot?.state === "awaiting_confirmation") return true;
+      if (browserControl.test(value)) return true;
+      return /https?:\/\//i.test(value) ||
+        /\b(?:search the web for|search for|look up online|inspect this page|read this page|scroll down|go back|go forward)\b/i.test(value) ||
+        /^\s*(?:nox[, ]*)?(?:open|visit|go to|navigate to|click|type|enter|fill|select)\b/i.test(value);
+    },
+    async handleCommand(text, options = {}) {
+      panel.classList.add("open");
+      if (!poller) poller = setInterval(status, 1200);
+      speakQuestionsForTask = !!options.voiceTurn;
+      spokenQuestion = "";
+      $("noxLbCommand").value = String(text || "").slice(0, 2000);
+      await status();
+      const value = String(text || "").trim();
+      if (lastSnapshot?.state === "awaiting_confirmation") {
+        if (yesAnswer.test(value)) return act("/api/browser/confirm", {approved:true});
+        if (noAnswer.test(value)) return act("/api/browser/confirm", {approved:false});
+        $("noxLbResult").textContent = "Please say “yes” to confirm or “no” to decline this consequential action.";
+        return;
+      }
+      if (lastSnapshot?.state === "awaiting_input") {
+        $("noxLbAnswer").value = value;
+        await act("/api/browser/answer", {answer:value});
+        $("noxLbAnswer").value = "";
+        return;
+      }
+      if (/\b(?:stop|cancel) browser(?: task)?\b/i.test(value)) return act("/api/browser/stop");
+      if (/\bpause browser(?: task)?\b/i.test(value)) return act("/api/browser/pause");
+      if (/\b(?:resume|continue) browser(?: task)?\b/i.test(value)) return act("/api/browser/resume");
+      await act("/api/browser/task", {instruction:value});
+    }
+  };
 })();
