@@ -1402,7 +1402,7 @@ async def brain_settings_get(request: Request):
 
 @app.put("/api/brain/settings")
 async def brain_settings_put(payload: BrainSettingsUpdate, request: Request):
-    values = payload.model_dump(exclude_unset=True, exclude_none=True)
+    values = payload.dict(exclude_unset=True, exclude_none=True)
     return _brain_call(brain.update_settings, session_owner(request), values)
 
 
@@ -1636,7 +1636,8 @@ async def capabilities():
         {"id": "desktop", "name": "Paired Device Actions", "status": "limited", "detail": "Authenticated paired companions report live heartbeats and real command outcomes. Windows can launch Start Menu apps and run an explicit allowlist of diagnostics; optional Home Assistant integration can control supported configured lights, switches, media players, climate, covers and vacuums. Launch requests are labelled as unverified unless the companion reports actual success. Devices must be powered, online, paired and running a compatible companion; arbitrary desktop control and universal power-on/off are not available."},
         {"id": "security", "name": "Cybersecurity Lab", "status": "setup_required", "detail": "Security checks must be implemented and scoped to authorized targets before use."},
         {"id": "files", "name": "Files & Knowledge Base", "status": "setup_required", "detail": "A persistent indexed file store is not configured yet."},
-        {"id": "memory", "name": "Persistent Memory", "status": "limited", "detail": "Saved chat transcripts persist within the current HttpOnly browser session. User-approved long-term preference memory and authenticated cross-device identity are not configured."},
+        {"id": "brain", "name": "NOX Operational Brain", "status": "ready", "detail": "Session-scoped SQLite memory with explicit admission, keyword retrieval, retention, provenance, device capability allowlisting, task outcome records, skill proposals, improvement review, and audit events. Semantic vectors, automatic model training, automatic production-code mutation, and cross-device sync are not implemented."},
+        {"id": "memory", "name": "Persistent Memory", "status": "ready", "detail": "User-approved memory entries are stored separately from raw chat transcripts and retrieved as untrusted context for matching future chats. Delete and retention controls are available in Brain & Memory."},
         {"id": "analytics", "name": "Accounts & Analytics", "status": "setup_required", "detail": "Authentication, database-backed usage metrics, and admin analytics are not configured."},
     ]
     return {"service": "NOX AI", "version": app.version, "ai_configured": ai_configured, "modules": modules}
