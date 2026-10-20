@@ -24,6 +24,25 @@ def build_synthesis_request(topic: str, sources: list[dict]) -> str:
     )
 
 
+def audit_synthesis_citations(text: str, source_count: int) -> list[str]:
+    """Check citation labels syntactically; this cannot prove that a citation supports a claim."""
+    import re
+
+    found = {int(number) for number in re.findall(r"\[E(\d+)\]", text or "")}
+    valid = {number for number in found if 1 <= number <= min(3, max(0, source_count))}
+    invalid = sorted(found - valid)
+    warnings = []
+    if not found:
+        warnings.append("No [E#] evidence citations detected; treat this synthesis as unreferenced analysis.")
+    if invalid:
+        labels = ", ".join(f"[E{number}]" for number in invalid)
+        warnings.append(f"Unavailable evidence labels detected: {labels}. Check the source list.")
+    if found and not invalid:
+        labels = ", ".join(f"[E{number}]" for number in sorted(valid))
+        warnings.append(f"Citation labels detected: {labels}. Label checking does not prove each claim is supported.")
+    return warnings
+
+
 async def generate_research_synthesis(topic: str, sources: list[dict]) -> str | None:
     """Use NOX's configured chat provider if available; fail closed to extractive report sections."""
     if not sources:
