@@ -1763,6 +1763,8 @@ async def connectivity_analyze(payload: ConnectivityAnalyzeRequest, request: Req
     """Classify only browser-visible observations after an explicit user request."""
     session_owner(request)
     try:
+        if len(json.dumps(payload.observations, ensure_ascii=False).encode("utf-8")) > 8192:
+            raise HTTPException(status_code=413, detail="Connectivity observations exceed the 8 KB limit.")
         report = connectivity.analyze_browser_observations(payload.observations)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
