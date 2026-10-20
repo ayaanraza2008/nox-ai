@@ -1838,6 +1838,12 @@ async def location_device_history(device_id: str, request: Request, limit: int =
     return _location_call(location_sharing.get_history, _location_account_owner(request), device_id, limit)
 
 
+@app.get("/api/location/mobile/status")
+async def location_mobile_status(request: Request,
+                                x_nox_location_token: str = Header(default="", alias="X-NOX-Location-Token")):
+    return _location_call(location_sharing.mobile_status, x_nox_location_token)
+
+
 @app.post("/api/location/update")
 async def location_update(payload: LocationUpdateRequest, request: Request,
                           x_nox_location_token: str = Header(default="", alias="X-NOX-Location-Token")):
