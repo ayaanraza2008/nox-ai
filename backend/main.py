@@ -1509,16 +1509,22 @@ def _check_same_origin(request: Request) -> None:
 @app.middleware("http")
 async def account_verification_gate(request: Request, call_next):
     path = request.url.path
-    if path.startswith("/api/") and request.cookies.get(ACCOUNT_COOKIE):
+    if path.startswith("/api/"):
         allowed = (
+            "/api/session", "/api/health", "/api/health/details", "/api/capabilities",
             "/api/account/me", "/api/account/register", "/api/account/login",
             "/api/account/logout", "/api/account/logout-others", "/api/account/verify",
             "/api/account/verification/resend", "/api/account/profile", "/api/account/email",
             "/api/account/recovery/request", "/api/account/recovery/reset", "/api/account",
         )
         if path not in allowed:
+            token = request.cookies.get(ACCOUNT_COOKIE, "")
+            if not token:
+                return Response(content=json.dumps({"detail": "Sign in and verify your email and mobile number to use NOX AI features.",
+                                                    "account_status": "pending_verification"}),
+                                status_code=401, media_type="application/json")
             try:
-                account = accounts.resolve_session(request.cookies.get(ACCOUNT_COOKIE, ""))
+                account = accounts.resolve_session(token)
             except RuntimeError as exc:
                 return Response(content=json.dumps({"detail": str(exc)}), status_code=503, media_type="application/json")
             if not account:
@@ -1591,7 +1597,7 @@ async def account_verification_resend(payload: AccountResendRequest, request: Re
 @app.post("/api/account/recovery/request")
 async def account_recovery_request(payload: AccountRecoveryRequest, request: Request):
     _check_same_origin(request)
-    return {"message": accounts.request_recovery(payload.identifier, payload.channel, payload.country_code, _account_client_key(request))}
+    return {"message": _account_error(accounts.request_recovery, payload.identifier, payload.channel, payload.country_code, _account_client_key(request))}
 
 
 @app.post("/api/account/recovery/reset")
