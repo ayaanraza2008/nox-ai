@@ -15,6 +15,11 @@ class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_embedded_credentials(self):
         with self.assertRaises(BrowserAgentError):
             await BrowserAgent()._public_url("https://user:password@example.com/")
+    async def test_field_values_are_redacted_from_task_summary(self):
+        summary = BrowserAgent()._safe_command_summary("type MySecret123 into the password field")
+        self.assertNotIn("MySecret123", summary)
+        self.assertIn("[value redacted]", summary)
+
     async def test_idle_state(self):
         result = await BrowserAgent().state("test-owner")
         self.assertFalse(result["active"])
