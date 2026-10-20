@@ -30,3 +30,16 @@ A fuller companion would need a separately installed Android app (for example, a
 - A confirmation prompt appears before navigation.
 - No secret token is embedded in the web frontend.
 - This is not a remote-control service and cannot guarantee that the Instagram native app opens.
+
+
+## Consent-based location sharing (Android companion)
+
+The native Kotlin companion now has a separate location-enrollment flow. It does not infer coordinates from a phone number.
+
+1. In NOX web, sign in and open **Features → Location Intelligence**.
+2. Select **Generate device code** and enter the one-time six-digit code in the Android companion under **Location sharing options → Enroll this phone**.
+3. Grant Android location permission. The companion registers the device, but this alone does not share coordinates.
+4. In NOX web, select **Start / resume** for that device and set the consent expiry. The companion's ongoing notification reports whether sharing is active, paused, or offline.
+5. Stop the local service from the companion or pause/revoke the device in NOX web at any time.
+
+Background updates depend on Android permissions, battery settings, network, GPS and OS scheduling. The service checks server consent before requesting location. iOS/Core Location support is not included yet.
