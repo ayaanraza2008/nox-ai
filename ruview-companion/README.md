@@ -25,8 +25,10 @@ Do not expose this local server through a router, tunnel, reverse proxy, or publ
 - Start capture runs the official bounded esp32 --seconds 45 --analyze command.
   Stop terminates that child process. Capture receives data; it does not scan nearby
   Wi-Fi networks or transmit packets to third-party devices.
-- Output is truncated and displayed as untrusted diagnostic text. It is not parsed
-  as verified vital signs or a validated pose estimate.
+- The structured capture summary is reduced to documented per-node CSI frame counts,
+  mean RSSI, CSI frame rate, and packet-loss estimates. Remaining CLI output is
+  truncated and displayed as untrusted diagnostic text. Device vitals, pose, breathing,
+  and heart-rate fields are deliberately not surfaced as validated measurements.
 
 The integration invokes the fixed CLI entry point using Node's process API, never a
 shell, and only exposes allow-listed operations. It is disabled unless
