@@ -79,7 +79,7 @@ async def _startup_http_client():
         LOCATION_CLEANUP_TASK = asyncio.create_task(_location_history_cleanup_loop())
     if HTTP_CLIENT is None or HTTP_CLIENT.is_closed:
         HTTP_CLIENT = httpx.AsyncClient(
-            timeout=httpx.Timeout(45.0, connect=8.0),
+            timeout=httpx.Timeout(20.0, connect=5.0),
             trust_env=True,
             limits=httpx.Limits(max_connections=80, max_keepalive_connections=20, keepalive_expiry=30.0),
         )
@@ -107,7 +107,7 @@ async def _provider_http_client():
         yield HTTP_CLIENT
         return
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(45.0, connect=8.0),
+        timeout=httpx.Timeout(20.0, connect=5.0),
         trust_env=True,
         limits=httpx.Limits(max_connections=20, max_keepalive_connections=5, keepalive_expiry=20.0),
     ) as client:
