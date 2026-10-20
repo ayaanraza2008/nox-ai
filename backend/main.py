@@ -22,6 +22,7 @@ from backend.agent_swarm import SwarmManager
 from backend.safe_tools import SafeToolError, run_tool
 from backend import project_workspace as workspace
 from backend import knowledge
+from backend.automation_registry import get_automation_capabilities
 from backend import brain
 from backend import accounts
 from backend import github_bridge
@@ -1751,6 +1752,12 @@ async def public_information_research(payload: PublicResearchRequest, request: R
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result["disclosure"] = "Public-source research only. Results may be incomplete; review source links. No private accounts, inboxes, restricted APIs, or breach dumps were accessed."
     return result
+
+
+@app.get("/api/automation/capabilities")
+async def automation_capabilities():
+    """Expose the actual application-control adapters and their limitations."""
+    return get_automation_capabilities()
 
 
 @app.get("/api/capabilities")
