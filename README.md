@@ -310,7 +310,7 @@ All routes use the existing server-issued HttpOnly `nox_session` cookie as the d
 
 ### Deployment, storage, and limitations
 - On Render's default ephemeral filesystem, `nox_brain.sqlite3` may be lost on redeploy/restart. Set `NOX_BRAIN_DB` to a path on a persistent mounted disk if the hosting plan supports one; otherwise treat it as non-durable.
-- The `approved_sync` setting is a saved preference only. Cross-device sync, device pairing integration, end-to-end encryption, semantic/vector retrieval, background outcome extraction from every task, automated benchmark-driven skill selection, model-weight training, and production-code self-modification are **not implemented**.
+- The `local_only` setting means memory is scoped to the current browser session and is not synchronized; it does **not** mean on-device storage or end-to-end encryption. The `approved_sync` setting is a saved preference only. Cross-device sync, device pairing integration, end-to-end encryption, semantic/vector retrieval, background outcome extraction from every task, automated benchmark-driven skill selection, model-weight training, and production-code self-modification are **not implemented**.
 - Retrieval currently uses bounded keyword matching, not embeddings. The browser capability report is approximate and reflects browser-exposed metadata only; it is not a full hardware inventory.
 - Do not save sensitive personal information or secrets. Use the delete control to remove an entry. Disabling memory prevents retrieval and new writes; existing entries remain available for later re-enabling or deletion.
 - Automated regression tests live in `backend/tests/test_brain.py`. Run the backend suite with `python -m unittest discover -s backend/tests`.
