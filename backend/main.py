@@ -1835,7 +1835,7 @@ async def cognitive_analyze(payload: CognitiveAnalysisRequest, request: Request 
         "mode": payload.mode,
         "analysis": analysis,
         "profile_saved": False,
-        "data_scope": "request_text_only",
+        "data_scope": "request_text_and_knowledge_index" if payload.use_knowledge else "request_text_only",
         "provider_status": provider_status,
         "knowledge_requested": payload.use_knowledge,
         "knowledge_used": bool(knowledge_sources),

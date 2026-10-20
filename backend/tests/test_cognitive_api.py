@@ -46,6 +46,7 @@ class CognitiveAnalysisAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("AUTHORIZED KNOWLEDGE INDEX EVIDENCE", provider.await_args.args[0])
         self.assertTrue(result["knowledge_used"])
         self.assertTrue(result["knowledge_requested"])
+        self.assertEqual(result["data_scope"], "request_text_and_knowledge_index")
         self.assertEqual(result["knowledge_sources"][0]["citation_id"], "K1")
         self.assertEqual(result["knowledge_sources"][0]["title"], "Personal notes")
 
