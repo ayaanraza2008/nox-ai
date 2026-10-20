@@ -2,22 +2,44 @@
 import re
 
 
+_TOKEN_RE = re.compile(r"[\w\u0900-\u097f\u0600-\u06ff]+", re.UNICODE)
+
+
+def _tokens(value: str) -> list[str]:
+    return [token.casefold() for token in _TOKEN_RE.findall(value or "")]
+
+
+def _term_matches(term: str, tokens: set[str]) -> bool:
+    # Exact token matches prevent false positives such as "art" in "partial".
+    # Prefix matches retain useful lexical behavior for incomplete words.
+    return term in tokens or (len(term) >= 4 and any(token.startswith(term) for token in tokens))
+
+
 def rank_knowledge_candidates(query: str, rows: list[dict]) -> list[dict]:
-    """Rank lexical candidates using token coverage, title matches, and phrase matches."""
-    terms = list(dict.fromkeys(t.casefold() for t in re.findall(r"[\w\u0900-\u097f\u0600-\u06ff]+", query) if len(t) > 1))
+    """Rank candidates using token coverage, title matches, and phrase matches."""
+    terms = list(dict.fromkeys(t for t in _tokens(query) if len(t) > 1))
     phrase = re.sub(r"\s+", " ", query.casefold()).strip()
     scored = []
     for row in rows:
-        title = str(row.get("title") or "").casefold()
-        body = str(row.get("content") or row.get("text") or "").casefold()
-        combined = title + " " + body
-        matched = {term for term in terms if term in combined}
+        title = str(row.get("title") or "")
+        body = str(row.get("content") or row.get("text") or "")
+        title_tokens = set(_tokens(title))
+        body_tokens = set(_tokens(body))
+        all_tokens = title_tokens | body_tokens
+        matched = {term for term in terms if _term_matches(term, all_tokens)}
         if not matched:
             continue
-        score = sum(min(body.count(term), 4) * (2.5 if len(term) > 4 else 1.0) for term in terms)
-        score += sum(3.0 if len(term) > 3 else 1.5 for term in matched if term in title)
+
+        score = 0.0
+        for term in terms:
+            if _term_matches(term, body_tokens):
+                score += min(sum(1 for token in body_tokens if token == term or
+                                 (len(term) >= 4 and token.startswith(term))), 4) * (2.5 if len(term) > 4 else 1.0)
+            if _term_matches(term, title_tokens):
+                score += 3.0 if len(term) > 3 else 1.5
         score += 5.0 * len(matched) / max(1, len(terms))
-        if phrase and phrase in combined:
+        normalized_combined = re.sub(r"\s+", " ", (title + " " + body).casefold()).strip()
+        if phrase and phrase in normalized_combined:
             score += 7.0
         item = dict(row)
         item["relevance"] = round(len(matched) / max(1, len(terms)), 3)
