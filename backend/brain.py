@@ -186,7 +186,7 @@ def remember(owner_id: str, *, content: str, category: str, source: str = "user_
         raise ValueError("Memory source must be explicit or validated")
     if verification not in {"user_confirmed", "verified", "unverified"}:
         raise ValueError("Invalid verification status")
-    if SENSITIVE.search(content) or SECRET_WORDS.search(content):
+    if SENSITIVE.search(content) or SECRET_WORDS.search(content) or (source_ref and (SENSITIVE.search(source_ref) or SECRET_WORDS.search(source_ref))):
         raise ValueError("This looks like a secret or credential. NOX will not store it as a memory.")
     if category == "temporary":
         retention_days = min(max(int(retention_days or 1), 1), 7)
