@@ -356,6 +356,8 @@
           notice("Signed in. Complete both verification steps to unlock NOX AI features.");
         } else {
           notice("Signed in successfully.");
+          window.location.reload();
+          return;
         }
       }
     } catch (error) { notice(error.message, true); }
