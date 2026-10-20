@@ -393,6 +393,15 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30
 ACCOUNT_COOKIE = "nox_account_session"
 
 
+def browser_session_owner(request: Request) -> str:
+    """Keep remote browser contexts isolated per browser cookie, even when accounts are signed in."""
+    value = request.cookies.get(SESSION_COOKIE, "")
+    valid = 32 <= len(value) <= 128 and all(ch.isalnum() or ch in "-_" for ch in value)
+    if not valid:
+        raise HTTPException(status_code=401, detail="Browser session is missing. Refresh NOX and try again.")
+    return value
+
+
 def session_owner(request: Request) -> str:
     """Resolve a logged-in account first, otherwise retain the anonymous browser session."""
     account_token = request.cookies.get(ACCOUNT_COOKIE, "")
@@ -2148,14 +2157,14 @@ async def capabilities():
 @app.get("/api/browser/state")
 async def browser_state(request: Request):
     """Return state for the current private browser session only."""
-    owner_id = session_owner(request)
+    owner_id = browser_session_owner(request)
     return await browser_agent.state(owner_id)
 
 
 @app.post("/api/browser/command")
 async def browser_command(payload: BrowserCommandRequest, request: Request):
     """Execute one bounded browser instruction in the user's remote browser session."""
-    owner_id = session_owner(request)
+    owner_id = browser_session_owner(request)
     try:
         return await browser_agent.run(owner_id, payload.command, payload.language)
     except BrowserAgentError as exc:
@@ -2165,7 +2174,7 @@ async def browser_command(payload: BrowserCommandRequest, request: Request):
 @app.post("/api/browser/confirm")
 async def browser_confirm(payload: BrowserConfirmRequest, request: Request):
     """Approve or decline the single pending consequential browser action."""
-    owner_id = session_owner(request)
+    owner_id = browser_session_owner(request)
     try:
         return await browser_agent.confirm(owner_id, payload.approved)
     except BrowserAgentError as exc:
@@ -2174,13 +2183,13 @@ async def browser_confirm(payload: BrowserConfirmRequest, request: Request):
 
 @app.post("/api/browser/stop")
 async def browser_stop(request: Request):
-    owner_id = session_owner(request)
+    owner_id = browser_session_owner(request)
     return await browser_agent.stop(owner_id)
 
 
 @app.get("/api/browser/screenshot")
 async def browser_screenshot(request: Request):
-    owner_id = session_owner(request)
+    owner_id = browser_session_owner(request)
     try:
         image = await browser_agent.screenshot(owner_id)
     except BrowserAgentError as exc:
@@ -2191,7 +2200,7 @@ async def browser_screenshot(request: Request):
 @app.get("/api/browser/download/{download_index}")
 async def browser_download(download_index: int, request: Request):
     """Serve only a file explicitly downloaded by this session's browser."""
-    owner_id = session_owner(request)
+    owner_id = browser_session_owner(request)
     session = browser_agent.sessions.get(owner_id)
     if not session or session["closed"] or download_index < 0 or download_index >= len(session["downloads"]):
         raise HTTPException(status_code=404, detail="Download not found for this browser session.")
