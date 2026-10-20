@@ -64,7 +64,21 @@
           await refresh();
         } catch (error) { notice(error.message, false); }
       });
-      card.append(title, body, meta, remove);
+      card.append(title, body, meta);
+      const review = safeText("button", item.stale ? "Revalidate memory" : "Mark stale", "secondary");
+      review.type = "button";
+      review.style.marginRight = "6px";
+      review.addEventListener("click", async () => {
+        const decision = item.stale ? "revalidate" : "mark_stale";
+        try {
+          await api("/api/brain/memories/" + encodeURIComponent(item.id) + "/review", {
+            method: "POST", body: JSON.stringify({ decision })
+          });
+          notice(decision === "revalidate" ? "Memory marked as user-confirmed and current." : "Memory marked stale; chat retrieval will skip it.");
+          await refresh();
+        } catch (error) { notice(error.message, false); }
+      });
+      card.append(review, remove);
       root.append(card);
     });
   };
