@@ -211,7 +211,7 @@ class BrowserAgent:
         type_match = re.search(r"\btype\s+(.+?)\s+into\s+(?:the\s+)?(.+?)\s+(?:field|box|input)\s*$", command, re.I)
         if type_match:
             value, label = type_match.group(1).strip().strip("\"'"), type_match.group(2).strip().strip("\"' .")
-            if re.search(r"password|passcode|one.?time|\\botp\\b|verification code|security code|cvv|card number|social security|identity number|access token|secret", label, re.I):
+            if re.search(r"password|passcode|one.?time|\botp\b|verification code|security code|cvv|card number|social security|identity number|access token|secret", label, re.I):
                 raise BrowserAgentError("For safety, NOX will not type passwords, one-time codes, payment-card details, identity numbers, or secrets. Enter those directly through the legitimate website flow.")
             loc = page.get_by_label(re.compile(re.escape(label), re.I)).or_(page.get_by_placeholder(re.compile(re.escape(label), re.I))).or_(page.get_by_role("textbox", name=re.compile(re.escape(label), re.I)))
             if not value or not label or await loc.count() == 0:
