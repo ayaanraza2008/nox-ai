@@ -40,7 +40,7 @@
           <div class="nox-cyber-card"><h3>Linux Command Explainer</h3><p>Explains a registered command; it never executes it.</p><input id="noxCyberCommand" class="nox-cyber-input" maxlength="300" placeholder="e.g. ss -lnt"><div class="nox-cyber-actions"><button id="noxCyberExplain" class="nox-cyber-btn" type="button">Explain command</button></div><pre id="noxCyberCommandOutput" class="nox-cyber-output" hidden></pre></div>
         </section>
         <section class="nox-cyber-card"><h3>Authorized Lab Scope</h3><p>Validate a local lab target before using a local security tool. This form does not start a scan or record legal authorization.</p><input id="noxCyberTarget" class="nox-cyber-input" maxlength="253" placeholder="127.0.0.1, 192.168.1.10, lab.test"><textarea id="noxCyberScopeNote" class="nox-cyber-area" maxlength="500" placeholder="Describe your authorization and permitted scope"></textarea><label class="nox-cyber-help"><input id="noxCyberAuthorized" type="checkbox"> I own this target or have explicit permission to test it.</label><div class="nox-cyber-actions"><button id="noxCyberValidateScope" class="nox-cyber-btn" type="button">Validate scope</button></div><pre id="noxCyberScopeOutput" class="nox-cyber-output" hidden></pre></section>
-        <section class="nox-cyber-card"><h3>Integration & Safety Notes</h3><p>KaliGPT's upstream CLI has a generic Linux command tool and platform-specific installers. NOX does not call that arbitrary-command path from the hosted service. The local worker uses fixed argument lists, bounded Nmap service discovery, explicit confirmation, conservative timing, a timeout and cancellation checks.</p><p>Windows users need a local companion or WSL2 with tools installed; browser-only and Render deployments cannot scan the user's computer. No scanner is installed automatically.</p></section>
+        <section class="nox-cyber-card"><h3>Local Companion · Active Lab Scan</h3><p>Optional local-only scan via your own NOX Companion at 127.0.0.1:8765. Requires Nmap installed locally, the companion token, an authorized lab target, and exact confirmation. HTTPS browser security may block local HTTP access; if so, use the companion API locally instead of weakening browser security.</p><input id="noxCyberLocalToken" class="nox-cyber-input" type="password" autocomplete="off" placeholder="Local NOX_COMPANION_TOKEN"><input id="noxCyberScanConfirm" class="nox-cyber-input" maxlength="80" placeholder="Type: I OWN OR AM AUTHORIZED TO TEST THIS TARGET"><div class="nox-cyber-actions"><button id="noxCyberLocalStatus" class="nox-cyber-btn" type="button">Check local companion</button><button id="noxCyberStartScan" class="nox-cyber-btn nox-cyber-primary" type="button">Start bounded Nmap scan</button><button id="noxCyberCancelScan" class="nox-cyber-btn" type="button">Cancel scan</button><button id="noxCyberPollScan" class="nox-cyber-btn" type="button">Refresh scan result</button></div><pre id="noxCyberLocalOutput" class="nox-cyber-output" hidden></pre></section><section class="nox-cyber-card"><h3>Integration & Safety Notes</h3><p>KaliGPT's upstream CLI has a generic Linux command tool and platform-specific installers. NOX does not call that arbitrary-command path from the hosted service. The local worker uses fixed argument lists, bounded Nmap service discovery, explicit confirmation, conservative timing, a timeout and cancellation checks.</p><p>Windows users need a local companion or WSL2 with tools installed; browser-only and Render deployments cannot scan the user's computer. No scanner is installed automatically.</p></section>
       </div>
     </section>`;
   document.body.append(layer);
@@ -134,6 +134,43 @@
     api("explain-command", { command: $("noxCyberCommand").value }), "command-explanation"));
   $("noxCyberValidateScope").addEventListener("click", () => runAction("noxCyberValidateScope", "noxCyberScopeOutput", () =>
     api("validate-scope", { target: $("noxCyberTarget").value, authorized: $("noxCyberAuthorized").checked, scope_note: $("noxCyberScopeNote").value }), "scope-validation"));
+  let localScanId = null;
+  async function localApi(path, payload, method) {
+    const token = $("noxCyberLocalToken").value.trim();
+    if (!token) throw new Error("Enter the local NOX companion token first.");
+    const response = await fetch("http://127.0.0.1:8765" + path, {
+      method: method || (payload ? "POST" : "GET"),
+      headers: Object.assign({ "X-NOX-Token": token }, payload ? { "Content-Type": "application/json" } : {}),
+      body: payload ? JSON.stringify(payload) : undefined,
+      mode: "cors",
+      credentials: "omit"
+    });
+    const data = await response.json().catch(() => ({ detail: "Local companion returned a non-JSON response." }));
+    if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
+    return data;
+  }
+  $("noxCyberLocalStatus").addEventListener("click", () => runAction("noxCyberLocalStatus", "noxCyberLocalOutput", () =>
+    localApi("/v1/cybersecurity/status"), "local-companion-status"));
+  $("noxCyberStartScan").addEventListener("click", () => runAction("noxCyberStartScan", "noxCyberLocalOutput", async () => {
+    if (!$("noxCyberAuthorized").checked) throw new Error("Confirm ownership or explicit authorization first.");
+    if ($("noxCyberScanConfirm").value.trim() !== "I OWN OR AM AUTHORIZED TO TEST THIS TARGET") throw new Error("Type the exact authorization confirmation.");
+    const data = await localApi("/v1/cybersecurity/scans", {
+      target: $("noxCyberTarget").value,
+      authorized: $("noxCyberAuthorized").checked,
+      scope_note: $("noxCyberScopeNote").value,
+      confirmation: $("noxCyberScanConfirm").value.trim()
+    });
+    localScanId = data.task_id;
+    return data;
+  }, "local-scan-start"));
+  $("noxCyberPollScan").addEventListener("click", () => runAction("noxCyberPollScan", "noxCyberLocalOutput", () => {
+    if (!localScanId) throw new Error("Start a local scan first; no scan ID is stored.");
+    return localApi("/v1/cybersecurity/scans/" + encodeURIComponent(localScanId));
+  }, "local-scan-result"));
+  $("noxCyberCancelScan").addEventListener("click", () => runAction("noxCyberCancelScan", "noxCyberLocalOutput", () => {
+    if (!localScanId) throw new Error("There is no active local scan to cancel.");
+    return localApi("/v1/cybersecurity/scans/cancel", { task_id: localScanId });
+  }, "local-scan-cancel"));
   $("noxCyberExport").addEventListener("click", () => {
     if (!latestReport) { $("noxCyberStatusText").textContent = "Run a review first; there is no report to export yet."; return; }
     const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), ...latestReport }, null, 2)], { type: "application/json" });
