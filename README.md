@@ -395,3 +395,85 @@ the public internet or through a tunnel/reverse proxy.
 - Hardware tests require the actual local sensor and are not established by hosted CI.
 
 Run adapter tests with `python -m unittest backend.tests.test_ruview_companion`.
+
+
+## Optional NOX Live Browser (local Playwright)
+
+NOX now has an opt-in Live Browser panel backed by a real Playwright Chromium session.
+It is deliberately disabled by default and the API refuses browser-control requests
+unless NOX is running on loopback and the same-origin browser session is valid.
+Do not enable or expose this endpoint on Render, a public server, a tunnel, or a
+reverse proxy. Browser-control routes are intended for the local computer only.
+
+### Windows PowerShell setup
+
+Run from the repository root in a local terminal:
+
+```powershell
+python --version
+node --version
+pip install -r backend/requirements.txt -r backend/requirements-browser.txt
+python -m playwright install chromium
+$env:NOX_BROWSER_ENABLED = "1"
+$env:NOX_BROWSER_HEADLESS = "0"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`, sign in to NOX if prompted, and click **LIVE BROWSER**.
+`NOX_BROWSER_HEADLESS=0` opens a visible local Chromium window so you can complete
+legitimate login, MFA, or CAPTCHA steps yourself. To use screenshot-only headless mode,
+set `NOX_BROWSER_HEADLESS=1`. Browser profiles are temporary and are not persisted across
+server restarts; this avoids storing login cookies or passwords in NOX task history.
+
+### Supported command examples
+
+- `Open https://example.com`
+- `Search the web for free open source browser automation`
+- `Open https://example.com then inspect this page then scroll down`
+- `Click More`
+- `Type "NOX test" into "Search"`
+- `Select "United States" in "Country"`
+
+The panel shows a screenshot of the actual Playwright page, current URL/title, step
+status, results/errors, and pending questions. It includes pause/resume/stop controls,
+back/forward navigation, page inspection, and a confirmation prompt before clicks whose
+labels indicate consequential actions (for example submit, pay, publish, delete, or buy).
+This is an initial bounded command grammar, **not** a guarantee of universal website
+automation or a fully autonomous general-purpose planner. Complex tasks outside the
+supported grammar ask for clarification instead of pretending they were completed.
+Browser session/task history is kept in process memory only and disappears when NOX
+restarts. Field values are not included in step result logs.
+
+### Security and limitations
+
+- Only HTTP(S) URLs resolving to public IP addresses are allowed by default. Local/private,
+  reserved, credential-bearing, file, and JavaScript URLs are blocked. The local loopback
+  exception used by the isolated CI test is enabled only by `NOX_BROWSER_ALLOW_LOCAL_TESTS=1`;
+  do not set that variable for normal use.
+- Browser-control endpoints require `NOX_BROWSER_ENABLED=1`, a NOX session cookie,
+  loopback client and host, and same-origin POST requests. Keep Uvicorn bound to
+  `127.0.0.1`. Do not add these routes to a public deployment.
+- Website content is untrusted data; it cannot override NOX policies. NOX does not bypass
+  CAPTCHAs, MFA, paywalls, login requirements, or access controls.
+- Authentication pages pause the workflow. Use a visible local browser window to finish
+  sign-in, then resume the task.
+- Playwright's browser session is not attached to the user's everyday Chrome profile and
+  does not inherit existing cookies. Importing or copying personal browser cookies is not
+  supported.
+- Downloads, file uploads, screenshots, and file generation are not exposed as a complete
+  workflow yet. The initial release focuses on real navigation, inspection, accessible
+  clicks, labelled fields, dropdowns, scrolling, and safe task control.
+- Hosted Render instances cannot control the user's local browser, Wi-Fi, or USB hardware.
+  This local browser service requires no paid API key, but uses local CPU, disk, and memory.
+
+### Tests
+
+```powershell
+python -m unittest backend.tests.test_live_browser -v
+python -m unittest discover -s backend/tests -v
+node --check frontend/dist/nox-live-browser.js
+```
+
+The CI workflow installs Playwright Chromium and runs a real browser integration test
+against an isolated local test page. That test does not visit a third-party website or
+use a real user account.
