@@ -190,11 +190,11 @@ def read_windows_wifi_status():
     if os.name != "nt":
         raise HTTPException(status_code=501, detail="Wi-Fi inspection is currently supported on Windows only.")
     try:
-        result = run_managed_process(
-            ["netsh", "wlan", "show", "interfaces"], timeout=8,
+        result = subprocess.run(
+            ["netsh", "wlan", "show", "interfaces"],
+            shell=False, capture_output=True, text=True, timeout=8,
+            check=False, stdin=subprocess.DEVNULL,
         )
-    except EmergencyStopActive as exc:
-        raise HTTPException(status_code=423, detail="Emergency Stop cancelled the Wi-Fi query.") from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=501, detail="Windows netsh is unavailable.") from exc
     except subprocess.TimeoutExpired as exc:
