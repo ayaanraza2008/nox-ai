@@ -156,6 +156,36 @@ def logout(token: str) -> None:
         conn.close()
 
 
+def logout_other_sessions(token: str) -> int:
+    """Revoke every other active session for the account, preserving this session."""
+    if not token or len(token) > 256:
+        raise ValueError("Please sign in again before managing sessions.")
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    conn = _connect()
+    try:
+        row = conn.execute(
+            """SELECT s.account_id FROM nox_account_sessions s
+               JOIN nox_accounts a ON a.id=s.account_id
+               WHERE s.token_hash=%s AND s.revoked=0 AND s.expires_at>%s""",
+            (token_hash, _iso(_now())),
+        ).fetchone()
+        if not row:
+            raise ValueError("Account session expired. Please sign in again.")
+        cursor = conn.execute(
+            """UPDATE nox_account_sessions SET revoked=1
+               WHERE account_id=%s AND token_hash<>%s AND revoked=0 AND expires_at>%s""",
+            (row["account_id"], token_hash, _iso(_now())),
+        )
+        revoked = max(0, int(cursor.rowcount or 0))
+        conn.commit()
+        return revoked
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def delete_account(token: str, password: str, confirmation: str) -> bool:
     # Ensure the Brain schema exists before the single-transaction account purge.
     from backend import brain
