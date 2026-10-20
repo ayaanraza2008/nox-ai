@@ -86,6 +86,8 @@ jobs:
         run: node --check frontend/dist/nox-gods-eye-view.js
       - name: Validate NOX operations diagnostics JavaScript syntax
         run: node --check frontend/dist/nox-ops.js
+      - name: Validate NOX Live Browser JavaScript syntax
+        run: node --check frontend/dist/nox-live-browser.js
       - name: Validate local connectivity JavaScript syntax
         run: node --check frontend/dist/nox-connectivity.js
       - name: Verify local connectivity DOM bindings
