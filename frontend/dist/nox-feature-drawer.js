@@ -6,6 +6,7 @@
     { title: "AI WORKSPACE", subtitle: "Voice, tasks and creation", ids: ["voicePanel", "taskPanel", "researchPanel", "knowledgePanel", "codePanel"] },
     { title: "VISION & RESEARCH", subtitle: "Camera intelligence and public-source research", ids: ["visionPanel", "publicResearchPanel", "analyticsPanel"] },
     { title: "SYSTEM & PREFERENCES", subtitle: "Memory, connected tools, privacy and diagnostics", ids: ["memoryPanel", "toolsPanel", "networkPanel", "systemPanel"] }
+  ,{ title: "AUTOMATION & DEVOPS", subtitle: "Agent execution, project changes and repository health", ids: [] }
   ];
   const layer = document.createElement("div");
   layer.id = "noxFeatureLayer";
@@ -22,6 +23,7 @@
         <button type="button" data-group-target="noxGroup0">AI Workspace</button>
         <button type="button" data-group-target="noxGroup1">Vision & Research</button>
         <button type="button" data-group-target="noxGroup2">System</button>
+        <button type="button" data-group-target="noxGroup3">Automation & DevOps</button>
       </nav>
       <div class="nox-feature-content"></div>
       <footer class="nox-feature-foot">Modules open only when selected. Camera access still requires your explicit permission.</footer>
@@ -49,8 +51,8 @@
     .nox-feature-group-head p{font-size:11px;color:var(--muted,#8ea2b8);margin:0}
     .nox-feature-group .panel{margin:0 0 10px;width:100%;min-width:0}
     .nox-feature-group .panelbody{min-width:0}
-    .nox-feature-foot{padding:11px 2px 2px;border-top:1px solid var(--line,#203145);font-size:10px;color:var(--muted,#8ea2b8);flex-shrink:0}
-    .nox-feature-trigger{display:inline-flex;align-items:center;gap:7px}
+    .nox-launch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:6px}.nox-launch-card{min-width:0;text-align:left;border:1px solid #29435a;border-radius:12px;background:linear-gradient(145deg,#101f31,#0a1422);color:#d9f4ff;padding:14px;cursor:pointer}.nox-launch-card strong{display:block;font-size:11px;margin-bottom:6px}.nox-launch-card span{display:block;font-size:10px;line-height:1.5;color:#91a8bd}.nox-launch-card:hover,.nox-launch-card:focus-visible{border-color:var(--cyan,#6ee7f9);box-shadow:0 0 18px #4bdcf21a}.nox-feature-foot{padding:11px 2px 2px;border-top:1px solid var(--line,#203145);font-size:10px;color:var(--muted,#8ea2b8);flex-shrink:0}
+    .nox-feature-trigger{display:inline-flex;align-items:center;gap:7px}#noxSwarmOpen,#noxProjectOpen,#noxGithubOpen,#noxCiOpen{display:none!important}
     .nox-feature-trigger .feature-count{font-size:9px;border:1px solid #254154;border-radius:20px;padding:2px 6px;color:var(--cyan,#6ee7f9)}
     .mobiletabs{display:none!important}
     .layout.nox-home-layout{grid-template-columns:minmax(0,1fr);max-width:1500px}
@@ -78,6 +80,25 @@
     });
     content.append(section);
   });
+  const launchGrid = document.createElement("div");
+  launchGrid.className = "nox-launch-grid";
+  const launchers = [
+    ["AGENT SWARM", "Run specialist agents with task history and safe tools.", () => window.NOXAgentSwarm && window.NOXAgentSwarm.open()],
+    ["PROJECT WORKSPACE", "Review file snapshots and approve proposed changes.", () => window.NOXProjectWorkspace && window.NOXProjectWorkspace.open()],
+    ["GITHUB BRIDGE", "Inspect repository files and prepare draft pull requests.", () => window.NOXGitHubBridge && window.NOXGitHubBridge.open()],
+    ["CI / TEST STATUS", "Inspect real GitHub Actions workflow and step states.", () => window.NOXGitHubCIDashboard && window.NOXGitHubCIDashboard.open()]
+  ];
+  launchers.forEach(([title, description, action]) => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "nox-launch-card";
+    const strong = document.createElement("strong"); strong.textContent = title;
+    const span = document.createElement("span"); span.textContent = description;
+    button.append(strong, span);
+    button.addEventListener("click", () => { if (typeof action === "function") action(); });
+    launchGrid.append(button);
+  });
+  const devopsGroup = $("noxGroup3");
+  if (devopsGroup) devopsGroup.append(launchGrid);
   const layout = $("dashboard");
   if (layout) {
     layout.classList.add("nox-home-layout");
@@ -91,7 +112,7 @@
   trigger.type = "button";
   trigger.id = "noxFeatureTrigger";
   trigger.className = "iconbtn nox-feature-trigger";
-  trigger.innerHTML = '<span aria-hidden="true">☷</span> Features <span class="feature-count">12</span>';
+  trigger.innerHTML = '<span aria-hidden="true">☷</span> Features <span class="feature-count">16</span>';
   trigger.setAttribute("aria-haspopup", "dialog");
   trigger.setAttribute("aria-expanded", "false");
   const topRight = document.querySelector(".topright");
