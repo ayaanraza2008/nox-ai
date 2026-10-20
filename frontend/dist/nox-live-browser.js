@@ -125,7 +125,7 @@
   $("noxLbAnswerSend").onclick = () => { const answer = $("noxLbAnswer").value.trim(); if (answer) { act("/api/browser/answer", {answer}); $("noxLbAnswer").value = ""; } };
   $("noxLbConfirm").onclick = () => act("/api/browser/confirm", {approved:true});
   $("noxLbDecline").onclick = () => act("/api/browser/confirm", {approved:false});
-  const browserControl = /^(?:nox[, ]*)?(?:stop browser(?: task)?|pause browser(?: task)?|resume browser(?: task)?|continue browser(?: task)?|cancel browser(?: task)?)$/i;
+  const browserControl = /^(?:nox[, ]*)?(?:stop|pause|resume|continue|cancel)(?: the)?(?: current)?(?: browser)?(?: task| operation)?$/i;
   const yesAnswer = /^(?:yes|yes confirm|confirm|approve|go ahead|proceed)$/i;
   const noAnswer = /^(?:no|no cancel|decline|don't|do not|cancel)$/i;
   window.NOXLiveBrowser = {
@@ -133,7 +133,8 @@
       const value = String(text || "").trim();
       if (!value) return false;
       if (lastSnapshot?.state === "awaiting_input" || lastSnapshot?.state === "awaiting_confirmation") return true;
-      if (browserControl.test(value)) return true;
+      if (["paused", "awaiting_auth"].includes(lastSnapshot?.state) && /\\b(?:resume|continue|pick up)\\b/i.test(value)) return true;
+      if (browserControl.test(value) || /\\b(?:stop the current task|continue from where you stopped|resume the current task|pause the current task)\\b/i.test(value)) return true;
       return /https?:\/\//i.test(value) ||
         /\b(?:search the web for|search for|look up online|inspect this page|read this page|scroll down|go back|go forward)\b/i.test(value) ||
         /^\s*(?:nox[, ]*)?(?:open|visit|go to|navigate to|click|type|enter|fill|select)\b/i.test(value);
