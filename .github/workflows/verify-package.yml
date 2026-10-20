@@ -87,8 +87,8 @@ jobs:
           from pathlib import Path
           html = Path("frontend/dist/index.html").read_text(encoding="utf-8")
           script = Path("frontend/dist/nox-visual-intelligence.js").read_text(encoding="utf-8")
-          ids = set(re.findall(r"""\bid=["']([^"']+)["']""", html))
-          refs = set(re.findall(r"""\$\(["']([^"']+)["']\)""", script))
+          ids = set(re.findall(r'\bid="([^"]+)"', html))
+          refs = set(re.findall(r'\$\("([^"]+)"\)', script))
           missing = sorted(refs - ids)
           if missing:
               raise SystemExit("Missing Visual Intelligence DOM IDs: " + ", ".join(missing))
