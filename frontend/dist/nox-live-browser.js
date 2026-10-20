@@ -136,10 +136,13 @@
       panel.classList.add("open");
       if (!poller) poller = setInterval(status, 1200);
       speakQuestionsForTask = !!options.voiceTurn;
-      spokenQuestion = "";
+      spokenQuestion = ["awaiting_input", "awaiting_confirmation"].includes(lastSnapshot?.state) ? (lastSnapshot?.pending_question || "") : "";
       $("noxLbCommand").value = String(text || "").slice(0, 2000);
       await status();
       const value = String(text || "").trim();
+      if (String.raw`/\b(?:stop|cancel) browser(?: task)?\b/i`.slice(1,-1) && /\b(?:stop|cancel) browser(?: task)?\b/i.test(value)) return act("/api/browser/stop");
+      if (/\bpause browser(?: task)?\b/i.test(value)) return act("/api/browser/pause");
+      if (/\b(?:resume|continue) browser(?: task)?\b/i.test(value)) return act("/api/browser/resume");
       if (lastSnapshot?.state === "awaiting_confirmation") {
         if (yesAnswer.test(value)) return act("/api/browser/confirm", {approved:true});
         if (noAnswer.test(value)) return act("/api/browser/confirm", {approved:false});
@@ -152,9 +155,6 @@
         $("noxLbAnswer").value = "";
         return;
       }
-      if (/\b(?:stop|cancel) browser(?: task)?\b/i.test(value)) return act("/api/browser/stop");
-      if (/\bpause browser(?: task)?\b/i.test(value)) return act("/api/browser/pause");
-      if (/\b(?:resume|continue) browser(?: task)?\b/i.test(value)) return act("/api/browser/resume");
       await act("/api/browser/task", {instruction:value});
     }
   };
