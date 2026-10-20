@@ -120,6 +120,7 @@ DROP POLICY IF EXISTS nox_location_history_scope ON nox_location_history;
 CREATE POLICY nox_location_history_scope ON nox_location_history
   USING (
     owner_id = current_setting('app.nox_user_id', true)
+    OR current_setting('app.nox_ingest', true) = 'true'
     OR EXISTS (
       SELECT 1 FROM nox_location_devices d
       JOIN nox_location_shares s ON s.owner_id = d.owner_id
