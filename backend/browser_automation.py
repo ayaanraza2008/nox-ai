@@ -221,7 +221,7 @@ class BrowserAgent:
         sources = []
         seen = set()
         for item in candidates:
-            title = re.sub(r"\\s+", " ", str(item.get("title") or "Untitled source")).strip()[:240]
+            title = re.sub(r"\s+", " ", str(item.get("title") or "Untitled source")).strip()[:240]
             url = unwrap_search_result_url(str(item.get("href") or ""))
             if not url or url in seen:
                 continue
@@ -233,7 +233,7 @@ class BrowserAgent:
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
                 await page.wait_for_timeout(200)
-                text = re.sub(r"\\n{3,}", "\\n\\n", (await page.locator("body").inner_text(timeout=5000)).strip())
+                text = re.sub(r"\n{3,}", "\n\n", (await page.locator("body").inner_text(timeout=5000)).strip())
                 if not text:
                     continue
                 sources.append({"title": title or (await page.title())[:240], "url": page.url[:1500], "text": text[:4200]})
@@ -254,7 +254,7 @@ class BrowserAgent:
         ]
         for index, source in enumerate(sources, start=1):
             report.extend([f"## {index}. {source['title']}", "", f"Source: {source['url']}", "", source["text"], ""])
-        payload = "\\n".join(report).strip() + "\\n"
+        payload = "\n".join(report).strip() + "\n"
         directory = os.path.abspath(os.getenv("NOX_BROWSER_DOWNLOAD_DIR", "/tmp/nox-browser-downloads"))
         os.makedirs(directory, exist_ok=True)
         filename = "nox-research-" + uuid.uuid4().hex[:10] + ".md"
@@ -272,16 +272,16 @@ class BrowserAgent:
             self._event(s, "Research report write could not be verified.", "attention")
             return "I collected source text, but couldn't verify the saved report file."
         self._event(s, f"Research completed with {len(sources)} public sources; Markdown report saved and verified.", "success")
-        return f"Research complete for: {topic}\\nCaptured {len(sources)} public sources. Saved and verified report: {filename}. Use the Downloads section to open it."
+        return f"Research complete for: {topic}\nCaptured {len(sources)} public sources. Saved and verified report: {filename}. Use the Downloads section to open it."
 
     async def _execute(self, s, command):
         page, lower = s["page"], command.lower().strip()
         open_match = re.search(r"\b(?:open|go to|navigate to|visit)\s+(https?://\S+)", command, re.I)
         bare_url = re.fullmatch(r"https?://\S+", command, re.I)
-        research_match = re.match(r"^\\s*(?:research|investigate)\\s+(.+?)\\s*$", command, re.I)
+        research_match = re.match(r"^\s*(?:research|investigate)\s+(.+?)\s*$", command, re.I)
         search_match = re.search(r"\b(?:search(?: the web)? for|google|look up)\s+(.+)", command, re.I)
         if research_match:
-            topic = research_match.group(1).strip().strip('"\\'')[:500]
+            topic = research_match.group(1).strip().strip("\"'")[:500]
             if not topic:
                 raise BrowserAgentError("Tell me what topic to research.")
             return await self._research(s, topic)
@@ -302,7 +302,7 @@ class BrowserAgent:
         if re.search(r"\b(inspect|read|summarize|what does this page|tell me about this page)\b", lower):
             if page.is_closed() or page.url == "about:blank":
                 raise BrowserAgentError("Open a website first, or say: open https://example.com")
-            text = re.sub(r"\n{3,}", "\n\n", (await page.locator("body").inner_text()).strip())
+                text = re.sub(r"\n{3,}", "\n\n", (await page.locator("body").inner_text(timeout=5000)).strip())
             return f"Page: {await page.title()}\nURL: {page.url}\n\n{text[:6500] or '(No readable page text found.)'}"
         click = re.search(r"\bclick\s+(?:the\s+)?(?:button|link|tab|menu item)?\s*[\"']?(.+?)[\"']?$", command, re.I)
         if click:
