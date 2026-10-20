@@ -847,6 +847,13 @@ async def cancel_task(task_id: str, request: Request):
     return await _task_action(task_id, "cancel", session_owner(request))
 
 
+@app.post("/api/tasks/pause-all")
+async def pause_all_tasks(request: Request):
+    """Pause queued/running tasks owned by this browser session."""
+    paused = await task_manager.pause_all(owner_id=session_owner(request))
+    return {"paused_count": len(paused), "tasks": paused}
+
+
 @app.post("/api/tasks/stop-all")
 async def stop_all_tasks(request: Request):
     """Stop every unfinished task owned by this browser session."""
