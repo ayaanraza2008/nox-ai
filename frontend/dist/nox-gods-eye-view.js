@@ -1,54 +1,60 @@
-(function(){
-"use strict";
-const $=id=>document.getElementById(id);
-let config=null,busy=false;
-function status(message,error=false){const el=$("godsEyeStatus");if(el){el.textContent=message;el.dataset.state=error?"error":"normal"}}
-function reveal(){const panel=$("godsEyeViewPanel");if(panel){panel.scrollIntoView({behavior:"smooth",block:"start"});panel.classList.remove("off")}}
-async function refresh(){
- if(busy)return;busy=true;status("CHECKING NOX CONFIGURATION…");
- try{
-  const response=await fetch("/api/integrations/gods-eye-view",{credentials:"same-origin",headers:{Accept:"application/json"}});
-  if(!response.ok)throw new Error("HTTP "+response.status);
-  config=await response.json();
-  const launch=$("godsEyeLaunch"),copy=$("godsEyeCopyUrl");
-  if(config.configured&&config.url){
-   launch.href=config.url;launch.classList.remove("hidden");launch.setAttribute("aria-disabled","false");
-   copy.disabled=false;copy.dataset.url=config.url;
-   status("URL CONFIGURED · SERVICE HEALTH NOT VERIFIED");
-   $("godsEyeConnectionDetail").textContent="The launch URL is configured. Open the workspace to verify that the globe and its data providers actually load.";
-  }else{
-   launch.classList.add("hidden");copy.disabled=true;status("SETUP REQUIRED",true);
-   $("godsEyeConnectionDetail").textContent=config.reason||"Deploy the separate upstream service and configure GODS_EYE_VIEW_URL on NOX.";
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let busy = false;
+  function status(message, error = false) {
+    const el = $("godsEyeStatus");
+    if (el) {
+      el.textContent = message;
+      el.dataset.state = error ? "error" : "normal";
+    }
   }
-  $("godsEyeCommit").textContent=(config.upstream_commit||"Unknown").slice(0,12);
- }catch(error){
-  status("CONFIGURATION CHECK FAILED",true);
-  $("godsEyeConnectionDetail").textContent="NOX could not read integration configuration: "+error.message;
-  $("godsEyeLaunch").classList.add("hidden");
- }finally{busy=false}
-}
-function handleCommand(message){
- const s=String(message||"");
- if(!/\b(god'?s eye view|gods eye view|godseyeview|globe workspace)\b/i.test(s))return false;
- reveal();
- if(/\b(open|launch|start)\b/i.test(s)&&config&&config.configured&&config.url){
-  window.open(config.url,"_blank","noopener,noreferrer");
-  status("LAUNCH REQUESTED · CHECK THE NEW TAB");
- }else{
-  status(config&&config.configured?"READY TO LAUNCH":"SETUP REQUIRED");
-  $("godsEyeConnectionDetail").textContent=config&&config.configured
-   ?"Use Launch full workspace to open the actual upstream application. NOX chat cannot yet toggle native layers remotely."
-   :"The dedicated service must be deployed and GODS_EYE_VIEW_URL configured before the globe can launch.";
- }
- return true;
-}
-$("godsEyeRefresh").addEventListener("click",refresh);
-$("godsEyeCopyUrl").addEventListener("click",async()=>{
- if(!config||!config.url)return;
- try{await navigator.clipboard.writeText(config.url);status("WORKSPACE URL COPIED")}
- catch{status("CLIPBOARD UNAVAILABLE · OPEN THE LINK MANUALLY",true)}
-});
-document.querySelectorAll('[data-scroll="godsEyeViewPanel"]').forEach(el=>el.addEventListener("click",reveal));
-window.NOXGodsEyeView={handleCommand,refresh,open:reveal};
-refresh();
+  function reveal() {
+    const panel = $("godsEyeViewPanel");
+    if (!panel) return;
+    panel.classList.remove("off");
+    panel.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  }
+  async function refresh() {
+    if (busy) return;
+    busy = true;
+    status("CHECKING NATIVE INTEGRATION…");
+    try {
+      const response = await fetch("/api/integrations/gods-eye-view", {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const config = await response.json();
+      const commit = $("godsEyeCommit");
+      if (commit) commit.textContent = (config.upstream_commit || "Unknown").slice(0, 12);
+      status("NATIVE INTEGRATION PENDING", true);
+      const detail = $("godsEyeConnectionDetail");
+      if (detail) {
+        detail.textContent = "The upstream source is identified, but its Cesium application is not yet mounted as a native NOX module. To honor NOX-only navigation, external launch is disabled. No live globe or live feed is claimed here.";
+      }
+      const nativeStatus = $("godsEyeNativeStatus");
+      if (nativeStatus) {
+        nativeStatus.textContent = "Native integration pending. No external dashboard will be opened.";
+      }
+    } catch (error) {
+      status("INTEGRATION STATUS UNAVAILABLE", true);
+      const detail = $("godsEyeConnectionDetail");
+      if (detail) detail.textContent = "NOX could not read integration metadata: " + error.message + ". External navigation remains disabled.";
+    } finally {
+      busy = false;
+    }
+  }
+  const refreshButton = $("godsEyeRefresh");
+  if (refreshButton) refreshButton.addEventListener("click", refresh);
+  document.querySelectorAll('[data-scroll="godsEyeViewPanel"]').forEach((el) => {
+    el.addEventListener("click", reveal);
+  });
+  window.NOXGodsEyeView = { refresh, open: reveal, handleCommand(message) {
+    if (!/\b(god'?s eye view|gods eye view|godseyeview|globe workspace)\b/i.test(String(message || ""))) return false;
+    reveal();
+    status("NATIVE INTEGRATION PENDING", true);
+    return true;
+  }};
+  refresh();
 })();

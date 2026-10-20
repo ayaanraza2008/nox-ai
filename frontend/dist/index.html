@@ -17,6 +17,7 @@ body[data-nox-brain-state="retrieving"] #corePanel,body[data-nox-brain-state="pl
 </style>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" defer></script>
+<link rel="stylesheet" href="/nox-viewport-layout.css">
 </head>
 <body><div class="noise"></div>
 <header class="topbar">
@@ -154,11 +155,11 @@ body[data-nox-brain-state="retrieving"] #corePanel,body[data-nox-brain-state="pl
    <div class="gods-eye-hero">
     <div class="eyebrow">PUBLIC-DATA GLOBE · UPSTREAM APPLICATION</div>
     <h2>Explore Earth from NOX</h2>
-    <p class="footnote">Open the actual God's Eye View application in its own workspace. Its globe, camera controls, search and available data layers run in the dedicated upstream service—not in a screenshot or static mockup.</p>
+    <p class="footnote">God's Eye View is being prepared for native NOX integration. This panel will not redirect to a separate dashboard; the globe remains unavailable until its Cesium modules are mounted inside NOX.</p>
     <div class="visual-actions">
-     <a id="godsEyeLaunch" class="primary hidden" href="https://nox-gods-eye-view.onrender.com/" target="_blank" rel="noopener noreferrer">Launch full workspace ↗</a>
+     <span class="footnote" id="godsEyeNativeStatus">External launch is disabled. Native in-app globe integration is required before this feature can be opened.</span>
      <button id="godsEyeRefresh" class="secondary" type="button">Refresh status</button>
-     <button id="godsEyeCopyUrl" class="secondary" type="button" disabled>Copy workspace URL</button>
+     
     </div>
    </div>
    <div class="gods-eye-status-card">
@@ -168,10 +169,10 @@ body[data-nox-brain-state="retrieving"] #corePanel,body[data-nox-brain-state="pl
     <div class="statusline"><span>Pinned commit</span><span class="statusvalue" id="godsEyeCommit">505d2cb58619</span></div>
    </div>
    <div class="gods-eye-feature-grid">
-    <div class="metric"><div class="label">GLOBE</div><strong>Interactive 3D Earth</strong><small>Use the upstream camera to rotate, zoom and pan.</small></div>
-    <div class="metric"><div class="label">PUBLIC DATA</div><strong>Live layers</strong><small>Earthquakes, weather and other source-supported layers when providers respond.</small></div>
-    <div class="metric"><div class="label">PROVIDERS</div><strong>Keyless + optional keys</strong><small>Some imagery, terrain, voice or data features may require provider credentials, quotas or payment.</small></div>
-    <div class="metric"><div class="label">NOX COMMAND BRIDGE</div><strong>Launch supported</strong><small>NOX can open this workspace; remote layer toggles from chat are not yet connected.</small></div>
+    <div class="metric"><div class="label">UPSTREAM CAPABILITY</div><strong>Interactive 3D Earth</strong><small>Supported by the source project; not yet mounted in the NOX interface.</small></div>
+    <div class="metric"><div class="label">DATA PROVIDERS</div><strong>Not active in NOX</strong><small>No live aircraft, ships, earthquakes or weather feeds are displayed by this pending integration.</small></div>
+    <div class="metric"><div class="label">PROVIDER SETUP</div><strong>Not connected</strong><small>Provider credentials and source-specific configuration must be integrated and tested before these capabilities can run in NOX.</small></div>
+    <div class="metric"><div class="label">NOX NATIVE MODULE</div><strong>Integration pending</strong><small>External dashboard launches are disabled until a native Cesium mount and teardown lifecycle are implemented.</small></div>
    </div>
    <p class="footnote" style="margin-top:10px">Check provider status, source attribution and timestamps inside the upstream application. Availability and freshness vary; this NOX panel does not fabricate live data.</p>
    <p class="footnote">Setup and troubleshooting: <a class="linklike" href="https://github.com/ayaanraza2008/nox-ai/blob/main/docs/GODS_EYE_VIEW_INTEGRATION.md" target="_blank" rel="noopener noreferrer">integration guide ↗</a></p>

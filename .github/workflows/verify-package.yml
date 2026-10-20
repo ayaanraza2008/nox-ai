@@ -109,6 +109,23 @@ jobs:
         run: node --check frontend/dist/nox-visual-intelligence.js
       - name: Validate God's Eye View workspace JavaScript syntax
         run: node --check frontend/dist/nox-gods-eye-view.js
+      - name: Verify native God’s Eye navigation boundary and viewport stylesheet
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("frontend/dist/index.html").read_text(encoding="utf-8")
+          script = Path("frontend/dist/nox-gods-eye-view.js").read_text(encoding="utf-8")
+          css = Path("frontend/dist/nox-viewport-layout.css").read_text(encoding="utf-8")
+          if '/nox-viewport-layout.css' not in html:
+              raise SystemExit("Viewport stylesheet is not loaded by NOX")
+          if 'window.open(' in script or 'godsEyeLaunch' in script:
+              raise SystemExit("God’s Eye integration must not launch a separate browser tab")
+          if 'nox-viewport-layout.css' not in html or '100dvh' not in css:
+              raise SystemExit("Viewport-aware layout rules are missing")
+          if '@media (max-width: 820px)' not in css or 'overflow-y: auto' not in css:
+              raise SystemExit("Responsive scrolling must remain available on smaller screens")
+          print("Verified NOX-only navigation boundary and responsive viewport rules")
+          PY
       - name: Validate NOX operations diagnostics JavaScript syntax
         run: node --check frontend/dist/nox-ops.js
       - name: Validate NOX Live Browser JavaScript syntax
