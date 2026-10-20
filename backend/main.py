@@ -2293,11 +2293,9 @@ async def chat(payload: ChatRequest, request: Request = None):
         if any(not image.startswith(allowed_prefixes) or len(image) > 7_000_000 for image in payload.images):
             raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
     try:
-        retrieved = _retrieved_context(request, message)
-        if retrieved:
-            answer = await provider_reply(message, payload.language, payload.history, payload.images, retrieved, payload.personality)
-        else:
-            answer = await provider_reply(message, payload.language, payload.history, payload.images, personality=payload.personality)
+        # Keep the core chat path independent from optional knowledge indexing/retrieval.
+        # Retrieval remains available through /api/knowledge but cannot block basic replies.
+        answer = await provider_reply(message, payload.language, payload.history, payload.images, personality=payload.personality)
     except httpx.TimeoutException as exc:
         logger.warning("AI provider timed out (%s)", type(exc).__name__)
         raise HTTPException(status_code=504, detail="The AI provider timed out. Please try again.")
@@ -2336,7 +2334,8 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
         if any(not image.startswith(allowed_prefixes) or len(image) > 7_000_000 for image in payload.images):
             raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
 
-    retrieved = _retrieved_context(request, message)
+    # Basic chat must not depend on optional RAG/database services.
+    retrieved = None
 
     async def events():
         produced = False
