@@ -2,7 +2,7 @@
   if (window.__noxLiveBrowserMounted) return;
   window.__noxLiveBrowserMounted = true;
   const style = document.createElement("style");
-  style.textContent = \`
+  style.textContent = `
     #noxBrowserOpen{border-color:#71eaff66;color:#9fefff}
     #noxBrowserModal{position:fixed;inset:0;z-index:120;background:#02060bdc;backdrop-filter:blur(12px);display:none;align-items:center;justify-content:center;padding:12px}
     #noxBrowserModal .nb-shell{width:min(1100px,100%);max-height:94vh;overflow:auto;border:1px solid #71eaff55;border-radius:15px;background:linear-gradient(145deg,#0b1725f7,#070c14f7);box-shadow:0 24px 100px #000b;color:#e7f4ff}
@@ -32,7 +32,7 @@
     #noxBrowserModal .nb-results{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:1.55;max-height:260px;overflow:auto;color:#c7dce9}
     #noxBrowserModal .nb-download a{display:block;color:#83e9ff;font-size:10px;margin-top:6px;overflow-wrap:anywhere}
     @media(max-width:760px){#noxBrowserModal .nb-body{grid-template-columns:1fr;padding:8px}#noxBrowserModal .nb-shell{max-height:96vh}#noxBrowserModal .nb-shot{min-height:150px}}
-  \`;
+  `;
   document.head.appendChild(style);
   const addButton = () => {
     const top = document.querySelector(".topright");
@@ -42,7 +42,7 @@
     button.textContent = "🌐 LIVE BROWSER"; button.addEventListener("click", openPanel); top.prepend(button);
     return true;
   };
-  document.body.insertAdjacentHTML("beforeend", \`
+  document.body.insertAdjacentHTML("beforeend", `
     <div id="noxBrowserModal" role="dialog" aria-modal="true" aria-label="NOX Live Browser">
       <section class="nb-shell">
         <header class="nb-head"><span style="font-size:20px">◉</span><div><strong>NOX LIVE BROWSER</strong><small id="nbRemoteLabel">REMOTE CHROMIUM · CONNECTING</small></div><button class="nb-btn nb-close" id="nbClose">Close ✕</button></header>
@@ -61,7 +61,7 @@
           </div>
         </div>
       </section>
-    </div>\`);
+    </div>`);
   const $ = id => document.getElementById(id);
   const modal = $("noxBrowserModal");
   let poller = null, busy = false;
