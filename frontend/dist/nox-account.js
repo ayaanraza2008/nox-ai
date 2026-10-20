@@ -35,17 +35,74 @@
 
   function ensureBackupButton() {
     const signedView = $("accountSignedView");
-    if (!signedView || $("accountExportBackup")) return;
-    const button = document.createElement("button");
-    button.id = "accountExportBackup";
-    button.type = "button";
-    button.className = "secondary";
-    button.textContent = "Export NOX Brain backup (JSON)";
-    button.style.cssText = "width:100%;margin:8px 0";
+    if (!signedView) return;
     const logout = $("accountLogout");
-    if (logout && logout.parentNode) logout.parentNode.insertBefore(button, logout);
-    else signedView.appendChild(button);
-    button.addEventListener("click", exportBrainBackup);
+    if (!$("accountExportBackup")) {
+      const button = document.createElement("button");
+      button.id = "accountExportBackup";
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = "Export NOX Brain backup (JSON)";
+      button.style.cssText = "width:100%;margin:8px 0";
+      if (logout && logout.parentNode) logout.parentNode.insertBefore(button, logout);
+      else signedView.appendChild(button);
+      button.addEventListener("click", exportBrainBackup);
+    }
+    if (!$("accountImportBackup")) {
+      const button = document.createElement("button");
+      button.id = "accountImportBackup";
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = "Restore from JSON backup";
+      button.style.cssText = "width:100%;margin:0 0 8px";
+      const input = document.createElement("input");
+      input.id = "accountBackupFile";
+      input.type = "file";
+      input.accept = ".json,application/json";
+      input.hidden = true;
+      signedView.appendChild(input);
+      if (logout && logout.parentNode) logout.parentNode.insertBefore(button, logout);
+      else signedView.appendChild(button);
+      button.addEventListener("click", () => input.click());
+      input.addEventListener("change", importBrainBackup);
+    }
+  }
+
+  async function importBrainBackup(event) {
+    const input = event.currentTarget;
+    const file = input.files && input.files[0];
+    if (!file) return;
+    input.value = "";
+    if (file.size > 2 * 1024 * 1024) {
+      notice("Backup file is too large. Maximum size is 2 MB.", true);
+      return;
+    }
+    if (!window.confirm("Restore records from this backup? NOX will merge records and will not delete existing data. Imported skills/proposals remain pending review. Settings and audit history are not restored.")) return;
+    const button = $("accountImportBackup");
+    if (button) { button.disabled = true; button.textContent = "Restoring…"; }
+    notice("Reading and validating backup…");
+    try {
+      const raw = await file.text();
+      let backup;
+      try { backup = JSON.parse(raw); } catch (_) { throw new Error("This file is not valid JSON."); }
+      if (!backup || backup.format !== "nox-brain-backup" || backup.schema_version !== 1 || !backup.data) {
+        throw new Error("Unsupported NOX backup format or schema version.");
+      }
+      const result = await api("/api/brain/backup/restore", {
+        method: "POST",
+        body: JSON.stringify({ backup })
+      });
+      const summary = "Restore complete — memories added: " + result.memories_added +
+        ", duplicates merged: " + result.memories_merged + ", devices: " + result.devices_restored +
+        ", skills queued for review: " + result.skills_restored + ", proposals queued for review: " +
+        result.proposals_restored + ", skipped: " + result.records_skipped + ".";
+      notice(summary + (result.errors && result.errors.length ? " Details: " + result.errors.join(" · ") : ""));
+      if (result.records_skipped && result.errors && result.errors.length) console.warn("NOX backup restore skipped records", result.errors);
+    } catch (error) {
+      notice("Restore failed: " + error.message, true);
+    } finally {
+      if (button) { button.disabled = false; button.textContent = "Restore from JSON backup"; }
+    }
   }
 
   async function exportBrainBackup() {
