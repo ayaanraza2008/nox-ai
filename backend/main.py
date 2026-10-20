@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Literal
 
 import httpx
@@ -27,6 +29,7 @@ from backend import accounts
 from backend import github_bridge
 from backend import public_research
 from backend import connectivity
+from backend import ruview_companion
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
@@ -110,6 +113,10 @@ class BrainBackupRestoreRequest(BaseModel):
 
 class ConnectivityAnalyzeRequest(BaseModel):
     observations: dict = Field(default_factory=dict)
+
+
+class RuViewInspectRequest(BaseModel):
+    operation: Literal["doctor", "devices"]
 
 
 class AccountCredentials(BaseModel):
@@ -1771,6 +1778,62 @@ async def connectivity_analyze(payload: ConnectivityAnalyzeRequest, request: Req
     report["scope"] = "user_requested_browser_observations"
     report["control_available"] = False
     return report
+
+
+def _require_local_ruview_request(request: Request) -> None:
+    """Allow hardware-control routes only from a same-origin loopback browser."""
+    client_host = request.client.host if request.client else ""
+    try:
+        client_is_loopback = ipaddress.ip_address(client_host).is_loopback
+    except ValueError:
+        client_is_loopback = client_host.lower() == "localhost"
+    request_host = (request.url.hostname or "").lower()
+    try:
+        request_is_loopback = ipaddress.ip_address(request_host).is_loopback
+    except ValueError:
+        request_is_loopback = request_host == "localhost"
+    if not client_is_loopback or not request_is_loopback:
+        raise HTTPException(status_code=403, detail="RuView hardware access is available only from a loopback-local NOX instance.")
+    origin = request.headers.get("origin")
+    if request.method != "GET":
+        host_header = request.headers.get("host", "").lower()
+        parsed = urlparse(origin or "")
+        if not origin or parsed.netloc.lower() != host_header or parsed.scheme not in {"http", "https"}:
+            raise HTTPException(status_code=403, detail="A same-origin browser request is required for RuView operations.")
+
+
+@app.get("/api/ruview/status")
+async def ruview_status(request: Request):
+    session_owner(request)
+    _require_local_ruview_request(request)
+    return ruview_companion.runner.snapshot()
+
+
+@app.post("/api/ruview/inspect")
+async def ruview_inspect(payload: RuViewInspectRequest, request: Request):
+    session_owner(request)
+    _require_local_ruview_request(request)
+    try:
+        return await ruview_companion.runner.inspect(payload.operation)
+    except ruview_companion.RuViewUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/ruview/capture/start")
+async def ruview_capture_start(request: Request):
+    session_owner(request)
+    _require_local_ruview_request(request)
+    try:
+        return await ruview_companion.runner.start_capture()
+    except ruview_companion.RuViewUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/ruview/capture/stop")
+async def ruview_capture_stop(request: Request):
+    session_owner(request)
+    _require_local_ruview_request(request)
+    return await ruview_companion.runner.stop_capture()
 
 
 @app.get("/api/capabilities")
