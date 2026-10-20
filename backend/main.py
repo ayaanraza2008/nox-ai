@@ -2192,8 +2192,11 @@ async def public_information_research(payload: PublicResearchRequest, request: R
 
 @app.get("/api/automation/capabilities")
 async def automation_capabilities():
-    """Expose the actual application-control adapters and their limitations."""
-    return get_automation_capabilities()
+    """Expose real adapter readiness without claiming remote devices are online."""
+    ai_configured = any(os.getenv(key, "").strip() for key in (
+        "OPENROUTER_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"
+    ))
+    return get_automation_capabilities(ai_configured=ai_configured, browser_available=browser_agent.available)
 
 
 @app.get("/api/ops/overview")

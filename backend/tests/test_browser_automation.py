@@ -1,6 +1,6 @@
 """Regression tests for remote browser destination safety."""
 import unittest
-from backend.browser_automation import BrowserAgent, BrowserAgentError
+from backend.browser_automation import BrowserAgent, BrowserAgentError, page_state_changed
 
 class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_non_http_scheme(self):
@@ -19,6 +19,12 @@ class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
         summary = BrowserAgent()._safe_command_summary("type MySecret123 into the password field")
         self.assertNotIn("MySecret123", summary)
         self.assertIn("[value redacted]", summary)
+
+    async def test_page_state_change_requires_observable_change(self):
+        before = {"url": "https://example.com/", "title": "Example", "body_sha256": "same"}
+        self.assertFalse(page_state_changed(before, dict(before)))
+        self.assertTrue(page_state_changed(before, {**before, "url": "https://example.com/next"}))
+        self.assertTrue(page_state_changed(before, {**before, "body_sha256": "changed"}))
 
     async def test_idle_state(self):
         result = await BrowserAgent().state("test-owner")

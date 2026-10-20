@@ -1,6 +1,6 @@
 """Session-scoped, safety-gated Playwright browser automation for NOX AI."""
 from __future__ import annotations
-import asyncio, ipaddress, os, re, socket, time, uuid
+import asyncio, hashlib, ipaddress, os, re, socket, time, uuid
 from urllib.parse import quote_plus, urlsplit, urlunsplit
 try:
     from playwright.async_api import async_playwright
@@ -15,6 +15,12 @@ AUTH = re.compile(r"\b(sign in|log in|login|verify|two.factor|one.time password|
 
 class BrowserAgentError(RuntimeError):
     pass
+
+
+def page_state_changed(before: dict, after: dict) -> bool:
+    """Return whether a click produced an observable URL, title, or body change."""
+    return any(before.get(key) != after.get(key) for key in ("url", "title", "body_sha256"))
+
 
 class BrowserAgent:
     def __init__(self):
@@ -91,11 +97,27 @@ class BrowserAgent:
             page = await context.new_page()
             s = {"id": uuid.uuid4().hex, "owner": owner, "context": context, "page": page, "closed": False,
                  "status": "ready", "task": "No task running", "events": [], "pending": None, "downloads": [],
-                 "created_at": int(time.time()), "updated_at": int(time.time()), "lock": asyncio.Lock()}
+                 "created_at": int(time.time()), "updated_at": int(time.time()), "last_verification": None, "lock": asyncio.Lock()}
             page.on("download", lambda d: s["downloads"].append({"name": d.suggested_filename[:180], "url": d.url[:1000], "saved": False}))
             self.sessions[owner] = s
             self._event(s, "Remote Chromium session created.", "success")
             return s
+
+    async def _page_signature(self, page):
+        """Capture a compact, content-free signature for post-action verification."""
+        try:
+            body = (await page.locator("body").inner_text(timeout=2500))[:12000]
+        except Exception:
+            body = ""
+        try:
+            title = (await page.title())[:300]
+        except Exception:
+            title = ""
+        return {
+            "url": page.url[:1500],
+            "title": title,
+            "body_sha256": hashlib.sha256(body.encode("utf-8", errors="replace")).hexdigest(),
+        }
 
     async def state(self, owner):
         s = self.sessions.get(owner)
@@ -109,7 +131,8 @@ class BrowserAgent:
             pass
         return {"available": self.available, "active": True, "session_id": s["id"], "status": s["status"], "task": s["task"],
                 "title": title, "url": url, "events": list(s["events"]), "pending_confirmation": bool(s["pending"]),
-                "downloads": [{**item, "index": i} for i, item in enumerate(s["downloads"])][-10:], "updated_at": s["updated_at"], "remote": True}
+                "last_verification": s.get("last_verification"),
+                "downloads": [{**item, "index": i} for i, item in enumerate(s["downloads"])[-10:]], "updated_at": s["updated_at"], "remote": True}
 
     async def screenshot(self, owner):
         s = self.sessions.get(owner)
@@ -144,7 +167,7 @@ class BrowserAgent:
                 for index, step in enumerate(steps, start=1):
                     result = await self._execute(s, step)
                     results.append(f"Step {index}: {result}")
-                    if s["status"] in {"awaiting_confirmation", "auth_required", "stopped"}:
+                    if s["status"] in {"awaiting_confirmation", "auth_required", "verification_required", "stopped"}:
                         break
                 result = "\n\n".join(results)
                 if s["status"] == "running":
@@ -205,9 +228,21 @@ class BrowserAgent:
                 s["pending"] = {"action": "click", "label": label}
                 s["status"] = "awaiting_confirmation"
                 return f"'{label}' may submit or change information. Confirm before I click it."
+            before = await self._page_signature(page)
             await loc.first.click()
-            await page.wait_for_timeout(250)
-            return f"Clicked '{label}'. Current page: {await page.title()} — {page.url}"
+            await page.wait_for_timeout(350)
+            after = await self._page_signature(page)
+            verified = page_state_changed(before, after)
+            s["last_verification"] = {
+                "action": "click", "verified": verified,
+                "before_url": before["url"], "after_url": after["url"],
+                "checked_at": int(time.time()),
+            }
+            if not verified:
+                s["status"] = "verification_required"
+                self._event(s, "Click was delivered, but no visible page change could be verified.", "attention")
+                return f"Clicked '{label}', but I could not verify a visible result. I have not marked this step complete; inspect the page or give another instruction."
+            return f"Clicked '{label}' and verified a visible page change. Current page: {after['title']} — {after['url']}"
         type_match = re.search(r"\btype\s+(.+?)\s+into\s+(?:the\s+)?(.+?)\s+(?:field|box|input)\s*$", command, re.I)
         if type_match:
             value, label = type_match.group(1).strip().strip("\"'"), type_match.group(2).strip().strip("\"' .")
@@ -217,7 +252,15 @@ class BrowserAgent:
             if not value or not label or await loc.count() == 0:
                 raise BrowserAgentError(f"I couldn't find a field labelled '{label}'. Inspect the page and try its visible label.")
             await loc.first.fill(value)
-            return f"Filled the '{label}' field. I have not submitted the form."
+            try:
+                verified = await loc.first.input_value() == value
+            except Exception:
+                verified = False
+            s["last_verification"] = {"action": "fill_field", "verified": verified, "field": label[:100], "checked_at": int(time.time())}
+            if not verified:
+                s["status"] = "verification_required"
+                return f"I attempted to fill '{label}', but could not verify the field value. I have not submitted the form."
+            return f"Filled and verified the '{label}' field. I have not submitted the form."
         if re.search(r"\b(scroll|scroll down|show more)\b", lower):
             direction = -1 if "up" in lower else 1
             await page.evaluate("(direction) => window.scrollBy(0, direction * Math.max(400, window.innerHeight * 0.75))", direction)
@@ -256,7 +299,20 @@ class BrowserAgent:
                 loc = page.get_by_role("button", name=re.compile(re.escape(label), re.I)).or_(page.get_by_role("link", name=re.compile(re.escape(label), re.I)))
                 if await loc.count() == 0:
                     raise BrowserAgentError("The page changed; I couldn't find that control. Inspect it again before retrying.")
+                before = await self._page_signature(page)
                 await loc.first.click()
+                await page.wait_for_timeout(350)
+                after = await self._page_signature(page)
+                verified = page_state_changed(before, after)
+                s["last_verification"] = {
+                    "action": "confirmed_click", "verified": verified,
+                    "before_url": before["url"], "after_url": after["url"],
+                    "checked_at": int(time.time()),
+                }
+                if not verified:
+                    s["status"] = "verification_required"
+                    self._event(s, "Confirmed click delivered, but no visible page change could be verified.", "attention")
+                    return {"result": "The click was delivered, but its effect could not be verified. Inspect the page before continuing.", "state": await self.state(owner)}
             else:
                 loc = page.get_by_role("link", name=re.compile(re.escape(label), re.I))
                 async with page.expect_download(timeout=15000) as info:
@@ -267,7 +323,13 @@ class BrowserAgent:
                 os.makedirs(directory, exist_ok=True)
                 path = os.path.join(directory, filename)
                 await download.save_as(path)
-                s["downloads"].append({"name": filename, "saved": True, "path": path})
+                file_ok = os.path.isfile(path) and os.path.getsize(path) > 0
+                s["downloads"].append({"name": filename, "saved": file_ok, "path": path if file_ok else None})
+                s["last_verification"] = {"action": "download", "verified": file_ok, "filename": filename, "checked_at": int(time.time())}
+                if not file_ok:
+                    s["status"] = "verification_required"
+                    self._event(s, "Download action returned but the saved file could not be verified.", "attention")
+                    return {"result": "The download action returned, but the saved file could not be verified.", "state": await self.state(owner)}
             s["status"] = "completed"
             self._event(s, "Confirmed action completed: " + label, "success")
             return {"result": "Confirmed action completed: " + label, "state": await self.state(owner)}
