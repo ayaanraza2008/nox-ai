@@ -1,11 +1,13 @@
 package ai.nox.companion
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.widget.EditText
 import android.widget.Toast
@@ -55,11 +57,15 @@ class MainActivity : Activity() {
         if (!session.isNullOrBlank() && !token.isNullOrBlank()) {
             startPairingService()
             AlertDialog.Builder(this)
-                .setTitle("NOX Device Pairing")
-                .setMessage("This Android device is paired with NOX. The foreground service will keep reconnecting while enabled. Android may show a notification instead of opening apps automatically when NOX is in the background.")
-                .setPositiveButton("Pair another session") { _, _ -> showPairCodeDialog() }
-                .setNegativeButton("Close", null)
-                .setNeutralButton("Disconnect") { _, _ -> disconnectPairing() }
+                .setTitle("NOX Companion")
+                .setMessage("Choose a pairing or location-sharing action. Location is only uploaded while you have granted Android permission and your NOX account has explicitly enabled a time-limited sharing session.")
+                .setItems(arrayOf("Pair another session", "Location sharing options", "Disconnect paired control", "Close")) { _, which ->
+                    when (which) {
+                        0 -> showPairCodeDialog()
+                        1 -> showLocationOptions()
+                        2 -> disconnectPairing()
+                    }
+                }
                 .show()
         } else {
             showPairCodeDialog()
@@ -85,6 +91,7 @@ class MainActivity : Activity() {
                 }
             }
             .setNegativeButton("Cancel") { _, _ -> finish() }
+            .setNeutralButton("Location sharing") { _, _ -> showLocationOptions() }
             .setOnCancelListener { finish() }
             .show()
     }
@@ -130,6 +137,142 @@ class MainActivity : Activity() {
         stopService(Intent(this, PairingService::class.java))
         getSharedPreferences("nox_pairing", MODE_PRIVATE).edit().clear().apply()
         Toast.makeText(this, "This Android device has been disconnected from NOX.", Toast.LENGTH_LONG).show()
+    }
+
+    private fun showLocationOptions() {
+        val prefs = getSharedPreferences("nox_location", MODE_PRIVATE)
+        val enrolled = !prefs.getString("device_token", null).isNullOrBlank()
+        val choices = if (enrolled) arrayOf("Start / resume visible location service", "Stop location service", "Enroll another device", "Cancel")
+            else arrayOf("Enroll this phone for location sharing", "Cancel")
+        AlertDialog.Builder(this)
+            .setTitle("NOX Location Sharing")
+            .setMessage("Enrollment does not start sharing by itself. Your account must separately enable sharing, and Android location permission is required.")
+            .setItems(choices) { _, which ->
+                if (!enrolled) {
+                    if (which == 0) showLocationCodeDialog()
+                } else {
+                    when (which) {
+                        0 -> ensureLocationPermission("")
+                        1 -> {
+                            stopService(Intent(this, LocationService::class.java))
+                            Toast.makeText(this, "Location service stopped on this phone.", Toast.LENGTH_LONG).show()
+                        }
+                        2 -> showLocationCodeDialog()
+                    }
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun showLocationCodeDialog() {
+        val input = EditText(this).apply {
+            hint = "Six-digit location enrollment code"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(android.text.InputFilter.LengthFilter(6))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Enroll this phone")
+            .setMessage("In NOX web, sign in and open Features → Location Intelligence → Generate enrollment code. The code expires in five minutes and can be used once.")
+            .setView(input)
+            .setPositiveButton("Continue") { _, _ ->
+                val code = input.text.toString().trim()
+                if (code.length != 6 || code.any { it !in '0'..'9' }) {
+                    Toast.makeText(this, "Enter the six-digit code.", Toast.LENGTH_LONG).show()
+                } else {
+                    ensureLocationPermission(code)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun ensureLocationPermission(enrollmentCode: String) {
+        val prefs = getSharedPreferences("nox_location", MODE_PRIVATE)
+        prefs.edit().putString("pending_enrollment_code", enrollmentCode).apply()
+        val fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (fine || coarse) {
+            continueLocationSetup(enrollmentCode)
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 7104)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 7104) return
+        val granted = grantResults.any { it == PackageManager.PERMISSION_GRANTED }
+        val code = getSharedPreferences("nox_location", MODE_PRIVATE).getString("pending_enrollment_code", "").orEmpty()
+        if (!granted) {
+            Toast.makeText(this, "Location permission was not granted; no location will be collected.", Toast.LENGTH_LONG).show()
+            return
+        }
+        continueLocationSetup(code)
+    }
+
+    private fun continueLocationSetup(enrollmentCode: String) {
+        if (enrollmentCode.isBlank()) {
+            showBackgroundLocationDisclosure { startLocationService() }
+            return
+        }
+        Thread {
+            try {
+                val body = JSONObject()
+                    .put("code", enrollmentCode)
+                    .put("label", "NOX Android • " + Build.MODEL.take(40))
+                    .put("platform", "android")
+                val connection = URL("$apiBase/api/location/mobile/enroll").openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.connectTimeout = 12000
+                connection.readTimeout = 12000
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.doOutput = true
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val status = connection.responseCode
+                val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+                val text = stream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                if (status !in 200..299) throw IllegalStateException("Enrollment failed (HTTP $status). Generate a new code and retry.")
+                val result = JSONObject(text)
+                getSharedPreferences("nox_location", MODE_PRIVATE).edit()
+                    .putString("device_id", result.getString("device_id"))
+                    .putString("device_token", result.getString("device_token"))
+                    .remove("pending_enrollment_code")
+                    .apply()
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setTitle("Location device enrolled")
+                        .setMessage("This phone is registered but sharing remains OFF until you enable it in NOX web. If you start the visible service, GPS is requested only after your account enables sharing. Android may limit background updates; choose Allow all the time in app settings if available.")
+                        .setPositiveButton("Start visible service") { _, _ -> showBackgroundLocationDisclosure { startLocationService() } }
+                        .setNeutralButton("Background permission settings") { _, _ -> openAppSettings() }
+                        .setNegativeButton("Not now", null)
+                        .show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, e.message ?: "Could not enroll this phone.", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun showBackgroundLocationDisclosure(onContinue: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle("Background location disclosure")
+            .setMessage("NOX shows an ongoing notification while the location service runs. Coordinates are uploaded only while sharing is enabled and unexpired in your NOX account. You can stop the service here or revoke sharing in the web dashboard. Battery saver, network loss, GPS settings, or Android may delay updates.")
+            .setPositiveButton("Continue") { _, _ -> onContinue() }
+            .setNeutralButton("App permission settings") { _, _ -> openAppSettings() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openAppSettings() {
+        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+    }
+
+    private fun startLocationService() {
+        val service = Intent(this, LocationService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service) else startService(service)
+        Toast.makeText(this, "NOX location service started. Sharing still requires account-owner consent.", Toast.LENGTH_LONG).show()
     }
 
     private data class LaunchableApp(val label: String, val packageName: String)
