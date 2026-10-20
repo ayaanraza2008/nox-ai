@@ -209,7 +209,7 @@ def accept_invitation(recipient_id: str, token: str) -> dict:
             raise HTTPException(status_code=400, detail="Invitation is invalid, expired, or already used.")
         if invite["inviter_id"] == recipient_id:
             raise HTTPException(status_code=400, detail="You cannot accept your own invitation.")
-        _context(conn, recipient_id)
+        # Keep invite-accept context enabled so RLS permits marking this invite accepted.
         share_id = str(uuid.uuid4())
         conn.execute(
             """INSERT INTO nox_location_shares(id, owner_id, viewer_id, status, created_at, expires_at)
