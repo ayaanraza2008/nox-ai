@@ -11,6 +11,19 @@
     if (!response.ok) throw new Error(data.detail || "Request failed (" + response.status + ")");
     return data;
   };
+  let activityReset = null;
+  const setBrainActivity = (state) => {
+    if (!document.body) return;
+    document.body.dataset.noxBrainState = state;
+    window.dispatchEvent(new CustomEvent("nox:brain-state", { detail: { state } }));
+    if (activityReset) clearTimeout(activityReset);
+    if (!["idle", "error"].includes(state)) {
+      activityReset = setTimeout(() => {
+        document.body.dataset.noxBrainState = "idle";
+        window.dispatchEvent(new CustomEvent("nox:brain-state", { detail: { state: "idle" } }));
+      }, 2200);
+    }
+  };
   const notice = (message, good = true) => {
     const el = $("brainNotice");
     if (!el) return;
@@ -99,12 +112,15 @@
     });
   };
   async function loadMemories(query = "") {
+    setBrainActivity("retrieving");
     const params = new URLSearchParams({ limit: "100" });
     if (query.trim()) params.set("query", query.trim());
     const data = await api("/api/brain/memories?" + params.toString());
     renderMemories(data.results || []);
+    setBrainActivity("idle");
   }
   async function refresh() {
+    setBrainActivity("retrieving");
     try {
       const [overview, memories, devices, proposals, skills] = await Promise.all([
         api("/api/brain/overview"),
@@ -124,12 +140,14 @@
       renderMemories(memories.results || []);
       renderDevices(devices.devices || []);
       renderProposals(proposals.proposals || []);
+      setBrainActivity("idle");
       if (!skills.skills || !skills.skills.length) notice("Brain is online, but no skill definitions were returned.");
       else if (overview.capabilities && !overview.capabilities.semantic_vectors) {
         // Keep limitations visible rather than implying vector retrieval or model training.
         $("brainStatus").title = "Keyword retrieval active. Semantic vectors and model-weight training are not configured.";
       }
     } catch (error) {
+      setBrainActivity("error");
       $("brainStatus").textContent = "UNAVAILABLE";
       notice(error.message + " — refresh NOX and check the backend session.", false);
     }
@@ -160,6 +178,7 @@
   }
   document.addEventListener("DOMContentLoaded", () => {
     $("brainSaveMemory")?.addEventListener("click", async () => {
+      setBrainActivity("saving");
       const content = $("brainMemoryContent").value.trim();
       if (!content) { notice("Write a concise memory first.", false); return; }
       try {
@@ -167,6 +186,7 @@
           method: "POST", body: JSON.stringify({ content, category: $("brainMemoryCategory").value })
         });
         $("brainMemoryContent").value = "";
+        setBrainActivity("saved");
         notice(result.duplicate ? "Existing memory refreshed; no duplicate created." : "Memory saved to this browser session's NOX brain.");
         await refresh();
       } catch (error) { notice(error.message, false); }
@@ -194,6 +214,7 @@
       } catch (error) { notice(error.message, false); }
     });
     $("brainDiscoverDevice")?.addEventListener("click", async () => {
+      setBrainActivity("synchronizing");
       try {
         const result = await api("/api/brain/device-context", {
           method: "POST",
@@ -202,12 +223,14 @@
             capabilities: discoverCapabilities()
           })
         });
+        setBrainActivity("synchronized");
         notice("Shared an allowlisted capability summary only. No sensor permission was requested.");
         const data = await api("/api/brain/devices");
         renderDevices(data.devices || []);
       } catch (error) { notice(error.message, false); }
     });
     $("brainRecordOutcome")?.addEventListener("click", async () => {
+      setBrainActivity("evaluating");
       const task_type = $("brainOutcomeType").value.trim();
       const requested_outcome = $("brainOutcomeGoal").value.trim();
       const result_summary = $("brainOutcomeResult").value.trim();
@@ -223,6 +246,7 @@
             evidence: $("brainOutcomeEvidence").value.trim() || null
           })
         });
+        setBrainActivity("evaluated");
         notice("Outcome recorded. " + (outcome.requires_validation_before_memory
           ? "Evidence is attached, but a lesson still needs validation before becoming durable memory."
           : "No verified lesson was automatically stored."));
@@ -232,6 +256,7 @@
       } catch (error) { notice(error.message, false); }
     });
     $("brainCreateProposal")?.addEventListener("click", async () => {
+      setBrainActivity("planning");
       const title = $("brainProposalTitle").value.trim();
       const summary = $("brainProposalSummary").value.trim();
       if (!title || !summary) { notice("Enter a proposal title and validation/rollback summary.", false); return; }
@@ -250,6 +275,7 @@
         });
         $("brainProposalTitle").value = "";
         $("brainProposalSummary").value = "";
+        setBrainActivity("proposal-created");
         notice("Improvement proposal created for review; nothing was executed automatically.");
         await refresh();
       } catch (error) { notice(error.message, false); }
