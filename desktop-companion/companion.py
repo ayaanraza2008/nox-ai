@@ -16,7 +16,9 @@ from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from device_control import discover_adb_devices, launch_android_app
 
 try:
     from home_assistant import execute_home_assistant_command
@@ -66,6 +68,12 @@ DESTINATIONS = {
 
 class OpenRequest(BaseModel):
     target: str
+    confirmed: bool = False
+
+
+class AndroidLaunchRequest(BaseModel):
+    serial: str = Field(min_length=1, max_length=128)
+    package_name: str = Field(min_length=3, max_length=255)
     confirmed: bool = False
 
 
@@ -243,6 +251,64 @@ async def connectivity_ruview(view: Literal["health", "info", "sensing", "vitals
         raise HTTPException(status_code=502, detail=f"RuView returned HTTP {exc.response.status_code}.") from exc
     except httpx.RequestError as exc:
         raise HTTPException(status_code=503, detail="Local RuView is not reachable at 127.0.0.1:3000.") from exc
+
+
+@app.get("/v1/devices")
+def list_connected_devices(x_nox_token: str | None = Header(default=None)):
+    """Discover local ADB devices; never scans the LAN or pairs devices silently."""
+    authorize(x_nox_token)
+    result = discover_adb_devices()
+    return {
+        **result,
+        "host_platform": "windows" if os.name == "nt" else os.name,
+        "wifi_interface": "available" if os.name == "nt" else "unsupported",
+        "bluetooth": {"status": "not_implemented", "reason": "No Bluetooth adapter is wired into this companion yet."},
+        "ios": {"status": "not_implemented", "reason": "iOS does not expose unrestricted device control to this companion."},
+    }
+
+
+@app.get("/v1/devices/capabilities")
+def device_control_capabilities(x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    discovered = discover_adb_devices()
+    return {
+        "platform": "windows" if os.name == "nt" else os.name,
+        "adapters": [
+            {
+                "id": "android_adb",
+                "status": "implemented_with_setup" if discovered.get("status") == "ok" else discovered.get("status", "setup_required"),
+                "transports": ["USB", "ADB-over-network-if-the-owner-configured-it"],
+                "actions": ["discover_devices", "inspect_authorization_state", "launch_installed_app"],
+                "requires": ["Android Platform Tools", "USB debugging enabled by the owner", "owner approval of this computer's debugging key"],
+                "limitations": ["App launch is reported as requested, not verified", "File transfer, screen capture, and general UI automation are not exposed by this prototype"],
+            },
+            {
+                "id": "windows_wifi_status",
+                "status": "implemented_with_setup" if os.name == "nt" else "unsupported",
+                "actions": ["read_current_wifi_interface_status"],
+                "limitations": ["Read-only interface status; not general LAN discovery"],
+            },
+            {"id": "bluetooth_ble", "status": "not_implemented", "actions": [], "limitations": ["No Bluetooth scanning or GATT adapter is wired in."]},
+            {"id": "ios", "status": "not_implemented", "actions": [], "limitations": ["Use approved Shortcuts/App Intents integrations; no unrestricted control."]},
+        ],
+        "adb": discovered.get("capabilities", {}),
+        "note": "All local companion routes require X-NOX-Token. No unauthenticated control port is opened.",
+    }
+
+
+@app.post("/v1/devices/android/launch")
+def launch_android_device_app(payload: AndroidLaunchRequest, x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    try:
+        return launch_android_app(payload.serial, payload.package_name, payload.confirmed)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/health")
