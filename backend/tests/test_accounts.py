@@ -39,7 +39,7 @@ class FakeConnection:
             return Cursor(None, rowcount=1)
         if "SELECT window_start,count FROM nox_account_rate_limits" in query:
             return Cursor(None)
-        if "SELECT id FROM nox_accounts WHERE email=%s OR username=%s" in query:
+        if "SELECT id FROM nox_accounts" in query and "OR username=%s" in query:
             return Cursor(self.duplicate)
         if "SELECT a.* FROM nox_account_sessions s JOIN nox_accounts a" in query:
             return Cursor(self.account)
