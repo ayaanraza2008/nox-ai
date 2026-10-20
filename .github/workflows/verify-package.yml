@@ -76,6 +76,8 @@ jobs:
         run: node --check frontend/dist/nox-feature-drawer.js
       - name: Validate NOX Brain dashboard JavaScript syntax
         run: node --check frontend/dist/nox-brain.js
+      - name: Validate Cognitive Intelligence JavaScript syntax
+        run: node --check frontend/dist/nox-cognitive.js
       - name: Validate NOX account JavaScript syntax
         run: node --check frontend/dist/nox-account.js
       - name: Validate Visual Intelligence JavaScript syntax
