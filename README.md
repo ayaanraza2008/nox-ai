@@ -25,6 +25,14 @@ NOX includes a session-scoped knowledge index for user-provided documents and in
 - **Privacy:** sources, chunks, searches, and deletion are scoped to the server-issued `nox_session` cookie. A source ID alone does not grant access to another session's indexed data.
 - **Dashboard:** the Knowledge Index workspace shows actual source/chunk counts, stored bytes, source links, search passages, and per-source deletion.
 
+### NOX Brain durable memory storage
+
+- The Brain uses PostgreSQL whenever `SUPABASE_DB_URL` or `DATABASE_URL` is configured. This keeps saved memories, settings, audit records, device summaries, outcomes, skills, and improvement proposals across app restarts and redeploys.
+- For production, configure one of those environment variables with a managed PostgreSQL connection string (Render PostgreSQL or Supabase PostgreSQL). The URL stays server-side and must never be exposed in frontend code.
+- SQLite remains the local-development fallback. On hosts with ephemeral filesystems, the SQLite fallback is not durable across restarts/redeploys.
+- Saved memories no longer receive automatic expiry timestamps or get silently removed by retention cleanup. The retention-days setting is retained for compatibility/metadata; explicit user deletion is still available. Temporary is a category label, not an automatic deletion timer.
+- **Important limitation:** this is durable storage, but the current Brain owner key is still the opaque browser session cookie—not a real registered account. Cross-device continuity and delete-account-only cleanup require account authentication/account IDs and an explicit account deletion workflow; do not claim those are complete until that separate account layer is implemented.
+
 ### Knowledge Index configuration and limitations
 
 - Install dependencies with `pip install -r backend/requirements.txt`; PDF extraction uses `pypdf`, and browser file uploads use `python-multipart`.
