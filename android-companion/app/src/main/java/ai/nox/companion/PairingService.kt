@@ -46,6 +46,7 @@ class PairingService : Service() {
             return START_NOT_STICKY
         }
         if (prefs.getBoolean("emergency_stopped", false)) {
+            stopForeground(true)
             stopSelf(startId)
             return START_NOT_STICKY
         }
