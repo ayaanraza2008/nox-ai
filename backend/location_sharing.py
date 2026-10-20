@@ -129,7 +129,12 @@ def list_devices(owner_id: str) -> dict:
             """SELECT d.id, d.owner_id, d.label, d.platform, d.sharing_enabled,
                       d.consent_expires_at, d.last_seen_at, d.last_location_at,
                       d.latitude, d.longitude, d.accuracy_m, d.created_at,
-                      CASE WHEN d.owner_id=%s THEN true ELSE false END AS is_owner
+                      CASE WHEN d.owner_id=%s THEN true ELSE false END AS is_owner,
+                      CASE WHEN d.owner_id=%s THEN NULL ELSE (
+                        SELECT sh.id FROM nox_location_shares sh
+                        WHERE sh.owner_id=d.owner_id AND sh.viewer_id=%s
+                          AND sh.status='active' AND sh.expires_at>now() LIMIT 1
+                      ) END AS share_id
                FROM nox_location_devices d
                WHERE d.revoked_at IS NULL AND (
                    d.owner_id=%s OR EXISTS (
@@ -139,7 +144,7 @@ def list_devices(owner_id: str) -> dict:
                    )
                )
                ORDER BY d.updated_at DESC LIMIT 100""",
-            (owner_id, owner_id, owner_id),
+            (owner_id, owner_id, owner_id, owner_id, owner_id),
         ).fetchall()
     now = _now()
     devices = []
