@@ -158,7 +158,7 @@ If ADB is missing, install Platform-Tools or set `NOX_ADB_PATH`. If the device i
 
 The companion includes a token-authenticated local security adapter. It binds to loopback only and does not make these endpoints available through the hosted Render API.
 
-- `GET http://127.0.0.1:8765/v1/cybersecurity/status` — detects local tool paths without launching them.
+- `GET http://127.0.0.1:8765/v1/cybersecurity/status` — detects local tool paths and probes selected fixed --version flags with a two-second timeout; it does not start scans.
 - `POST http://127.0.0.1:8765/v1/cybersecurity/scans` — starts bounded Nmap service discovery. Requires JSON fields `target`, `authorized: true`, a `scope_note` of at least 10 characters, and the exact confirmation `I OWN OR AM AUTHORIZED TO TEST THIS TARGET`.
 - `GET http://127.0.0.1:8765/v1/cybersecurity/scans/TASK_ID` — polls a scan's actual result.
 - `POST http://127.0.0.1:8765/v1/cybersecurity/scans/cancel` with JSON `{"task_id":"TASK_ID"}` — requests cancellation.
