@@ -119,7 +119,12 @@
       const result = await api("/api/account/recovery/request", {
         method: "POST", body: JSON.stringify({ channel, identifier, country_code: $("accountRecoveryCountry").value })
       });
-      notice(result.message);
+      const channelLabel = channel === "email" ? "Email" : "SMS";
+      if (result.provider_status === "setup_required") {
+        notice(result.message + " " + channelLabel + " provider setup is required before recovery codes can be delivered.", true);
+      } else {
+        notice(result.message + " If the details match, check the selected channel.");
+      }
     } catch (error) { notice(error.message, true); }
   }
 
