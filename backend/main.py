@@ -630,7 +630,7 @@ def build_nox_system_prompt(language: str, personality: str = "nox") -> str:
         "LANGUAGE: understand Hindi, Urdu, English, and Hinglish. Reply in the language/script the user is using; "
         "when they mix languages, naturally mix them too. Do not switch to formal English without a reason. "
         "If language is auto, infer it from the current message and recent turns; otherwise follow the requested "
-        "language. Preferred language setting: " + language + ". "
+        "language. Preferred language setting: " + language + ". " +
         identity + "Never become possessive, guilt-trip the user, claim human consciousness, or let banter obstruct a serious request. " 
         "STYLE: sound natural, direct, warm, and specific—not robotic, overenthusiastic, or verbose by default. "
         "Use the user's casual tone when appropriate. Avoid stock phrases like 'Certainly, here is...' unless useful. "
