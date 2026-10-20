@@ -30,6 +30,7 @@ from backend import accounts
 from backend import github_bridge
 from backend import public_research
 from backend import cognitive
+from backend import location_sharing
 from backend.autonomous_agent import run_autonomous_task
 from backend.browser_automation import BrowserAgentError, browser_agent
 import edge_tts
@@ -246,6 +247,32 @@ class AccountCredentials(BaseModel):
 class AccountDeleteRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
     confirmation: str = Field(min_length=1, max_length=40)
+
+
+class LocationEnrollmentCodeRequest(BaseModel):
+    label: str = Field(default="NOX device", min_length=1, max_length=80)
+
+
+class LocationMobileEnrollRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\\d{6}$")
+    label: str = Field(default="NOX mobile device", min_length=1, max_length=80)
+    platform: Literal["android", "ios"]
+
+
+class LocationSharingUpdateRequest(BaseModel):
+    enabled: bool
+    expires_hours: int = Field(default=24, ge=1, le=168)
+
+
+class LocationInviteAcceptRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+
+
+class LocationUpdateRequest(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_m: float = Field(ge=0, le=10000)
+    captured_at: datetime | None = None
 
 
 class TTSRequest(BaseModel):
@@ -1742,6 +1769,90 @@ def _set_account_cookie(response: Response, request: Request, token: str):
         httponly=True, secure=_request_is_secure(request),
         samesite="lax", path="/",
     )
+
+
+def _location_account_owner(request: Request) -> str:
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in to a NOX account to manage location sharing.")
+    account = _account_error(accounts.resolve_session, token)
+    if not account:
+        raise HTTPException(status_code=401, detail="Account session expired. Please sign in again.")
+    return account["id"]
+
+
+@app.get("/api/location/config")
+async def location_config():
+    return location_sharing.map_config()
+
+
+@app.get("/api/location/devices")
+async def location_devices(request: Request):
+    return _location_call(location_sharing.list_devices, _location_account_owner(request))
+
+
+@app.post("/api/location/enrollment-code")
+async def location_enrollment_code(payload: LocationEnrollmentCodeRequest, request: Request):
+    owner_id = _location_account_owner(request)
+    location_sharing.rate_limit("enroll-code:" + owner_id, limit=8, window_seconds=300)
+    return _location_call(location_sharing.create_enrollment_code, owner_id, payload.label)
+
+
+@app.post("/api/location/mobile/enroll")
+async def location_mobile_enroll(payload: LocationMobileEnrollRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    location_sharing.rate_limit("mobile-enroll:" + client_ip, limit=8, window_seconds=900)
+    return _location_call(location_sharing.enroll_mobile_device, payload.code, payload.label, payload.platform)
+
+
+@app.post("/api/location/devices/{device_id}/sharing")
+async def location_device_sharing(device_id: str, payload: LocationSharingUpdateRequest, request: Request):
+    return _location_call(location_sharing.set_sharing, _location_account_owner(request),
+                          device_id, payload.enabled, payload.expires_hours)
+
+
+@app.delete("/api/location/devices/{device_id}")
+async def location_device_revoke(device_id: str, request: Request):
+    return _location_call(location_sharing.revoke_device, _location_account_owner(request), device_id)
+
+
+@app.post("/api/location/invitations")
+async def location_invitation_create(request: Request):
+    owner_id = _location_account_owner(request)
+    location_sharing.rate_limit("invite:" + owner_id, limit=10, window_seconds=3600)
+    return _location_call(location_sharing.create_invitation, owner_id)
+
+
+@app.post("/api/location/invitations/accept")
+async def location_invitation_accept(payload: LocationInviteAcceptRequest, request: Request):
+    return _location_call(location_sharing.accept_invitation, _location_account_owner(request), payload.token)
+
+
+@app.delete("/api/location/shares/{share_id}")
+async def location_share_revoke(share_id: str, request: Request):
+    return _location_call(location_sharing.revoke_share, _location_account_owner(request), share_id)
+
+
+@app.get("/api/location/devices/{device_id}/history")
+async def location_device_history(device_id: str, request: Request, limit: int = 100):
+    return _location_call(location_sharing.get_history, _location_account_owner(request), device_id, limit)
+
+
+@app.post("/api/location/update")
+async def location_update(payload: LocationUpdateRequest, request: Request,
+                          x_nox_location_token: str = Header(default="", alias="X-NOX-Location-Token")):
+    return _location_call(location_sharing.update_location, x_nox_location_token, payload.latitude,
+                          payload.longitude, payload.accuracy_m, payload.captured_at)
+
+
+def _location_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Location-sharing operation failed")
+        raise HTTPException(status_code=503, detail="Location-sharing service failed safely. Check database migration and server logs.") from exc
 
 
 @app.get("/api/account/me")
