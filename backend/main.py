@@ -48,7 +48,7 @@ async def _startup_http_client():
     global HTTP_CLIENT
     if HTTP_CLIENT is None or HTTP_CLIENT.is_closed:
         HTTP_CLIENT = httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0, connect=8.0),
+            timeout=httpx.Timeout(45.0, connect=8.0),
             trust_env=True,
             limits=httpx.Limits(max_connections=80, max_keepalive_connections=20, keepalive_expiry=30.0),
         )
@@ -69,7 +69,7 @@ async def _provider_http_client():
         yield HTTP_CLIENT
         return
     async with httpx.AsyncClient(
-        timeout=httpx.Timeout(60.0, connect=8.0),
+        timeout=httpx.Timeout(45.0, connect=8.0),
         trust_env=True,
         limits=httpx.Limits(max_connections=20, max_keepalive_connections=5, keepalive_expiry=20.0),
     ) as client:
@@ -689,7 +689,6 @@ async def provider_reply(message: str, language: str, history: list[dict], image
                         provider["url"],
                         headers=headers,
                         json={"model": provider["model"], "messages": messages, "temperature": 0.7},
-                        timeout=httpx.Timeout(45.0, connect=8.0),
                     )
                     if response.status_code < 400:
                         try:
@@ -806,7 +805,6 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
                     "POST", provider["url"],
                     headers={"Authorization": f"Bearer {provider['key']}", "Content-Type": "application/json", **provider["headers"]},
                     json={"model": provider["model"], "messages": messages, "temperature": 0.7, "stream": True},
-                    timeout=httpx.Timeout(60.0, connect=8.0),
                 ) as response:
                     if response.status_code >= 400:
                         body = (await response.aread()).decode("utf-8", errors="replace")[:400]
