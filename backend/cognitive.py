@@ -6,8 +6,8 @@ hidden intentions as facts.
 """
 from __future__ import annotations
 
+import json
 import re
-from collections import Counter
 from typing import Literal
 
 CognitiveMode = Literal["behavior", "patterns", "bias", "omnivore", "thinking", "personality", "stoicism"]
