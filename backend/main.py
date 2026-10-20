@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
-from backend.agent_swarm import SwarmManager
+from backend.agent_swarm import SwarmError, SwarmManager
 from backend.safe_tools import SafeToolError, run_tool
 from backend import project_workspace as workspace
 from backend import knowledge
@@ -945,7 +945,7 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
     yield {"type": "error", "message": detail}
 
 task_manager = TaskManager(run_autonomous_task)
-swarm_manager = SwarmManager()
+swarm_manager = SwarmManager(stop_check=task_manager.is_stopped)
 
 
 @app.on_event("startup")
@@ -957,6 +957,67 @@ async def start_task_worker():
 async def stop_task_worker():
     await task_manager.stop()
     await browser_agent.close()
+
+
+@app.get("/api/emergency-stop")
+async def emergency_stop_status(request: Request):
+    """Report the persisted stop latch and outstanding cancellable work for this owner."""
+    owner_id = session_owner(request)
+    state = task_manager.emergency_status(owner_id)
+    tasks = task_manager.list(limit=50, owner_id=owner_id)
+    active_tasks = [{"id": t["id"], "status": t["status"]} for t in tasks
+                    if t["status"] in ("queued", "running", "paused", "cancelling")]
+    jobs = swarm_manager.list(owner_id, limit=50)
+    active_jobs = [{"id": j["id"], "status": j["status"]} for j in jobs
+                   if j["status"] in ("queued", "planning", "running", "reviewing", "cancelling")]
+    browser = {"status": "unknown"}
+    try:
+        browser = await browser_agent.state(browser_session_owner(request))
+    except HTTPException:
+        browser = {"status": "unavailable"}
+    pending = []
+    if state["stopped"]:
+        pending.extend([{"type": "task", **item} for item in active_tasks])
+        pending.extend([{"type": "swarm", **item} for item in active_jobs])
+        browser_status = str(browser.get("status", "unknown")).lower() if isinstance(browser, dict) else "unknown"
+        if browser_status not in ("idle", "stopped", "closed", "unavailable"):
+            pending.append({"type": "browser", "status": browser_status})
+    phase = "running" if not state["stopped"] else ("stopping" if pending else "stopped")
+    return {"state": phase, "stopped": state["stopped"], "stopped_at": state["stopped_at"],
+            "pending_operations": pending, "task_storage": "postgresql" if task_manager.use_postgres else "sqlite",
+            "durability_note": ("Stop latch uses the configured task database." if task_manager.use_postgres
+                                else "Stop latch uses NOX_TASK_DB SQLite; hosted ephemeral filesystems may not survive redeploys."),
+            "state_persistent": state["state_persistent"]}
+
+
+@app.post("/api/emergency-stop")
+async def activate_emergency_stop(request: Request):
+    """Latch stop first, then cancel session tasks, agent swarm work, and browser actions."""
+    owner_id = session_owner(request)
+    result = await task_manager.emergency_stop(owner_id)
+    swarm_cancelled = await swarm_manager.cancel_all(owner_id)
+    browser_result = {"status": "unavailable"}
+    try:
+        browser_result = await browser_agent.stop(browser_session_owner(request))
+    except Exception as exc:
+        logger.warning("Emergency Stop could not confirm browser shutdown (%s)", type(exc).__name__)
+        browser_result = {"status": "cleanup_pending", "reason": type(exc).__name__}
+    status = await emergency_stop_status(request)
+    return {**status, "cancelled_task_count": result.get("cancelled_task_count", 0),
+            "cancelled_swarm_count": len(swarm_cancelled), "browser": browser_result}
+
+
+@app.post("/api/emergency-stop/resume")
+async def resume_after_emergency_stop(request: Request):
+    """Explicitly unlatch execution; cancelled tasks are never requeued."""
+    owner_id = session_owner(request)
+    state = task_manager.emergency_status(owner_id)
+    tasks = task_manager.list(limit=50, owner_id=owner_id)
+    if any(t["status"] == "cancelling" for t in tasks):
+        raise HTTPException(status_code=409, detail="Cleanup is still running. Wait until NOX reports STOPPED.")
+    result = await task_manager.resume_emergency_stop(owner_id)
+    return {"state": "running", "stopped": result["stopped"],
+            "message": "System resumed by explicit user action. Cancelled tasks remain cancelled."}
 
 
 @app.get("/api/session")
@@ -996,6 +1057,8 @@ async def create_task(payload: TaskCreateRequest, request: Request):
         task = await task_manager.create(
             goal, payload.language, owner_id=owner_id, idempotency_key=idempotency_key
         )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"task": task}
@@ -1077,7 +1140,14 @@ async def create_swarm_job(payload: SwarmCreateRequest, request: Request):
     goal = payload.goal.strip()
     if len(goal) < 8:
         raise HTTPException(status_code=400, detail="Swarm goal must contain at least 8 characters.")
-    return {"job": await swarm_manager.create(goal, payload.language, owner_id)}
+    async with task_manager.emergency_lock:
+        if task_manager.is_stopped(owner_id):
+            raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before starting new jobs.")
+        try:
+            job = await swarm_manager.create(goal, payload.language, owner_id)
+        except SwarmError as exc:
+            raise HTTPException(status_code=423 if task_manager.is_stopped(owner_id) else 400, detail=str(exc)) from exc
+    return {"job": job}
 
 
 @app.get("/api/swarm/jobs")
@@ -1137,7 +1207,9 @@ async def cancel_swarm_job(job_id: str, request: Request):
 @app.post("/api/tools/execute")
 async def execute_safe_tool(payload: SafeToolRequest, request: Request):
     """Run one deterministic allowlisted utility in the current browser session."""
-    session_owner(request)
+    owner_id = session_owner(request)
+    if task_manager.is_stopped(owner_id):
+        raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before executing tools.")
     try:
         result = run_tool(payload.tool, payload.input)
     except SafeToolError as exc:
@@ -2455,6 +2527,8 @@ async def browser_state(request: Request):
 async def browser_command(payload: BrowserCommandRequest, request: Request):
     """Execute one bounded browser instruction in the user's remote browser session."""
     owner_id = browser_session_owner(request)
+    if task_manager.is_stopped(session_owner(request)):
+        raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before browser automation.")
     try:
         return await browser_agent.run(owner_id, payload.command, payload.language)
     except BrowserAgentError as exc:
@@ -2465,6 +2539,8 @@ async def browser_command(payload: BrowserCommandRequest, request: Request):
 async def browser_confirm(payload: BrowserConfirmRequest, request: Request):
     """Approve or decline the single pending consequential browser action."""
     owner_id = browser_session_owner(request)
+    if task_manager.is_stopped(session_owner(request)):
+        raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before approving browser actions.")
     try:
         return await browser_agent.confirm(owner_id, payload.approved)
     except BrowserAgentError as exc:
