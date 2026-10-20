@@ -157,6 +157,10 @@ def logout(token: str) -> None:
 
 
 def delete_account(token: str, password: str, confirmation: str) -> bool:
+    # Ensure the Brain schema exists before the single-transaction account purge.
+    from backend import brain
+    schema_conn = brain._connect()
+    schema_conn.close()
     if confirmation != "DELETE MY ACCOUNT":
         raise ValueError("Type DELETE MY ACCOUNT to confirm permanent deletion.")
     if not token:
