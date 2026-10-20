@@ -136,7 +136,7 @@ class AccountSecurityTests(unittest.TestCase):
 
     def test_duplicate_registration_is_rejected(self):
         connection = FakeConnection(duplicate={"id": "existing"})
-        with patch.object(accounts, "_connect", return_value=connection):
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
             with self.assertRaisesRegex(ValueError, "already exists"):
                 accounts.register("Example Person", "example_person", "person@example.com", "+91",
                                   "9876543210", "a sufficiently long password", "127.0.0.1")
@@ -152,7 +152,7 @@ class AccountSecurityTests(unittest.TestCase):
             with self.subTest(identifier=identifier):
                 row = account_row()
                 connection = FakeConnection(account=row)
-                with patch.object(accounts, "_connect", return_value=connection):
+                with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
                     result = accounts.login(identifier, "correct horse battery staple", "+91", "127.0.0.1")
                 self.assertEqual(result["account"]["id"], "account-1")
                 self.assertTrue(any(expected_fragment in query for query, _ in connection.calls))
@@ -160,7 +160,7 @@ class AccountSecurityTests(unittest.TestCase):
 
     def test_wrong_password_does_not_create_session(self):
         connection = FakeConnection(account=account_row())
-        with patch.object(accounts, "_connect", return_value=connection):
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
             with self.assertRaisesRegex(ValueError, "incorrect"):
                 accounts.login("example_person", "wrong password", "+91", "127.0.0.1")
         self.assertFalse(any("INSERT INTO nox_account_sessions" in query for query, _ in connection.calls))
@@ -173,7 +173,7 @@ class AccountSecurityTests(unittest.TestCase):
             "expires_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
         }
         connection = FakeConnection(account=row, challenge=challenge)
-        with patch.object(accounts, "_connect", return_value=connection):
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
             with self.assertRaisesRegex(ValueError, "expired"):
                 accounts.verify_code("session-token", "email_verify", "email", "123456")
         self.assertTrue(connection.committed)
@@ -186,7 +186,7 @@ class AccountSecurityTests(unittest.TestCase):
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
         }
         connection = FakeConnection(account=row, challenge=challenge)
-        with patch.object(accounts, "_connect", return_value=connection), \
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection), \
              patch.object(accounts, "_verification_secret", return_value="test-secret"), \
              patch.object(accounts, "_code_hash", side_effect=lambda code: "expected-hash" if code == "123456" else "wrong"):
             challenge["code_hash"] = "expected-hash"
@@ -200,6 +200,7 @@ class AccountSecurityTests(unittest.TestCase):
         no_account_conn = FakeConnection()
         existing_conn = FakeConnection(account=account_row())
         with patch.object(accounts, "_connect", side_effect=[no_account_conn, existing_conn]), \
+             patch.object(accounts, "_raw_connect", side_effect=[no_account_conn, existing_conn]), \
              patch.object(accounts, "_send_challenge", return_value="setup_required"):
             missing = accounts.request_recovery("missing@example.com", "email", "+91", "127.0.0.1")
             existing = accounts.request_recovery("person@example.com", "email", "+91", "127.0.0.1")
@@ -214,7 +215,7 @@ class AccountSecurityTests(unittest.TestCase):
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
         }
         connection = FakeConnection(account=row, challenge=challenge)
-        with patch.object(accounts, "_connect", return_value=connection), \
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection), \
              patch.object(accounts, "_code_hash", side_effect=lambda code: "expected-hash" if code == "654321" else "wrong"):
             result = accounts.verify_code("session-token", "phone_verify", "sms", "654321")
         self.assertTrue(result["phone_verified"])
@@ -229,7 +230,7 @@ class AccountSecurityTests(unittest.TestCase):
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
         }
         connection = FakeConnection(account=row, challenge=challenge)
-        with patch.object(accounts, "_connect", return_value=connection), \
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection), \
              patch.object(accounts, "_code_hash", return_value="expected-hash"):
             result = accounts.reset_password("person@example.com", "email", "+91", "123456",
                                              "a new sufficiently long password", "127.0.0.1")
@@ -241,18 +242,18 @@ class AccountSecurityTests(unittest.TestCase):
     def test_suspended_account_cannot_change_profile_or_email(self):
         row = account_row(status="suspended")
         connection = FakeConnection(account=row)
-        with patch.object(accounts, "_connect", return_value=connection):
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
             with self.assertRaisesRegex(ValueError, "suspended"):
                 accounts.update_profile("session-token", "Example Person", "example_person", "+91",
                                         "9876543210", "correct horse battery staple")
         connection = FakeConnection(account=row)
-        with patch.object(accounts, "_connect", return_value=connection):
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
             with self.assertRaisesRegex(ValueError, "suspended"):
                 accounts.update_email("session-token", "new@example.com", "correct horse battery staple")
 
     def test_logout_revokes_session_without_deleting_account(self):
         connection = FakeConnection(account=account_row())
-        with patch.object(accounts, "_connect", return_value=connection):
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
             accounts.logout("session-token")
         self.assertTrue(any("UPDATE nox_account_sessions SET revoked=1" in query for query, _ in connection.calls))
         self.assertFalse(any("DELETE FROM nox_accounts" in query for query, _ in connection.calls))
@@ -274,7 +275,7 @@ class AccountSecurityTests(unittest.TestCase):
 
     def test_logout_other_sessions_preserves_current_session(self):
         connection = FakeConnection(account=account_row())
-        with patch.object(accounts, "_connect", return_value=connection):
+        with patch.object(accounts, "_connect", return_value=connection), patch.object(accounts, "_raw_connect", return_value=connection):
             revoked = accounts.logout_other_sessions("current-token")
         self.assertEqual(revoked, 1)
         update_sql = next(query for query, _ in connection.calls if "UPDATE nox_account_sessions SET revoked=1" in query)
