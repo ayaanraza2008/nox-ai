@@ -56,6 +56,10 @@
         element.dataset.noxBound = "1";
       }
     };
+    bind("accountGateOpen", "click", async () => {
+      modal.classList.remove("hidden");
+      await refreshAccount();
+    });
     bind("accountExportBackup", "click", exportBrainBackup);
     bind("accountImportBackup", "click", () => $("accountBackupFile").click());
     bind("accountBackupFile", "change", importBrainBackup);
@@ -267,10 +271,28 @@
     const signedIn = Boolean(account);
     $("accountAuthView").classList.toggle("hidden", signedIn);
     $("accountSignedView").classList.toggle("hidden", !signedIn);
+    const gate = $("accountGateOverlay");
     if (!signedIn) {
       $("accountOpen").textContent = "Sign in";
       $("accountSubtitle").textContent = "Your memories, linked to your account";
+      if (gate) {
+        gate.style.display = "flex";
+        $("accountGateTitle").textContent = "Sign in to continue";
+        $("accountGateMessage").textContent = "Create a NOX account and verify both your email and mobile number to unlock the AI workspace.";
+        $("accountGateStatus").textContent = "Protected features remain locked until both checks succeed.";
+        $("accountGateOpen").textContent = "Sign in / create account";
+      }
       return;
+    }
+    if (gate) {
+      gate.style.display = account.status === "active" ? "none" : "flex";
+      $("accountGateTitle").textContent = account.status === "active" ? "Account verified" : "Complete account verification";
+      $("accountGateMessage").textContent = account.status === "active"
+        ? "Your NOX AI workspace is unlocked."
+        : "Verify both contact methods to unlock chat, memory, automation, voice, and other protected features.";
+      $("accountGateStatus").textContent = "Email: " + (account.email_verified ? "verified" : (account.verification_providers?.email ? "verification required" : "SMTP setup required")) +
+        " · Mobile: " + (account.phone_verified ? "verified" : (account.verification_providers?.sms ? "verification required" : "Twilio setup required"));
+      $("accountGateOpen").textContent = account.status === "active" ? "Account settings" : "Open verification checklist";
     }
     $("accountFullNameLabel").textContent = account.full_name || "Complete your profile";
     $("accountEmailLabel").textContent = account.email || "";
