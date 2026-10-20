@@ -23,6 +23,7 @@ from backend.safe_tools import SafeToolError, run_tool
 from backend import project_workspace as workspace
 from backend import knowledge
 from backend import github_bridge
+from backend import public_research
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
@@ -113,6 +114,11 @@ class TaskCreateRequest(BaseModel):
 class SwarmCreateRequest(BaseModel):
     goal: str = Field(min_length=8, max_length=6000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
+
+class PublicResearchRequest(BaseModel):
+    kind: Literal["email", "phone", "social", "image"]
+    value: str = Field(min_length=1, max_length=1500)
 
 
 class SafeToolRequest(BaseModel):
@@ -1437,6 +1443,26 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
     )
 
 
+@app.post("/api/research/public")
+async def public_information_research(payload: PublicResearchRequest, request: Request):
+    """Search only permitted public sources for one user-supplied starting point."""
+    session_owner(request)
+    value = payload.value.strip()
+    try:
+        if payload.kind == "email":
+            result = await public_research.research_email(value)
+        elif payload.kind == "phone":
+            result = await public_research.research_phone(value)
+        elif payload.kind == "social":
+            result = await public_research.research_social(value)
+        else:
+            result = await public_research.research_image_context(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["disclosure"] = "Public-source research only. Results may be incomplete; review source links. No private accounts, inboxes, restricted APIs, or breach dumps were accessed."
+    return result
+
+
 @app.get("/api/capabilities")
 async def capabilities():
     """Return truthful implementation/setup status for the current NOX build."""
@@ -1450,7 +1476,8 @@ async def capabilities():
         {"id": "knowledge", "name": "Knowledge Index", "status": "ready", "detail": "Session-scoped URL and document ingestion with SQLite FTS5 lexical retrieval. Vector embeddings and OAuth connectors are not configured."},
         {"id": "coding", "name": "Coding Agent", "status": "setup_required", "detail": "Repository editing and isolated code execution are not exposed as a production tool yet."},
         {"id": "creative", "name": "Image & Video Studio", "status": "setup_required", "detail": "Generation/editing providers and media-processing workflows are not connected yet."},
-        {"id": "vision", "name": "Image Understanding", "status": "limited" if ai_configured else "setup_required", "detail": "Single-image chat attachments are supported when a configured provider model supports vision. Configure OPENROUTER_VISION_MODEL or GEMINI_VISION_MODEL; provider/model availability varies."},
+        {"id": "vision", "name": "Vision & Object Detection", "status": "limited", "detail": "Browser-local COCO-SSD object detection for supported COCO categories, bounding boxes, short-term visual tracking, and still-image inference. Model assets load from a CDN on demand. No calibrated depth sensor or reliable absolute-distance estimate is included. Image descriptions through chat still require a configured vision-capable provider."},
+        {"id": "public_research", "name": "Public Information Research", "status": "limited", "detail": "Session-protected email syntax/domain DNS checks, international phone-number metadata, and public web search for user-supplied email/phone/public-profile or OCR text. Results may be incomplete; no private account access, breach dumps, face matching, or hidden image metadata extraction."},
         {"id": "browser", "name": "Browser Navigation", "status": "limited", "detail": "Clear commands open recognized websites in a new tab without redundant confirmation; this does not automate clicks or forms. High-impact actions still require confirmation."},
         {"id": "desktop", "name": "Paired Device Actions", "status": "limited", "detail": "Authenticated paired companions report live heartbeats and real command outcomes. Windows can launch Start Menu apps and run an explicit allowlist of diagnostics; optional Home Assistant integration can control supported configured lights, switches, media players, climate, covers and vacuums. Launch requests are labelled as unverified unless the companion reports actual success. Devices must be powered, online, paired and running a compatible companion; arbitrary desktop control and universal power-on/off are not available."},
         {"id": "security", "name": "Cybersecurity Lab", "status": "setup_required", "detail": "Security checks must be implemented and scoped to authorized targets before use."},
