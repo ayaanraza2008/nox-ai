@@ -517,3 +517,18 @@ Credentials are encrypted at rest with Fernet. OAuth state is random, short-live
 - Attachments, full thread reply/forward, Outlook/Microsoft Graph, WhatsApp messaging, SMS, telephone calls, LinkedIn messages, calendar invitations, and generic desktop app control are not implemented by this release.
 - The frontend voice/text router can open the communications workspace and fill explicit email fields, but does not autonomously invent recipient/body details or send without the review action.
 - The communication audit database is separate from the NOX account database. Use persistent storage and backups appropriate to the deployment. OAuth access depends on the Google app's consent configuration and granted scopes.
+
+
+## Background Task Monitor and Platform Boundaries
+
+The existing task manager stores task records and event history in PostgreSQL when `DATABASE_URL` / `SUPABASE_DB_URL` is configured, and otherwise uses SQLite. Cloud research tasks can continue after the dashboard tab closes while the backend process is running. They are not a guarantee of continuous execution on a sleeping/free host. For durable production jobs, configure PostgreSQL and persistent hosting appropriate to the expected workload.
+
+The task dashboard uses a session-scoped Server-Sent Events endpoint (`GET /api/tasks/{task_id}/events`) for live status updates, with existing polling as a fallback. `POST /api/tasks/pause-all` and `POST /api/tasks/stop-all` apply only to tasks belonging to the current browser session. Individual task pause/resume/cancel remains available.
+
+- **Web/cloud:** bounded public-web research and planning run on the backend; this does not control the user's PC after the tab closes.
+- **Windows:** the optional local desktop companion supports only the explicitly allow-listed actions documented in `desktop-companion/README.md`; it is not general remote desktop control.
+- **Android:** the native companion provides only the actions listed in its own UI and manifest. Accessibility-based control is not enabled by this backend task queue.
+- **iOS:** no unrestricted background or arbitrary cross-app control is implemented. Use permitted Shortcuts/App Intents or provider integrations.
+- **Local browser:** Playwright control is opt-in and loopback-only; it must not be exposed through public tunnels or Render.
+
+The dashboard reports real backend task states; the animated holographic interface is not evidence of background work. On service restart, in-flight research tasks are re-queued rather than claiming their prior request completed. Provider calls already in flight may not be interruptible, so pause/stop takes effect at the next safe checkpoint.
