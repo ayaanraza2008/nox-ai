@@ -92,7 +92,7 @@ class LiveBrowserIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(report["page_title"], "NOX Browser Test")
                 self.assertIn("clicked", report["result"])
                 screenshot = await session.screenshot()
-                self.assertTrue(screenshot.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+                self.assertTrue(screenshot.startswith(b"\x89PNG\r\n\x1a\n"))
         finally:
             await session.close()
             server.shutdown()
