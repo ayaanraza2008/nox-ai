@@ -9,6 +9,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.10
+      - key: GODS_EYE_VIEW_URL
+        value: https://nox-gods-eye-view.onrender.com
       - key: SUPABASE_DB_URL
         sync: false
       - key: DATABASE_URL
@@ -31,3 +33,20 @@ services:
         sync: false
       - key: GROQ_VISION_MODEL
         sync: false
+
+  - type: web
+    name: nox-gods-eye-view
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/gods-eye-view.Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: HOST
+        value: 0.0.0.0
+      - key: GEV_ALLOWED_HOSTS
+        value: nox-gods-eye-view.onrender.com
+      - key: PUPPETEER_SKIP_DOWNLOAD
+        value: "1"
