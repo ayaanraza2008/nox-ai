@@ -133,8 +133,8 @@
       const value = String(text || "").trim();
       if (!value) return false;
       if (lastSnapshot?.state === "awaiting_input" || lastSnapshot?.state === "awaiting_confirmation") return true;
-      if (["paused", "awaiting_auth"].includes(lastSnapshot?.state) && /\\b(?:resume|continue|pick up)\\b/i.test(value)) return true;
-      if (browserControl.test(value) || /\\b(?:stop the current task|continue from where you stopped|resume the current task|pause the current task)\\b/i.test(value)) return true;
+      if (["paused", "awaiting_auth"].includes(lastSnapshot?.state) && /\b(?:resume|continue|pick up)\b/i.test(value)) return true;
+      if (browserControl.test(value) || /\b(?:stop the current task|continue from where you stopped|resume the current task|pause the current task)\b/i.test(value)) return true;
       return /https?:\/\//i.test(value) ||
         /\b(?:search the web for|search for|look up online|inspect this page|read this page|scroll down|go back|go forward)\b/i.test(value) ||
         /^\s*(?:nox[, ]*)?(?:open|visit|go to|navigate to|click|type|enter|fill|select)\b/i.test(value);
