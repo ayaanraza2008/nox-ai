@@ -39,6 +39,12 @@ class BrowserPlannerTests(unittest.TestCase):
         plan = live_browser.plan_instruction("open https://example.com then inspect this page then scroll down")
         self.assertEqual([step["action"] for step in plan], ["navigate", "inspect", "scroll"])
 
+    def test_youtube_voice_command_can_search_without_guessing_a_control(self):
+        plan = live_browser.plan_instruction("NOX, open YouTube and find latest videos about AI agents")
+        self.assertEqual([step["action"] for step in plan], ["navigate", "inspect"])
+        self.assertIn("youtube.com/results?search_query=", plan[0]["value"])
+        self.assertIn("AI+agents", plan[0]["value"])
+
     def test_click_and_fill_commands_are_explicit(self):
         self.assertEqual(live_browser.plan_instruction('click "Sign in"')[0]["value"], "Sign in")
         fill = live_browser.plan_instruction('type "sample text" into "Search"')[0]
