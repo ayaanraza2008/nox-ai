@@ -886,7 +886,7 @@ async def local_cybersecurity_scan(request: CyberScanRequest, x_nox_token: str |
         "task_id": task_id, "status": "queued", "created_at": _utc_now(),
         "target": request.target.strip(), "cancel_event": cancel_event, "result": None,
     }
-    asyncio.create_task(_run_cyber_scan_task(task_id, request, cancel_event))
+    record["runner"] = asyncio.create_task(_run_cyber_scan_task(task_id, request, cancel_event))
     finished = [key for key, item in ACTIVE_CYBER_SCANS.items() if item.get("status") not in ("queued", "running")]
     while len(ACTIVE_CYBER_SCANS) > MAX_CYBER_SCAN_HISTORY and finished:
         ACTIVE_CYBER_SCANS.pop(finished.pop(0), None)
@@ -899,7 +899,7 @@ def local_cybersecurity_scan_status(task_id: str, x_nox_token: str | None = Head
     record = ACTIVE_CYBER_SCANS.get(task_id)
     if not record:
         raise HTTPException(status_code=404, detail="Local security scan was not found or its history expired.")
-    return {key: value for key, value in record.items() if key != "cancel_event"}
+    return {key: value for key, value in record.items() if key not in {"cancel_event", "runner"}}
 
 @app.post("/v1/cybersecurity/scans/cancel")
 def local_cybersecurity_scan_cancel(request: CyberScanCancelRequest, x_nox_token: str | None = Header(default=None)):
