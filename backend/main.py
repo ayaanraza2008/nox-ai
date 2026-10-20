@@ -23,6 +23,7 @@ from backend.safe_tools import SafeToolError, run_tool
 from backend import project_workspace as workspace
 from backend import knowledge
 from backend import brain
+from backend import accounts
 from backend import github_bridge
 from backend import public_research
 from backend.autonomous_agent import run_autonomous_task
@@ -100,6 +101,16 @@ class BrainProposalRequest(BaseModel):
     summary: str = Field(min_length=1, max_length=1500)
     proposal: dict = Field(default_factory=dict)
 
+
+
+class AccountCredentials(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class AccountDeleteRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+    confirmation: str = Field(min_length=1, max_length=40)
 
 
 class TTSRequest(BaseModel):
@@ -308,8 +319,20 @@ SESSION_COOKIE = "nox_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30
 
 
+ACCOUNT_COOKIE = "nox_account_session"
+
+
 def session_owner(request: Request) -> str:
-    """Return the opaque server-issued browser session, never a client-supplied owner ID."""
+    """Resolve a logged-in account first, otherwise retain the anonymous browser session."""
+    account_token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if account_token:
+        try:
+            account = accounts.resolve_session(account_token)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if not account:
+            raise HTTPException(status_code=401, detail="Account session expired. Please sign in again.")
+        return account["id"]
     value = request.cookies.get(SESSION_COOKIE, "")
     valid = (
         32 <= len(value) <= 128
@@ -1392,6 +1415,72 @@ def _brain_call(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _account_error(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _set_account_cookie(response: Response, request: Request, token: str):
+    response.set_cookie(
+        key=ACCOUNT_COOKIE, value=token, max_age=60 * 60 * 24 * 30,
+        httponly=True, secure=request.url.scheme == "https",
+        samesite="lax", path="/",
+    )
+
+
+@app.get("/api/account/me")
+async def account_me(request: Request):
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if not token:
+        return {"authenticated": False}
+    account = _account_error(accounts.resolve_session, token)
+    if not account:
+        return {"authenticated": False}
+    return {"authenticated": True, "account": account}
+
+
+@app.post("/api/account/register", status_code=201)
+async def account_register(payload: AccountCredentials, request: Request, response: Response):
+    result = _account_error(accounts.register, payload.email, payload.password)
+    old_owner = request.cookies.get(SESSION_COOKIE, "")
+    if old_owner and 32 <= len(old_owner) <= 128 and all(ch.isalnum() or ch in "-_" for ch in old_owner):
+        _account_error(brain.transfer_owner_data, old_owner, result["account"]["id"])
+    _set_account_cookie(response, request, result["token"])
+    return {"authenticated": True, "account": result["account"], "memory_scope": "account"}
+
+
+@app.post("/api/account/login")
+async def account_login(payload: AccountCredentials, request: Request, response: Response):
+    result = _account_error(accounts.login, payload.email, payload.password)
+    old_owner = request.cookies.get(SESSION_COOKIE, "")
+    if old_owner and 32 <= len(old_owner) <= 128 and all(ch.isalnum() or ch in "-_" for ch in old_owner):
+        _account_error(brain.transfer_owner_data, old_owner, result["account"]["id"])
+    _set_account_cookie(response, request, result["token"])
+    return {"authenticated": True, "account": result["account"], "memory_scope": "account"}
+
+
+@app.post("/api/account/logout")
+async def account_logout(request: Request, response: Response):
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    _account_error(accounts.logout, token)
+    response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax",
+                           secure=request.url.scheme == "https")
+    return {"authenticated": False, "logged_out": True}
+
+
+@app.delete("/api/account")
+async def account_delete(payload: AccountDeleteRequest, request: Request, response: Response):
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    _account_error(accounts.delete_account, token, payload.password, payload.confirmation)
+    response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax",
+                           secure=request.url.scheme == "https")
+    return {"deleted": True, "memories_deleted": True}
 
 
 @app.get("/api/brain/overview")
