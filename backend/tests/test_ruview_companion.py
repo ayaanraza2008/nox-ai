@@ -26,7 +26,7 @@ class RuViewCompanionTests(unittest.TestCase):
             self.assertEqual(instance._command("doctor")[-1], "doctor")
             self.assertEqual(instance._command("devices")[-1], "devices")
             command = instance._command("capture")
-            self.assertEqual(command[-4:], ["--seconds", str(ruview.CAPTURE_SECONDS), "--analyze"][-4:])
+            self.assertEqual(command[-3:], ["--seconds", str(ruview.CAPTURE_SECONDS), "--analyze"])
             with self.assertRaises(ruview.RuViewUnavailable):
                 instance._command("echo injected")
 
