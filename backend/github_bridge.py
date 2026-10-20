@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -34,7 +35,7 @@ def _config():
     token = os.getenv("GITHUB_TOKEN", "").strip()
     repo = os.getenv("NOX_GITHUB_REPOSITORY", "").strip()
     base = os.getenv("NOX_GITHUB_BASE_BRANCH", "main").strip() or "main"
-    if not SAFE_REPO.fullmatch(repo):
+    if (not SAFE_REPO.fullmatch(repo) or any(part in ("", ".", "..") for part in repo.split("/"))):
         raise HTTPException(status_code=503, detail="Set NOX_GITHUB_REPOSITORY to owner/repository in the server environment.")
     if not token:
         raise HTTPException(status_code=503, detail="GitHub bridge needs a server-side GITHUB_TOKEN secret.")
@@ -52,6 +53,7 @@ def _safe_path(path: str) -> str:
     path = path.strip()
     if (not path or len(path) > 240 or path.startswith("/") or "\\" in path
             or any(part in ("", ".", "..") for part in path.split("/"))
+            or any(not re.fullmatch(r"[A-Za-z0-9_@.+-]+", part) for part in path.split("/"))
             or any(part.startswith(".") for part in path.split("/"))
             or path.lower().endswith((".pem", ".key", ".p12", ".pfx"))
             or path.split("/")[-1].lower() in {".env", "credentials", "secrets.json"}):
@@ -98,7 +100,7 @@ class PublishRequest(PreviewRequest):
 
 
 async def _get_file(client, repo, base, path):
-    url = f"{API}/repos/{repo}/contents/{path}"
+    url = f"{API}/repos/{repo}/contents/{quote(path, safe='/')}"
     data = await _request(client, "GET", url, params={"ref": base})
     if isinstance(data, list) or data.get("type") != "file":
         raise HTTPException(status_code=400, detail=f"{path} is not a regular file.")
@@ -145,7 +147,7 @@ async def github_tree(request: Request, path: str = ""):
     if path:
         path = _safe_path(path)
     async with httpx.AsyncClient(headers=_headers(token), timeout=15.0) as client:
-        data = await _request(client, "GET", f"{API}/repos/{repo}/contents/{path}" if path else f"{API}/repos/{repo}/contents",
+        data = await _request(client, "GET", f"{API}/repos/{repo}/contents/{quote(path, safe='/')}" if path else f"{API}/repos/{repo}/contents",
                               params={"ref": base})
     if isinstance(data, dict):
         data = [data]
@@ -223,14 +225,13 @@ async def github_publish(payload: PublishRequest, request: Request):
                 raise HTTPException(status_code=400, detail=f"{path} has no changes.")
             checked.append((path, proposed, current_sha, exists))
 
-        base_ref = await _request(client, "GET", f"{API}/repos/{repo}/git/ref/heads/{base}")
+        base_ref = await _request(client, "GET", f"{API}/repos/{repo}/git/ref/heads/{quote(base, safe='')}")
         base_sha = base_ref["object"]["sha"]
         branch = "nox/proposal-" + secrets.token_hex(5)
         await _request(client, "POST", f"{API}/repos/{repo}/git/refs",
                        json={"ref": f"refs/heads/{branch}", "sha": base_sha})
         # All commits are made to the new proposal branch, never the base branch.
         for path, content, sha, exists in checked:
-            import json as jsonlib
             body = {"message": f"NOX proposal: update {path}", "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
                     "branch": branch}
             if exists:
