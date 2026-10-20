@@ -43,6 +43,8 @@ class FakeConnection:
             return Cursor(self.duplicate)
         if "SELECT a.* FROM nox_account_sessions s JOIN nox_accounts a" in query:
             return Cursor(self.account)
+        if "SELECT created_at FROM nox_account_challenges" in query:
+            return Cursor(self.challenge)
         if "SELECT * FROM nox_account_challenges" in query:
             return Cursor(self.challenge)
         if "UPDATE nox_accounts SET email_verified=TRUE" in query and self.account:
@@ -164,6 +166,53 @@ class AccountSecurityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "incorrect"):
                 accounts.login("example_person", "wrong password", "+91", "127.0.0.1")
         self.assertFalse(any("INSERT INTO nox_account_sessions" in query for query, _ in connection.calls))
+
+    def test_otp_with_five_failed_attempts_is_locked(self):
+        row = account_row()
+        challenge = {
+            "id": "challenge-locked", "account_id": "account-1", "purpose": "email_verify",
+            "code_hash": "unused", "attempts": accounts.OTP_MAX_ATTEMPTS,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+        }
+        connection = FakeConnection(account=row, challenge=challenge)
+        with patch.object(accounts, "_connect", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "Too many incorrect attempts"):
+                accounts.verify_code("session-token", "email_verify", "email", "123456")
+
+    def test_resend_cooldown_prevents_immediate_second_code(self):
+        row = account_row()
+        challenge = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        connection = FakeConnection(account=row, challenge=challenge)
+        with patch.object(accounts, "_connect", return_value=connection), \
+             patch.object(accounts, "_raw_connect", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "wait before requesting another code"):
+                accounts.resend_verification("session-token", "email", "127.0.0.1")
+
+    def test_rate_limit_is_atomic_and_persists_a_blocked_attempt(self):
+        class RateConnection:
+            def __init__(self):
+                self.query = ""
+                self.committed = False
+                self.closed = False
+            def execute(self, query, params=()):
+                self.query = query
+                return Cursor({"count": 6})
+            def commit(self):
+                self.committed = True
+            def rollback(self):
+                pass
+            def close(self):
+                self.closed = True
+        connection = RateConnection()
+        with patch.object(accounts, "_raw_connect", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "Too many attempts"):
+                accounts._rate_limit(None, "login", "user@example.com", 5, 900)
+        self.assertIn("ON CONFLICT", connection.query)
+        self.assertIn("RETURNING count", connection.query)
+        self.assertTrue(connection.committed)
+        self.assertTrue(connection.closed)
 
     def test_expired_verification_code_is_rejected(self):
         row = account_row()
