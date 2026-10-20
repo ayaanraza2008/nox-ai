@@ -73,6 +73,7 @@
         }
       } else {
         current[fingerprint].firstSeen = wasActive.firstSeen || Date.now();
+        current[fingerprint].notificationSent = Boolean(wasActive.notificationSent);
       }
     });
     const previous = state.active || {};
