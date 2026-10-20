@@ -44,6 +44,7 @@ HTTP_CLIENT: httpx.AsyncClient | None = None
 PERFORMANCE_SAMPLES = deque(maxlen=500)
 PROVIDER_SAMPLES = deque(maxlen=500)
 LOCATION_CLEANUP_TASK: asyncio.Task | None = None
+ACTIVE_BROWSER_OPERATIONS: dict[str, asyncio.Task] = {}
 
 
 async def _location_history_cleanup_loop():
@@ -976,11 +977,19 @@ async def emergency_stop_status(request: Request):
     except HTTPException:
         browser = {"status": "unavailable"}
     pending = []
+    browser_owner = None
+    try:
+        browser_owner = browser_session_owner(request)
+    except HTTPException:
+        pass
+    browser_operation = ACTIVE_BROWSER_OPERATIONS.get(browser_owner or "")
     if state["stopped"]:
         pending.extend([{"type": "task", **item} for item in active_tasks])
         pending.extend([{"type": "swarm", **item} for item in active_jobs])
         browser_status = str(browser.get("status", "unknown")).lower() if isinstance(browser, dict) else "unknown"
-        if browser_status not in ("idle", "stopped", "closed", "unavailable"):
+        if browser_operation is not None and not browser_operation.done():
+            pending.append({"type": "browser", "status": "cancelling"})
+        elif browser_status not in ("idle", "stopped", "closed", "unavailable"):
             pending.append({"type": "browser", "status": browser_status})
     phase = "running" if not state["stopped"] else ("stopping" if pending else "stopped")
     return {"state": phase, "stopped": state["stopped"], "stopped_at": state["stopped_at"],
@@ -995,13 +1004,28 @@ async def activate_emergency_stop(request: Request):
     """Latch stop first, then cancel session tasks, agent swarm work, and browser actions."""
     owner_id = session_owner(request)
     result = await task_manager.emergency_stop(owner_id)
+    browser_owner = None
+    browser_operation = None
+    try:
+        browser_owner = browser_session_owner(request)
+        browser_operation = ACTIVE_BROWSER_OPERATIONS.get(browser_owner)
+        if browser_operation is not None and not browser_operation.done():
+            browser_operation.cancel()
+    except HTTPException:
+        pass
     swarm_cancelled = await swarm_manager.cancel_all(owner_id)
     browser_result = {"status": "unavailable"}
-    try:
-        browser_result = await browser_agent.stop(browser_session_owner(request))
-    except Exception as exc:
-        logger.warning("Emergency Stop could not confirm browser shutdown (%s)", type(exc).__name__)
-        browser_result = {"status": "cleanup_pending", "reason": type(exc).__name__}
+    if browser_owner:
+        try:
+            browser_result = await browser_agent.stop(browser_owner)
+        except Exception as exc:
+            logger.warning("Emergency Stop could not confirm browser shutdown (%s)", type(exc).__name__)
+            browser_result = {"status": "cleanup_pending", "reason": type(exc).__name__}
+    if browser_operation is not None and not browser_operation.done():
+        try:
+            await asyncio.wait_for(asyncio.gather(browser_operation, return_exceptions=True), timeout=1.0)
+        except asyncio.TimeoutError:
+            browser_result = {"status": "cleanup_pending", "reason": "browser coroutine did not settle within one second"}
     status = await emergency_stop_status(request)
     return {**status, "cancelled_task_count": result.get("cancelled_task_count", 0),
             "cancelled_swarm_count": len(swarm_cancelled), "browser": browser_result}
@@ -1015,6 +1039,13 @@ async def resume_after_emergency_stop(request: Request):
     tasks = task_manager.list(limit=50, owner_id=owner_id)
     if any(t["status"] == "cancelling" for t in tasks):
         raise HTTPException(status_code=409, detail="Cleanup is still running. Wait until NOX reports STOPPED.")
+    try:
+        browser_owner = browser_session_owner(request)
+    except HTTPException:
+        browser_owner = ""
+    browser_operation = ACTIVE_BROWSER_OPERATIONS.get(browser_owner)
+    if browser_operation is not None and not browser_operation.done():
+        raise HTTPException(status_code=409, detail="Browser cleanup is still running. Wait until NOX reports STOPPED.")
     try:
         result = await task_manager.resume_emergency_stop(owner_id)
     except RuntimeError as exc:
@@ -2530,24 +2561,36 @@ async def browser_state(request: Request):
 async def browser_command(payload: BrowserCommandRequest, request: Request):
     """Execute one bounded browser instruction in the user's remote browser session."""
     owner_id = browser_session_owner(request)
-    if task_manager.is_stopped(session_owner(request)):
-        raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before browser automation.")
+    async with task_manager.emergency_lock:
+        if task_manager.is_stopped(session_owner(request)):
+            raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before browser automation.")
+        operation = asyncio.create_task(browser_agent.run(owner_id, payload.command, payload.language))
+        ACTIVE_BROWSER_OPERATIONS[owner_id] = operation
     try:
-        return await browser_agent.run(owner_id, payload.command, payload.language)
+        return await operation
     except BrowserAgentError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if ACTIVE_BROWSER_OPERATIONS.get(owner_id) is operation:
+            ACTIVE_BROWSER_OPERATIONS.pop(owner_id, None)
 
 
 @app.post("/api/browser/confirm")
 async def browser_confirm(payload: BrowserConfirmRequest, request: Request):
     """Approve or decline the single pending consequential browser action."""
     owner_id = browser_session_owner(request)
-    if task_manager.is_stopped(session_owner(request)):
-        raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before approving browser actions.")
+    async with task_manager.emergency_lock:
+        if task_manager.is_stopped(session_owner(request)):
+            raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before approving browser actions.")
+        operation = asyncio.create_task(browser_agent.confirm(owner_id, payload.approved))
+        ACTIVE_BROWSER_OPERATIONS[owner_id] = operation
     try:
-        return await browser_agent.confirm(owner_id, payload.approved)
+        return await operation
     except BrowserAgentError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    finally:
+        if ACTIVE_BROWSER_OPERATIONS.get(owner_id) is operation:
+            ACTIVE_BROWSER_OPERATIONS.pop(owner_id, None)
 
 
 @app.post("/api/browser/stop")
