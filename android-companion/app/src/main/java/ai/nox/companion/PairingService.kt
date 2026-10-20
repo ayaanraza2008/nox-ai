@@ -19,6 +19,9 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 class PairingService : Service() {
+    companion object {
+        const val ACTION_EMERGENCY_STOP = "ai.nox.companion.ACTION_EMERGENCY_STOP"
+    }
     private val running = AtomicBoolean(false)
     private var worker: Thread? = null
     private val apiBase = "https://nox-ai-vcqx.onrender.com"
@@ -31,6 +34,21 @@ class PairingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val prefs = getSharedPreferences("nox_pairing", MODE_PRIVATE)
+        if (intent?.action == ACTION_EMERGENCY_STOP) {
+            prefs.edit().putBoolean("emergency_stopped", true).apply()
+            running.set(false)
+            worker?.interrupt()
+            stopService(Intent(this, LocationService::class.java))
+            getSharedPreferences("nox_location", MODE_PRIVATE).edit().putBoolean("sharing_enabled", false).apply()
+            stopForeground(true)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        if (prefs.getBoolean("emergency_stopped", false)) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         if (running.compareAndSet(false, true)) {
             worker = Thread({ pollLoop() }, "nox-pairing-poll").also { it.isDaemon = true; it.start() }
         }
@@ -63,6 +81,11 @@ class PairingService : Service() {
             .setContentText(message)
             .setOngoing(pendingIntent == null)
         if (pendingIntent != null) builder.setContentIntent(pendingIntent).setAutoCancel(true)
+        val stopIntent = Intent(this, PairingService::class.java).setAction(ACTION_EMERGENCY_STOP)
+        val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        val stopPending = PendingIntent.getService(this, 7103, stopIntent, pendingFlags)
+        builder.addAction(android.R.drawable.ic_lock_power_off, "EMERGENCY STOP", stopPending)
         return builder.build()
     }
 
@@ -90,6 +113,10 @@ class PairingService : Service() {
         while (running.get()) {
             try {
                 val prefs = getSharedPreferences("nox_pairing", MODE_PRIVATE)
+                if (prefs.getBoolean("emergency_stopped", false)) {
+                    running.set(false)
+                    break
+                }
                 val sessionId = prefs.getString("session_id", null)
                 val token = prefs.getString("device_token", null)
                 if (!sessionId.isNullOrBlank() && !token.isNullOrBlank()) {
@@ -99,6 +126,15 @@ class PairingService : Service() {
                     if (item != null) {
                         val commandId = item.optString("command_id")
                         val command = item.optString("command")
+                        if (prefs.getBoolean("emergency_stopped", false)) {
+                            val result = JSONObject().put("status", "cancelled")
+                                .put("message", "Emergency Stop latched before command execution.")
+                            val resultQuery = URLEncoder.encode(result.toString(), "UTF-8")
+                            val resultPath = "/api/pairing/commands/" + URLEncoder.encode(commandId, "UTF-8") + "/result?result=" + resultQuery
+                            try { api(resultPath, "POST", token = token) } catch (_: Exception) {}
+                            running.set(false)
+                            break
+                        }
                         // Execute the action once. If reporting fails, retry only the
                         // result upload; never rerun a potentially side-effecting action.
                         val result = runCommand(command).first
