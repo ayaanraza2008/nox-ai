@@ -51,7 +51,17 @@
     .nox-feature-group-head p{font-size:11px;color:var(--muted,#8ea2b8);margin:0}
     .nox-feature-group .panel{margin:0 0 10px;width:100%;min-width:0}
     .nox-feature-group .panelbody{min-width:0}
-    .nox-launch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:6px}.nox-launch-card{min-width:0;text-align:left;border:1px solid #29435a;border-radius:12px;background:linear-gradient(145deg,#101f31,#0a1422);color:#d9f4ff;padding:14px;cursor:pointer}.nox-launch-card strong{display:block;font-size:11px;margin-bottom:6px}.nox-launch-card span{display:block;font-size:10px;line-height:1.5;color:#91a8bd}.nox-launch-card:hover,.nox-launch-card:focus-visible{border-color:var(--cyan,#6ee7f9);box-shadow:0 0 18px #4bdcf21a}.nox-feature-foot{padding:11px 2px 2px;border-top:1px solid var(--line,#203145);font-size:10px;color:var(--muted,#8ea2b8);flex-shrink:0}
+    .nox-feature-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .nox-feature-back-to-group{flex-shrink:0;border:1px solid #29435a;border-radius:8px;background:#0d1b2b;color:#bdefff;padding:8px 10px;font-size:10px}
+    .nox-feature-list,.nox-launch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:6px}
+    .nox-launch-card{min-width:0;text-align:left;border:1px solid #29435a;border-radius:12px;background:linear-gradient(145deg,#101f31,#0a1422);color:#d9f4ff;padding:14px;cursor:pointer}
+    .nox-launch-card strong{display:block;font-size:11px;margin-bottom:6px}
+    .nox-launch-card span{display:block;font-size:10px;line-height:1.5;color:#91a8bd}
+    .nox-launch-card:hover,.nox-launch-card:focus-visible{border-color:var(--cyan,#6ee7f9);box-shadow:0 0 18px #4bdcf21a}
+    .nox-feature-group .nox-drawer-panel[hidden]{display:none!important}
+    .nox-feature-group.feature-open .nox-feature-list{display:none}
+    .nox-feature-group.feature-open .nox-feature-group-head p{display:none}
+    .nox-feature-group.feature-open .nox-feature-group-head h3{font-size:12px}.nox-feature-foot{padding:11px 2px 2px;border-top:1px solid var(--line,#203145);font-size:10px;color:var(--muted,#8ea2b8);flex-shrink:0}
     .nox-feature-trigger{display:inline-flex;align-items:center;gap:7px}#noxSwarmOpen,#noxProjectOpen,#noxGithubOpen,#noxCiOpen{display:none!important}
     .nox-feature-trigger .feature-count{font-size:9px;border:1px solid #254154;border-radius:20px;padding:2px 6px;color:var(--cyan,#6ee7f9)}
     .mobiletabs{display:none!important}
@@ -67,17 +77,37 @@
   document.head.append(style);
   document.body.append(layer);
   const content = layer.querySelector(".nox-feature-content");
+  const groupSections = [];
   groups.forEach((group, index) => {
     const section = document.createElement("section");
     section.className = "nox-feature-group";
     section.id = "noxGroup" + index;
-    section.innerHTML = '<div class="nox-feature-group-head"><h3></h3><p></p></div>';
+    section.innerHTML = '<div class="nox-feature-group-head"><div><h3></h3><p></p></div><button type="button" class="nox-feature-back-to-group hidden">← All features</button></div><div class="nox-feature-list"></div>';
     section.querySelector("h3").textContent = group.title;
     section.querySelector("p").textContent = group.subtitle;
+    const list = section.querySelector(".nox-feature-list");
     group.ids.forEach(id => {
       const panel = $(id);
-      if (panel) section.append(panel);
+      if (!panel) return;
+      const heading = panel.querySelector(".ptitle");
+      const title = heading ? heading.textContent.trim() : id.replace(/Panel$/, "").replace(/([A-Z])/g, " $1").trim();
+      const meta = panel.querySelector(".pmeta");
+      const description = meta ? meta.textContent.trim() : "Open this dedicated NOX module.";
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "nox-launch-card nox-panel-launch";
+      card.innerHTML = '<strong></strong><span></span>';
+      card.querySelector("strong").textContent = title;
+      card.querySelector("span").textContent = description || "Open this dedicated NOX module.";
+      card.setAttribute("aria-controls", id);
+      card.addEventListener("click", () => showFeature(section, panel, title));
+      list.append(card);
+      panel.classList.add("nox-drawer-panel");
+      panel.hidden = true;
+      section.append(panel);
     });
+    section.querySelector(".nox-feature-back-to-group").addEventListener("click", () => showGroup(index));
+    groupSections.push(section);
     content.append(section);
   });
   const launchGrid = document.createElement("div");
@@ -127,6 +157,31 @@
     document.body.style.overflow = "";
     if (previousFocus && previousFocus.isConnected) previousFocus.focus();
   }
+  function showGroup(index) {
+    groupSections.forEach((section, i) => {
+      section.hidden = i !== index;
+      section.classList.remove("feature-open");
+      section.querySelector(".nox-feature-list").hidden = false;
+      section.querySelector(".nox-feature-back-to-group").classList.add("hidden");
+      section.querySelectorAll(".nox-drawer-panel").forEach(panel => { panel.hidden = true; });
+    });
+    layer.querySelectorAll("[data-group-target]").forEach(button => {
+      const active = button.dataset.groupTarget === "noxGroup" + index;
+      button.setAttribute("aria-current", active ? "true" : "false");
+      button.classList.toggle("active", active);
+    });
+    content.scrollTop = 0;
+  }
+  function showFeature(section, panel, title) {
+    groupSections.forEach(other => { if (other !== section) other.hidden = true; });
+    section.classList.add("feature-open");
+    section.querySelector(".nox-feature-list").hidden = true;
+    section.querySelector(".nox-feature-back-to-group").classList.remove("hidden");
+    section.querySelectorAll(".nox-drawer-panel").forEach(item => { item.hidden = item !== panel; });
+    layer.querySelector("#noxFeatureTitle").textContent = title;
+    content.scrollTop = 0;
+    panel.scrollTop = 0;
+  }
   function open(panelId) {
     previousFocus = document.activeElement;
     layer.classList.add("open");
@@ -135,9 +190,16 @@
     document.body.style.overflow = "hidden";
     if (panelId) {
       const panel = $(panelId);
-      const group = panel && panel.closest(".nox-feature-group");
-      if (group) group.scrollIntoView({block:"start", behavior:"auto"});
-      if (panel) panel.scrollIntoView({block:"start", behavior:"smooth"});
+      const section = panel && panel.closest(".nox-feature-group");
+      const index = groupSections.indexOf(section);
+      if (index >= 0) {
+        showGroup(index);
+        const heading = panel.querySelector(".ptitle");
+        showFeature(section, panel, heading ? heading.textContent.trim() : "NOX Feature");
+      } else showGroup(0);
+    } else {
+      layer.querySelector("#noxFeatureTitle").textContent = "Feature Center";
+      showGroup(0);
     }
     closeButton.focus();
   }
@@ -145,8 +207,11 @@
   closeButton.addEventListener("click", close);
   backdrop.addEventListener("click", close);
   layer.querySelectorAll("[data-group-target]").forEach(button => button.addEventListener("click", () => {
-    const target = $(button.dataset.groupTarget);
-    if (target) target.scrollIntoView({block:"start", behavior:"smooth"});
+    const index = Number(button.dataset.groupTarget.replace("noxGroup", ""));
+    if (Number.isInteger(index) && groupSections[index]) {
+      layer.querySelector("#noxFeatureTitle").textContent = "Feature Center";
+      showGroup(index);
+    }
   }));
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && layer.classList.contains("open")) close();
@@ -165,5 +230,6 @@
     const id = button.dataset.open;
     if ($(id) && !layer.classList.contains("open")) open(id);
   }, true);
-  window.NOXFeatureDrawer = { open, close };
+  showGroup(0);
+  window.NOXFeatureDrawer = { open, close, showGroup };
 })();
