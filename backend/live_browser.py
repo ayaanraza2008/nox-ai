@@ -69,7 +69,7 @@ def plan_instruction(instruction: str) -> list[dict[str, str]]:
         return []
     if len(text) > 2000:
         raise ValueError("Browser instruction must be 2,000 characters or fewer.")
-    chained = re.split(r"\\s+then\\s+", text, flags=re.I)
+    chained = re.split(r"\s+then\s+", text, flags=re.I)
     if len(chained) > 1:
         steps: list[dict[str, str]] = []
         for part in chained:
