@@ -541,7 +541,7 @@ def reset_password(identifier: str, channel: str, country_code: str, code: str, 
         if not hmac.compare_digest(challenge["code_hash"], _code_hash(code)):
             conn.execute("UPDATE nox_account_challenges SET attempts=attempts+1 WHERE id=%s", (challenge["id"],))
             conn.commit()
-            raise ValueError("The code or account details are invalid.")
+            raise ValueError("The code or account details are invalid or expired. Request a new code.")
         _set_password(conn, row["id"], new_password)
         conn.execute("UPDATE nox_account_challenges SET consumed_at=%s WHERE id=%s", (_iso(_now()), challenge["id"]))
         conn.execute("UPDATE nox_account_sessions SET revoked=1 WHERE account_id=%s", (row["id"],))
