@@ -28,6 +28,7 @@ from backend import brain
 from backend import accounts
 from backend import github_bridge
 from backend import public_research
+from backend import cognitive
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
@@ -103,6 +104,12 @@ class KnowledgeURLRequest(BaseModel):
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     limit: int = Field(default=6, ge=1, le=10)
+
+
+class CognitiveAnalysisRequest(BaseModel):
+    mode: Literal["behavior", "patterns", "bias", "omnivore", "thinking", "personality", "stoicism"]
+    content: str = Field(min_length=1, max_length=12000)
+    language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
 
 class BrainMemoryCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
@@ -1775,6 +1782,37 @@ async def knowledge_remove_source(source_id: str, request: Request):
     if not knowledge.delete_source(session_owner(request), source_id):
         raise HTTPException(status_code=404, detail="Knowledge source not found.")
     return {"deleted": True, "source_id": source_id}
+
+
+@app.post("/api/cognitive/analyze")
+async def cognitive_analyze(payload: CognitiveAnalysisRequest):
+    """Run an explicit, non-persistent cognitive analysis through configured NOX providers."""
+    try:
+        prompt = cognitive.build_cognitive_prompt(payload.mode, payload.content, payload.language)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        analysis = await provider_reply(prompt, payload.language, [], None, None)
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        logger.warning("Cognitive analysis provider timed out (%s)", type(exc).__name__)
+        raise HTTPException(status_code=504, detail="Cognitive analysis timed out. Please try again.") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Cognitive analysis provider connection failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Cognitive analysis provider is unavailable.") from exc
+    if not analysis:
+        raise HTTPException(
+            status_code=503,
+            detail="Cognitive analysis needs a configured AI provider. Add a valid OpenRouter, Groq, or Gemini API key in Render.",
+        )
+    return {
+        "mode": payload.mode,
+        "analysis": analysis,
+        "profile_saved": False,
+        "data_scope": "request_text_only",
+        "provider_status": "response_received",
+    }
 
 
 @app.post("/api/chat", response_model=ChatResponse)

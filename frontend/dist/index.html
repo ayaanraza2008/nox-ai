@@ -74,6 +74,30 @@ body[data-nox-brain-state="retrieving"] #corePanel,body[data-nox-brain-state="pl
 <section class="stack mainstack">
  <section class="panel corepanel" id="corePanel"><div class="coretop"><span class="tiny">CORE / LIVE RENDER</span><span class="tiny" id="fpsLabel">PARTICLE FIELD</span></div><canvas class="corecanvas" id="coreCanvas" aria-label="Animated NOX holographic core"></canvas><div class="coretitle"><strong>NOX <span style="color:var(--cyan)">CORE</span></strong><small id="coreCaption">NEURAL INTERFACE · STANDBY</small></div><div class="corebottom"><span class="statechip active" data-state="idle">IDLE</span><span class="statechip" data-state="listening">LISTENING</span><span class="statechip" data-state="thinking">THINKING</span><span class="statechip" data-state="speaking">SPEAKING</span><span class="statechip" data-state="error">ERROR</span></div></section>
  <section class="panel chatpanel" id="chatPanel"><div class="panelhead"><span class="ptitle">Conversation Workspace</span><div class="chattoolbar"><select id="language" class="field" style="width:auto;padding:6px;font-size:10px"><option value="auto">Auto</option><option value="en">English</option><option value="hi">Hindi</option><option value="ur">Urdu</option><option value="hinglish">Hinglish</option></select><button class="iconbtn" id="newChat" title="New conversation">＋</button></div></div><div class="chatmessages" id="messages" aria-live="polite"><div class="welcome">SYSTEM READY · Send a message to begin.<br><span class="tiny">Hindi · English · Hinglish · Urdu</span></div></div><div class="chatinput"><textarea id="messageInput" rows="1" placeholder="Ask NOX anything… (Enter to send)" aria-label="Message to NOX"></textarea><button class="primary sendbtn" id="sendBtn" aria-label="Send message">↑</button></div><div style="display:flex;justify-content:space-between;padding:0 12px 10px" class="tiny"><span id="chatStatus">Ready</span><span>Enter ↵ · Shift+Enter new line</span></div></section>
+ <section class="panel" id="cognitivePanel">
+  <div class="panelhead"><span class="ptitle">Cognitive Intelligence</span><span class="pmeta">EVIDENCE · REFLECTION · REASONING</span></div>
+  <div class="panelbody">
+   <p class="footnote">Explore behavior hypotheses, recurring patterns, possible cognitive biases, cross-disciplinary thinking, personality reflection, or practical Stoic exercises. Analyses are hypotheses—not diagnoses or mind-reading. Nothing is saved as a personal profile.</p>
+   <form id="cognitiveForm" class="taskform" style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px">
+    <label for="cognitiveMode" class="eyebrow">ANALYSIS MODE</label>
+    <select id="cognitiveMode" class="field" style="width:100%">
+     <option value="behavior">Psychology & behavior</option>
+     <option value="patterns">Pattern recognition</option>
+     <option value="bias">Cognitive bias detector</option>
+     <option value="omnivore">Intellectual omnivore</option>
+     <option value="thinking">Advanced thinking</option>
+     <option value="personality">Personality reflection</option>
+     <option value="stoicism">Stoicism & resilience</option>
+    </select>
+    <label for="cognitiveInput" class="eyebrow">YOUR QUESTION OR SUPPLIED MATERIAL</label>
+    <textarea id="cognitiveInput" rows="5" maxlength="12000" required placeholder="Describe the situation, decision, text, or pattern you want to examine…" style="width:100%;resize:vertical"></textarea>
+    <button id="cognitiveRun" class="secondary" type="submit">Run cognitive analysis</button>
+   </form>
+   <div id="cognitiveStatus" class="footnote" role="status" aria-live="polite" style="margin-top:10px">Ready · uses your configured NOX AI provider</div>
+   <div id="cognitiveOutput" class="researchresults" aria-live="polite" style="margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere">Your analysis will appear here.</div>
+   <p class="footnote" style="margin-top:9px">Privacy: this workspace sends only the text you submit to the existing configured AI provider. It does not save a behavioral profile. Provider availability and response quality vary.</p>
+  </div>
+ </section>
  <section class="panel visual-workspace" id="visualIntelligencePanel">
   <div class="panelhead"><span class="ptitle">Visual Intelligence</span><span class="pmeta" id="visualStatus" role="status">READY · HF VIEWER + NATIVE DIAGRAMS</span></div>
   <div class="panelbody">
@@ -420,6 +444,7 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
 <script src="/nox-github-ci.js" defer></script>
 <script src="/nox-vision-research.js" defer></script>
 <script src="/nox-brain.js" defer></script>
+<script src="/nox-cognitive.js" defer></script>
 <script src="/nox-feature-drawer.js" defer></script>
 <script src="/nox-account.js" defer></script>
 <script src="/nox-visual-intelligence.js"></script>

@@ -3,7 +3,7 @@
   if (window.NOXFeatureDrawer) return;
   const $ = (id) => document.getElementById(id);
   const groups = [
-    { title: "AI WORKSPACE", subtitle: "Voice, tasks and creation", ids: ["voicePanel", "taskPanel", "researchPanel", "knowledgePanel", "codePanel"] },
+    { title: "AI WORKSPACE", subtitle: "Voice, tasks and creation", ids: ["voicePanel", "taskPanel", "researchPanel", "knowledgePanel", "codePanel", "cognitivePanel"] },
     { title: "VISION & RESEARCH", subtitle: "Camera intelligence and public-source research", ids: ["visionPanel", "publicResearchPanel", "analyticsPanel"] },
     { title: "SYSTEM & PREFERENCES", subtitle: "Memory, connected tools, privacy and diagnostics", ids: ["memoryPanel", "toolsPanel", "networkPanel", "systemPanel"] }
   ,{ title: "AUTOMATION & DEVOPS", subtitle: "Agent execution, project changes and repository health", ids: [] }
@@ -142,7 +142,7 @@
   trigger.type = "button";
   trigger.id = "noxFeatureTrigger";
   trigger.className = "iconbtn nox-feature-trigger";
-  trigger.innerHTML = '<span aria-hidden="true">☷</span> Features <span class="feature-count">16</span>';
+  trigger.innerHTML = '<span aria-hidden="true">☷</span> Features <span class="feature-count">17</span>';
   trigger.setAttribute("aria-haspopup", "dialog");
   trigger.setAttribute("aria-expanded", "false");
   const topRight = document.querySelector(".topright");
