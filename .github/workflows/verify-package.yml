@@ -39,6 +39,8 @@ jobs:
         run: node ruview-companion/node_modules/@ruvnet/ruview/bin/cli.js --help
       - name: Validate NOX Live Browser JavaScript syntax
         run: node --check frontend/dist/nox-live-browser.js
+      - name: Validate NOX communications JavaScript syntax
+        run: node --check frontend/dist/nox-communications.js
       - name: Validate deployed frontend
         run: test -s frontend/dist/index.html
       - name: Validate inline frontend JavaScript syntax
@@ -110,7 +112,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nox-ai-live-browser-project
-          path: nox-ai-hologram.zip
+          path: nox-ai-live-browser.zip
           retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
