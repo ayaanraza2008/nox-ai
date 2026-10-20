@@ -57,7 +57,7 @@ _SUMMARY_STOPWORDS = {
 
 def extractive_summary(text: str, topic: str = "", max_sentences: int = 3) -> list[str]:
     """Pick topic-relevant source sentences without inventing or rewriting claims."""
-    sentences = [re.sub(r"\\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\\s+|\\n+", text or "")]
+    sentences = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text or "")]
     sentences = [part for part in sentences if 45 <= len(part) <= 500]
     if not sentences:
         return []
