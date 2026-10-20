@@ -39,11 +39,14 @@ def _database_url() -> str:
     return value
 
 
-def _connect():
+def _raw_connect():
     import psycopg
     from psycopg.rows import dict_row
+    return psycopg.connect(_database_url(), row_factory=dict_row, connect_timeout=10)
 
-    conn = psycopg.connect(_database_url(), row_factory=dict_row, connect_timeout=10)
+
+def _connect():
+    conn = _raw_connect()
     try:
         conn.execute("""CREATE TABLE IF NOT EXISTS nox_accounts (
             id TEXT PRIMARY KEY,
@@ -211,21 +214,29 @@ def _new_session(conn, account_id: str, remember_me: bool = True) -> tuple[str, 
 
 
 def _rate_limit(conn, action: str, key: str, max_count: int, window_seconds: int) -> None:
-    """Atomically count attempts in PostgreSQL so concurrent requests cannot race the limit."""
+    """Persist rate-limit counters independently of the caller's rollback transaction."""
     key_hash = hashlib.sha256((action + ":" + (key or "unknown").casefold()).encode()).hexdigest()
     now = _now()
     cutoff = _iso(now - timedelta(seconds=window_seconds))
-    row = conn.execute("""INSERT INTO nox_account_rate_limits(action,key_hash,window_start,count)
-        VALUES(%s,%s,%s,1)
-        ON CONFLICT(action,key_hash) DO UPDATE SET
-          window_start=CASE WHEN nox_account_rate_limits.window_start <= %s
-                            THEN EXCLUDED.window_start ELSE nox_account_rate_limits.window_start END,
-          count=CASE WHEN nox_account_rate_limits.window_start <= %s
-                     THEN 1 ELSE nox_account_rate_limits.count+1 END
-        RETURNING count""",
-        (action, key_hash, _iso(now), cutoff, cutoff)).fetchone()
-    if row and int(row["count"]) > max_count:
-        raise ValueError("Too many attempts. Please wait before trying again.")
+    rate_conn = _raw_connect()
+    try:
+        row = rate_conn.execute("""INSERT INTO nox_account_rate_limits(action,key_hash,window_start,count)
+            VALUES(%s,%s,%s,1)
+            ON CONFLICT(action,key_hash) DO UPDATE SET
+              window_start=CASE WHEN nox_account_rate_limits.window_start <= %s
+                                THEN EXCLUDED.window_start ELSE nox_account_rate_limits.window_start END,
+              count=CASE WHEN nox_account_rate_limits.window_start <= %s
+                         THEN 1 ELSE nox_account_rate_limits.count+1 END
+            RETURNING count""",
+            (action, key_hash, _iso(now), cutoff, cutoff)).fetchone()
+        rate_conn.commit()
+        if row and int(row["count"]) > max_count:
+            raise ValueError("Too many attempts. Please wait before trying again.")
+    except Exception:
+        rate_conn.rollback()
+        raise
+    finally:
+        rate_conn.close()
 
 
 def _verification_secret() -> str:
