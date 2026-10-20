@@ -780,7 +780,7 @@ async def _task_event_stream(task_id: str, owner_id: str, request: Request):
         updated_at = task.get("updated_at")
         if updated_at != last_updated:
             last_updated = updated_at
-            yield "data: " + json.dumps({"task": task}, ensure_ascii=False) + "\\n\\n"
+            yield "data: " + json.dumps({"task": task}, ensure_ascii=False) + "\n\n"
         if task.get("status") in ("completed", "failed", "cancelled"):
             return
         await asyncio.sleep(1)
