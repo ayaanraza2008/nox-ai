@@ -221,3 +221,47 @@ class WebsiteCheckSafetyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class LocalConnectivityTests(unittest.TestCase):
+    def test_wifi_parser_uses_only_fixed_read_only_netsh_command(self):
+        from types import SimpleNamespace
+        output = """\n    State                  : connected\n    SSID                   : HomeNet\n    BSSID                  : aa:bb:cc:dd:ee:ff\n    Radio type             : 802.11ax\n    Channel                : 36\n    Signal                 : 78%\n    Receive rate (Mbps)    : 433.3\n    Transmit rate (Mbps)   : 390\n    Authentication         : WPA2-Personal\n    Cipher                 : CCMP\n"""
+        with patch.object(companion.os, "name", "nt"), patch.object(
+            companion.subprocess, "run",
+            return_value=SimpleNamespace(returncode=0, stdout=output, stderr=""),
+        ) as run:
+            result = companion.read_windows_wifi_status()
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0], ["netsh", "wlan", "show", "interfaces"])
+        self.assertFalse(run.call_args.kwargs["shell"])
+        self.assertEqual(result["status"], "connected")
+        self.assertEqual(result["ssid"], "HomeNet")
+        self.assertEqual(result["signal_percent"], 78)
+        self.assertEqual(result["channel"], 36)
+        self.assertEqual(result["receive_mbps"], 433.3)
+        self.assertFalse(result["raw_output_exposed"])
+        self.assertNotIn("password", str(result).casefold())
+
+    def test_wifi_parser_returns_unknown_not_fake_data_for_unrecognized_output(self):
+        from types import SimpleNamespace
+        with patch.object(companion.os, "name", "nt"), patch.object(
+            companion.subprocess, "run",
+            return_value=SimpleNamespace(returncode=0, stdout="No interfaces found", stderr=""),
+        ):
+            result = companion.read_windows_wifi_status()
+        self.assertEqual(result["status"], "unknown")
+        self.assertIsNone(result["signal_percent"])
+        self.assertIsNone(result["ssid"])
+
+    def test_wifi_endpoint_requires_companion_token(self):
+        with patch.object(companion, "TOKEN", "expected"):
+            with self.assertRaises(Exception) as error:
+                companion.connectivity_wifi(x_nox_token="wrong")
+        self.assertEqual(getattr(error.exception, "status_code", None), 401)
+
+    def test_ruview_proxy_has_only_fixed_paths_and_loopback_origin(self):
+        self.assertEqual(companion.RUVIEW_LOCAL_URL, "http://127.0.0.1:3000")
+        self.assertEqual(set(companion.RUVIEW_PATHS), {"health", "info", "sensing", "vitals", "pose"})
+        self.assertTrue(all(path.startswith("/api/v1/") or path == "/health"
+                            for path in companion.RUVIEW_PATHS.values()))

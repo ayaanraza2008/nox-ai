@@ -69,7 +69,18 @@ body[data-nox-brain-state="retrieving"] #corePanel,body[data-nox-brain-state="pl
  </div></section>
  <section class="panel" id="toolsPanel"><div class="panelhead"><span class="ptitle">Connected Tools</span><span class="pmeta">02</span></div><div class="panelbody"><div class="toolgrid">
  <button class="tool" data-open="researchPanel"><span>⌕</span>Web research</button><button class="tool" data-open="codePanel"><span>⌘</span>Code workspace</button><button class="tool" data-open="visionPanel"><span>◉</span>Camera & media</button><button class="tool" data-open="taskPanel"><span>◇</span>Task runner</button><button class="tool" data-open="systemPanel"><span>⌁</span>System health</button><button class="tool" id="fileTool"><span>▤</span>Local file preview</button></div><div class="divider"></div><div id="capabilityList"><div class="tiny">Loading service capabilities…</div></div></div></section>
- <section class="panel" id="networkPanel"><div class="panelhead"><span class="ptitle">Network & Privacy</span><span class="pmeta">03</span></div><div class="panelbody"><div class="statusline"><span>API connection</span><span class="statusvalue" id="netState">CHECKING</span></div><div class="statusline"><span>Latency</span><span class="statusvalue" id="latency">—</span></div><div class="statusline"><span>Location data</span><span class="statusvalue">NOT REQUESTED</span></div><p class="footnote">No precise location is collected. Browser-only pages cannot reliably read host CPU, RAM, or full network telemetry.</p></div></section>
+ <section class="panel" id="networkPanel"><div class="panelhead"><span class="ptitle">Network & Privacy</span><span class="pmeta">03</span></div><div class="panelbody"><div class="statusline"><span>API connection</span><span class="statusvalue" id="netState">CHECKING</span></div><div class="statusline"><span>Latency</span><span class="statusvalue" id="latency">—</span></div><div class="statusline"><span>Location data</span><span class="statusvalue">NOT REQUESTED</span></div><p class="footnote">Browser-only pages cannot read full host telemetry. Local Wi-Fi inspection runs only after you press a button and connect to your authenticated Windows companion.</p>
+ <div class="divider"></div>
+ <div class="ptitle">LOCAL CONNECTIVITY</div>
+ <label class="footnote" for="connectivityToken">Windows companion token (kept in memory only)</label>
+ <input class="field" id="connectivityToken" type="password" autocomplete="off" maxlength="256" placeholder="Enter NOX_COMPANION_TOKEN">
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="secondary" id="connectivityWifi" type="button">Inspect my Wi-Fi</button><button class="secondary" id="connectivityRuView" type="button">Check RuView</button></div>
+ <div class="statusline"><span>Local Wi-Fi</span><span class="statusvalue" id="connectivityWifiState">NOT CHECKED</span></div>
+ <div id="connectivityWifiDetails" class="footnote" aria-live="polite">No local network data requested.</div>
+ <div class="statusline"><span>RuView pipeline</span><span class="statusvalue" id="ruviewState">NOT CONNECTED</span></div>
+ <div id="ruviewDetails" class="footnote" aria-live="polite">Connect your local RuView service to show its actual source and sensing output.</div>
+ <canvas id="wifiSignalCanvas" width="480" height="180" aria-label="Illustrative signal strength visualization" style="width:100%;height:120px;border:1px solid var(--line);border-radius:10px;background:#07111d;margin-top:8px"></canvas>
+ <div class="footnote">Signal rings are an illustration of the measured interface strength, not a measured RF map. RuView simulation and real CSI must be labelled by the service source. No passwords are collected.</div></div></section>
 </aside>
 <section class="stack mainstack">
  <section class="panel corepanel" id="corePanel"><div class="coretop"><span class="tiny">CORE / LIVE RENDER</span><span class="tiny" id="fpsLabel">PARTICLE FIELD</span></div><canvas class="corecanvas" id="coreCanvas" aria-label="Animated NOX holographic core"></canvas><div class="coretitle"><strong>NOX <span style="color:var(--cyan)">CORE</span></strong><small id="coreCaption">NEURAL INTERFACE · STANDBY</small></div><div class="corebottom"><span class="statechip active" data-state="idle">IDLE</span><span class="statechip" data-state="listening">LISTENING</span><span class="statechip" data-state="thinking">THINKING</span><span class="statechip" data-state="speaking">SPEAKING</span><span class="statechip" data-state="error">ERROR</span></div></section>
@@ -452,4 +463,5 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
 <script src="/nox-visual-intelligence.js"></script>
 <script src="/nox-gods-eye-view.js" defer></script>
 <script src="/nox-ops.js" defer></script>
+<script src="/nox-connectivity.js" defer></script>
 </body></html>

@@ -8,6 +8,8 @@ import hmac
 import os
 import re
 import subprocess
+
+import httpx
 import webbrowser
 from pathlib import Path
 from typing import Literal
@@ -41,6 +43,8 @@ TOKEN = os.getenv("NOX_COMPANION_TOKEN", "").strip()
 WEB_ORIGIN = os.getenv("NOX_WEB_ORIGIN", "https://nox-ai-vcqx.onrender.com").strip()
 HOST = "127.0.0.1"
 PORT = int(os.getenv("NOX_COMPANION_PORT", "8765"))
+RUVIEW_API_TOKEN = os.getenv("RUVIEW_API_TOKEN", "").strip()
+RUVIEW_LOCAL_URL = "http://127.0.0.1:3000"
 
 app = FastAPI(title="NOX Local Desktop Companion", version="0.3.0")
 app.add_middleware(
@@ -122,6 +126,123 @@ def find_shortcut(app_id: str):
         except (OSError, PermissionError):
             continue
     return None
+
+
+def read_windows_wifi_status():
+    """Read current Windows Wi-Fi interface status using a fixed, read-only command."""
+    if os.name != "nt":
+        raise HTTPException(status_code=501, detail="Wi-Fi inspection is currently supported on Windows only.")
+    try:
+        result = subprocess.run(
+            ["netsh", "wlan", "show", "interfaces"],
+            shell=False, capture_output=True, text=True, timeout=8,
+            check=False, stdin=subprocess.DEVNULL,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=501, detail="Windows netsh is unavailable.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Windows Wi-Fi status query timed out.") from exc
+    if result.returncode != 0:
+        raise HTTPException(status_code=503, detail="Windows could not read Wi-Fi interface status.")
+    raw = result.stdout or ""
+    # Localized Windows output may not match these English field labels; unknown stays null.
+    patterns = {
+        "state": r"^\s*State\s*:\s*(.+?)\s*$",
+        "ssid": r"^\s*SSID\s*:\s*(.*?)\s*$",
+        "bssid": r"^\s*BSSID\s*:\s*([0-9a-fA-F:.-]+)\s*$",
+        "radio_type": r"^\s*Radio type\s*:\s*(.*?)\s*$",
+        "channel": r"^\s*Channel\s*:\s*(\d+)\s*$",
+        "signal_percent": r"^\s*Signal\s*:\s*(\d+)\s*%\s*$",
+        "receive_mbps": r"^\s*Receive rate \(Mbps\)\s*:\s*([0-9.]+)\s*$",
+        "transmit_mbps": r"^\s*Transmit rate \(Mbps\)\s*:\s*([0-9.]+)\s*$",
+        "authentication": r"^\s*Authentication\s*:\s*(.*?)\s*$",
+        "cipher": r"^\s*Cipher\s*:\s*(.*?)\s*$",
+    }
+    parsed = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, raw, re.MULTILINE | re.IGNORECASE)
+        parsed[key] = match.group(1).strip() if match else None
+    state = (parsed.get("state") or "").casefold()
+    connected = state == "connected"
+    if parsed.get("signal_percent") is not None:
+        parsed["signal_percent"] = int(parsed["signal_percent"])
+    if parsed.get("channel") is not None:
+        parsed["channel"] = int(parsed["channel"])
+    for key in ("receive_mbps", "transmit_mbps"):
+        if parsed.get(key) is not None:
+            parsed[key] = float(parsed[key])
+    return {
+        "platform": "windows",
+        "status": "connected" if connected else ("disconnected" if state else "unknown"),
+        "connected": connected,
+        "ssid": parsed.get("ssid") if connected else None,
+        "bssid": parsed.get("bssid") if connected else None,
+        "radio_type": parsed.get("radio_type") if connected else None,
+        "channel": parsed.get("channel") if connected else None,
+        "signal_percent": parsed.get("signal_percent") if connected else None,
+        "receive_mbps": parsed.get("receive_mbps") if connected else None,
+        "transmit_mbps": parsed.get("transmit_mbps") if connected else None,
+        "authentication": parsed.get("authentication") if connected else None,
+        "cipher": parsed.get("cipher") if connected else None,
+        "source": "Windows netsh wlan show interfaces",
+        "measured_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "raw_output_exposed": False,
+        "note": "Interface metrics only; not CSI sensing or a security certification.",
+    }
+
+
+@app.get("/v1/connectivity/capabilities")
+def connectivity_capabilities(x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    return {
+        "platform": "windows" if os.name == "nt" else os.name,
+        "wifi_status": os.name == "nt",
+        "wifi_method": "netsh wlan show interfaces" if os.name == "nt" else None,
+        "ruview_proxy": bool(RUVIEW_API_TOKEN),
+        "bluetooth_discovery": False,
+        "note": "Capabilities are conservative; Wi-Fi CSI requires a separately installed and configured RuView service and compatible data source.",
+    }
+
+
+@app.get("/v1/connectivity/wifi")
+def connectivity_wifi(x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    return read_windows_wifi_status()
+
+
+RUVIEW_PATHS = {
+    "health": "/health",
+    "info": "/api/v1/info",
+    "sensing": "/api/v1/sensing/latest",
+    "vitals": "/api/v1/vital-signs",
+    "pose": "/api/v1/pose/current",
+}
+
+
+@app.get("/v1/connectivity/ruview")
+async def connectivity_ruview(view: Literal["health", "info", "sensing", "vitals", "pose"] = "health",
+                              x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    if not RUVIEW_API_TOKEN:
+        raise HTTPException(status_code=503, detail="Set RUVIEW_API_TOKEN in the local companion environment to connect RuView.")
+    url = RUVIEW_LOCAL_URL + RUVIEW_PATHS[view]
+    try:
+        async with httpx.AsyncClient(timeout=3.0, trust_env=False) as client:
+            response = await client.get(url, headers={"Authorization": "Bearer " + RUVIEW_API_TOKEN})
+        response.raise_for_status()
+        try:
+            payload = response.json()
+        except ValueError:
+            raise HTTPException(status_code=502, detail="RuView returned a non-JSON response.")
+        return {"status": "ok", "view": view, "source": "local RuView API", "data": payload}
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Local RuView request timed out.") from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"RuView returned HTTP {exc.response.status_code}.") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Local RuView is not reachable at 127.0.0.1:3000.") from exc
 
 
 @app.get("/health")

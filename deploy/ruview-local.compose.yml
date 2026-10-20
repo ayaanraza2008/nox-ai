@@ -1,0 +1,14 @@
+services:
+  ruview:
+    image: ruvnet/wifi-densepose:latest
+    container_name: nox-ruview-local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"
+    environment:
+      RUVIEW_API_TOKEN: ${RUVIEW_API_TOKEN:?Set RUVIEW_API_TOKEN in your shell before starting}
+      CSI_SOURCE: ${CSI_SOURCE:-simulated}
+    # Local-only bindings intentionally prevent public-network exposure.
+    # For ESP32 CSI, follow RuView's current UDP source-guard instructions;
+    # do not publish UDP ingest to an untrusted network.
