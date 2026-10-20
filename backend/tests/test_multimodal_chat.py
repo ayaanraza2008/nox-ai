@@ -34,6 +34,33 @@ class FakeClient:
 
 
 class MultimodalChatTests(unittest.IsolatedAsyncioTestCase):
+    async def test_chat_reports_missing_provider_instead_of_fake_demo_reply(self):
+        payload = main.ChatRequest(message="Hello NOX")
+        with patch.dict("os.environ", {
+            "OPENROUTER_API_KEY": "",
+            "GROQ_API_KEY": "",
+            "GEMINI_API_KEY": "",
+        }), patch.object(main, "_retrieved_context", return_value=[]):
+            with self.assertRaises(HTTPException) as raised:
+                await main.chat(payload)
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertIn("No AI provider API key is configured", raised.exception.detail)
+
+    async def test_stream_reports_missing_provider_instead_of_fake_demo_reply(self):
+        with patch.dict("os.environ", {
+            "OPENROUTER_API_KEY": "",
+            "GROQ_API_KEY": "",
+            "GEMINI_API_KEY": "",
+        }):
+            packets = [item async for item in main.stream_provider_reply(
+                "Hello NOX", "auto", [], images=[]
+            )]
+
+        self.assertEqual(len(packets), 1)
+        self.assertEqual(packets[0]["type"], "error")
+        self.assertIn("No AI provider API key is configured", packets[0]["message"])
+
     async def test_image_is_sent_as_multimodal_content_to_configured_vision_model(self):
         client = FakeClient()
         with patch.dict(os.environ, {
