@@ -360,4 +360,105 @@
     }
     render();
   }
+  // Optional official RuView CLI integration. Status is read-only; device inspection
+  // and CSI capture are started only by explicit button presses.
+  function setupRuViewPanel() {
+    const panel = document.createElement("div");
+    panel.className = "finding";
+    panel.style.marginTop = "12px";
+    panel.innerHTML = '<strong>RuView · Local CSI Companion</strong>' +
+      '<p class="connectivity-muted">Uses the official RuView CLI on this computer. Hardware operations are unavailable on hosted NOX and remain disabled until explicitly enabled in local mode.</p>' +
+      '<div class="statusline"><span>Companion status</span><span class="statusvalue" id="ruviewStatus">CHECKING</span></div>' +
+      '<div class="connectivity-actions">' +
+      '<button class="secondary" id="ruviewRefresh" type="button">Check local setup</button>' +
+      '<button class="secondary" id="ruviewDoctor" type="button" disabled>Run diagnostics</button>' +
+      '<button class="secondary" id="ruviewDevices" type="button" disabled>Inspect devices</button>' +
+      '<button class="secondary" id="ruviewStart" type="button" disabled>Start CSI capture</button>' +
+      '<button class="secondary" id="ruviewStop" type="button" disabled>Emergency stop</button></div>' +
+      '<pre id="ruviewOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;margin:8px 0 0;color:var(--muted)">No local RuView operation has been requested.</pre>';
+    report.insertAdjacentElement("afterend", panel);
+    const state = $("ruviewStatus");
+    const output = $("ruviewOutput");
+    const buttons = ["ruviewDoctor", "ruviewDevices", "ruviewStart", "ruviewStop"];
+    let available = false;
+    let pollHandle = null;
+    async function request(url, options) {
+      await ensureSession();
+      const response = await fetch(url, Object.assign({ credentials: "same-origin" }, options || {}));
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "Local RuView request failed (" + response.status + ").");
+      return data;
+    }
+    function setControls(snapshot) {
+      available = Boolean(snapshot && snapshot.available);
+      state.textContent = snapshot && snapshot.running ? "CAPTURING" :
+        available ? "READY · LOCAL" : "LOCAL COMPANION UNAVAILABLE";
+      buttons.forEach(id => { const button = $(id); if (button) button.disabled = !available; });
+      $("ruviewStop").disabled = !available || !(snapshot && snapshot.running);
+      $("ruviewStart").disabled = !available || Boolean(snapshot && snapshot.running);
+      if (snapshot && snapshot.message) output.textContent = snapshot.message;
+      if (snapshot && snapshot.last_output) output.textContent = snapshot.last_output;
+      if (!available && !snapshot?.running) {
+        output.textContent = (snapshot && snapshot.message ? snapshot.message + "\n\n" : "") +
+          "Hosted websites cannot access this device's USB ports or Wi-Fi CSI stream. Run NOX locally on 127.0.0.1, install the optional companion, and set NOX_RUVIEW_ENABLED=1.";
+      }
+      if (snapshot && snapshot.running && !pollHandle) {
+        pollHandle = window.setInterval(refresh, 2500);
+      } else if ((!snapshot || !snapshot.running) && pollHandle) {
+        window.clearInterval(pollHandle);
+        pollHandle = null;
+      }
+    }
+    async function refresh() {
+      state.textContent = "CHECKING";
+      try {
+        const snapshot = await request("/api/ruview/status");
+        setControls(snapshot);
+      } catch (error) {
+        available = false;
+        state.textContent = "LOCAL ONLY";
+        buttons.forEach(id => { const button = $(id); if (button) button.disabled = true; });
+        output.textContent = error.message + "\n\nRuView access is restricted to a same-origin NOX server bound to loopback. No hardware operation was attempted.";
+        if (pollHandle) { window.clearInterval(pollHandle); pollHandle = null; }
+      }
+    }
+    async function runInspection(operation) {
+      buttons.forEach(id => { const button = $(id); if (button) button.disabled = true; });
+      output.textContent = "Running the requested RuView " + operation + " operation…";
+      try {
+        const result = await request("/api/ruview/inspect", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operation })
+        });
+        output.textContent = "Operation: " + result.operation + "\nExit code: " + result.exit_code +
+          "\nResult: " + (result.success ? "completed" : "failed") + "\n\n" + (result.output || "(no CLI output)");
+      } catch (error) { output.textContent = error.message; }
+      await refresh();
+    }
+    $("ruviewRefresh").addEventListener("click", refresh);
+    $("ruviewDoctor").addEventListener("click", () => runInspection("doctor"));
+    $("ruviewDevices").addEventListener("click", () => runInspection("devices"));
+    $("ruviewStart").addEventListener("click", async () => {
+      $("ruviewStart").disabled = true;
+      output.textContent = "Starting the bounded 45-second RuView ESP32 CSI capture…";
+      try {
+        const result = await request("/api/ruview/capture/start", { method: "POST" });
+        output.textContent = result.message + "\nSource: " + result.source +
+          "\nMeasurements: " + result.measurements;
+        await refresh();
+      } catch (error) { output.textContent = error.message; await refresh(); }
+    });
+    $("ruviewStop").addEventListener("click", async () => {
+      $("ruviewStop").disabled = true;
+      output.textContent = "Stopping the local RuView capture process…";
+      try {
+        const result = await request("/api/ruview/capture/stop", { method: "POST" });
+        output.textContent = result.message;
+      } catch (error) { output.textContent = error.message; }
+      await refresh();
+    });
+    refresh();
+  }
+  setupRuViewPanel();
+
 })();
