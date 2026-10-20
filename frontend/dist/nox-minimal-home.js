@@ -24,6 +24,8 @@
     .nox-emergency-control button{padding:8px 10px!important;font-size:9px!important}
     .nox-emergency-status{min-width:60px!important;font-size:8px!important}
 
+    #noxPersonalityHome{left:12px;top:74px;min-width:142px;min-height:46px;padding:0 12px;border-color:rgba(161,139,255,.55);background:linear-gradient(135deg,rgba(22,28,50,.96),rgba(28,19,53,.96))}
+    #noxPersonalityHome small{display:block;font-size:8px;letter-spacing:.06em;color:#b9a9ff;font-weight:500;margin-top:5px}
     #noxVoiceHome{left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);min-width:174px;min-height:54px;border-radius:999px;background:linear-gradient(115deg,rgba(14,47,64,.97),rgba(31,24,67,.97));border-color:#71eaff88;box-shadow:0 8px 38px #0008,0 0 30px #56ddff17}
     #noxVoiceHome:hover{transform:translate(-50%,-2px)}
     #noxVoiceHome[data-active="true"]{border-color:#9fffe0;box-shadow:0 0 0 1px #9fffe055,0 0 32px #62e9cb30}
@@ -51,6 +53,7 @@
       .topright{gap:6px!important}.topright #accountOpen{font-size:9px;padding:7px 8px}
       #dashboard.layout.nox-home-layout{height:calc(100dvh - 56px)!important}
       #noxTextChatHome{right:max(10px,env(safe-area-inset-right));min-height:124px;min-width:42px;padding:13px 9px;font-size:9px;border-radius:13px}
+      #noxPersonalityHome{left:10px;top:66px;min-height:42px;min-width:128px;font-size:9px;padding:0 9px}
       #noxVoiceHome{bottom:max(18px,env(safe-area-inset-bottom));min-height:50px;min-width:158px}
       #noxChatSheet{width:100vw;border-left:0}
     }
@@ -94,6 +97,30 @@
   voiceButton.setAttribute("aria-pressed", "false");
   voiceButton.innerHTML = '<span class="control-icon" aria-hidden="true">◖</span><span>VOICE TALK<small id="noxVoiceHomeStatus">TAP TO SPEAK</small></span>';
   document.body.appendChild(voiceButton);
+
+  const personalityButton = document.createElement("button");
+  personalityButton.id = "noxPersonalityHome";
+  personalityButton.type = "button";
+  personalityButton.className = "nox-home-control";
+  personalityButton.setAttribute("aria-label", "Switch between NOX and LUMI");
+  personalityButton.innerHTML = '<span class="control-icon" aria-hidden="true">✧</span><span id="noxPersonalityHomeLabel">NOX ACTIVE<small>SWITCH TO LUMI</small></span>';
+  document.body.appendChild(personalityButton);
+  function syncPersonalityHome() {
+    const active = $("personalitySelect")?.value === "lumi" ? "lumi" : "nox";
+    const label = $("noxPersonalityHomeLabel");
+    if (label) label.innerHTML = (active === "lumi" ? "LUMI ACTIVE" : "NOX ACTIVE") + '<small>SWITCH TO ' + (active === "lumi" ? "NOX" : "LUMI") + '</small>';
+    personalityButton.style.borderColor = active === "lumi" ? "#b9a4ff" : "#71eaff88";
+    personalityButton.setAttribute("aria-label", "Currently " + (active === "lumi" ? "LUMI" : "NOX") + "; switch to " + (active === "lumi" ? "NOX" : "LUMI"));
+  }
+  personalityButton.addEventListener("click", () => {
+    const selector = $("personalitySelect");
+    if (!selector) return;
+    selector.value = selector.value === "lumi" ? "nox" : "lumi";
+    selector.dispatchEvent(new Event("change", { bubbles: true }));
+    syncPersonalityHome();
+  });
+  $("personalitySelect")?.addEventListener("change", syncPersonalityHome);
+  syncPersonalityHome();
 
   const chatButton = document.createElement("button");
   chatButton.id = "noxTextChatHome";

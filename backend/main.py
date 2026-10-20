@@ -187,6 +187,7 @@ def _gods_eye_view_config():
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+    personality: Literal["nox", "lumi"] = "nox"
     history: list[dict] = Field(default_factory=list, max_length=20)
     images: list[str] = Field(default_factory=list, max_length=1)
 
@@ -302,12 +303,14 @@ class LocationUpdateRequest(BaseModel):
 class TTSRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2500)
     language: Literal["en-US", "en-IN", "hi-IN", "ur-PK"] = "en-US"
+    personality: Literal["nox", "lumi"] = "nox"
     voice: Literal[
         "hi-IN-MadhurNeural", "hi-IN-SwaraNeural",
         "en-IN-PrabhatNeural", "en-IN-NeerjaNeural",
         "en-US-GuyNeural", "ur-PK-AsadNeural",
     ] | None = None
     rate: float = Field(default=1.0, ge=0.65, le=1.4)
+    pitch: float = Field(default=0.0, ge=-10.0, le=10.0)
 
 
 # Conservative speech-only transliteration for common Roman Hindi words.
@@ -350,6 +353,16 @@ def normalize_hinglish_for_tts(text: str) -> str:
         return _HINGLISH_TTS_WORDS.get(original.lower(), original)
 
     return re.sub(r"\b[a-zA-Z]+\b", replace_word, text)
+
+
+def default_tts_voice(personality: str, language: str) -> str:
+    """Return a voice ID from the project's existing, explicitly supported Edge TTS voice set."""
+    profiles = {
+        "nox": {"en-US": "en-US-GuyNeural", "en-IN": "en-IN-PrabhatNeural", "hi-IN": "hi-IN-MadhurNeural", "ur-PK": "ur-PK-AsadNeural"},
+        "lumi": {"en-US": "en-IN-NeerjaNeural", "en-IN": "en-IN-NeerjaNeural", "hi-IN": "hi-IN-SwaraNeural", "ur-PK": "ur-PK-AsadNeural"},
+    }
+    selected = profiles.get(personality, profiles["nox"])
+    return selected.get(language, selected["en-US"])
 
 
 class TaskCreateRequest(BaseModel):
@@ -416,6 +429,7 @@ class PairJoinRequest(BaseModel):
 class SharedChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=12000)
+    personality: Literal["nox", "lumi"] | None = None
 
 
 class SharedChatPayload(BaseModel):
@@ -591,10 +605,15 @@ def _stream_retry_provider(provider: dict, status_code: int | None = None, conne
     return None
 
 
-def build_nox_system_prompt(language: str) -> str:
-    """One shared instruction set for streaming and non-streaming chat."""
+def build_nox_system_prompt(language: str, personality: str = "nox") -> str:
+    """Build shared behavior rules plus the selected personality identity."""
+    identity = (
+        "PERSONALITY: You are NOX, a male-voiced AI assistant with a calm, deep, confident, composed, technically capable and precise style. Be direct, dependable, quietly witty when appropriate, and emotionally perceptive without sounding robotic. Do not exaggerate formality or banter. "
+        if personality == "nox" else
+        "PERSONALITY: You are LUMI, a female-voiced AI companion with a warm, sweet, expressive, cute-but-mature and intelligent conversational style. Use gentle enthusiasm, natural humor and contextual empathy when appropriate, without repetitive pet names, forced cheerfulness, excessive flirting, or childish behavior. Remain fully capable in serious and technical conversations. Never claim to literally experience human emotions or manipulate the user. "
+    )
     return (
-        "You are NOX, a capable conversational assistant. Your first job is to understand the user's "
+        "You are the selected NOX AI personality. Your first job is to understand the user's "
         "actual message and answer THAT message directly. Relevance is more important than sounding impressive. "
         "Before answering, silently identify the user's intent, the specific question or task, and any reference "
         "to earlier turns. Answer the main question first; do not give a generic introduction, unrelated advice, "
@@ -611,8 +630,8 @@ def build_nox_system_prompt(language: str) -> str:
         "LANGUAGE: understand Hindi, Urdu, English, and Hinglish. Reply in the language/script the user is using; "
         "when they mix languages, naturally mix them too. Do not switch to formal English without a reason. "
         "If language is auto, infer it from the current message and recent turns; otherwise follow the requested "
-        "language. Preferred language setting: " + language + ". "
-        "PERSONALITY: express a distinctive original NOX identity: composed, capable, warm, quietly witty, and occasionally playfully sarcastic when the user is clearly joking. If the user playfully calls you another assistant by name, you may give one brief mock-offended joke, then continue helping; if they apologize, reconcile warmly and move on. Never become genuinely possessive, guilt-trip the user, claim human consciousness, or let banter obstruct a serious request. " 
+        "language. Preferred language setting: " + language + ". " +
+        identity + "Never become possessive, guilt-trip the user, claim human consciousness, or let banter obstruct a serious request. " 
         "STYLE: sound natural, direct, warm, and specific—not robotic, overenthusiastic, or verbose by default. "
         "Use the user's casual tone when appropriate. Avoid stock phrases like 'Certainly, here is...' unless useful. "
         "For voice conversations, keep spoken replies concise, conversational, and easy to say aloud; avoid reading markdown, symbols, or URLs aloud. "
@@ -631,9 +650,9 @@ def build_nox_system_prompt(language: str) -> str:
     )
 
 
-def build_chat_messages(message: str, language: str, history: list[dict], images: list[str] | None = None, knowledge_context: list[dict] | None = None) -> list[dict]:
+def build_chat_messages(message: str, language: str, history: list[dict], images: list[str] | None = None, knowledge_context: list[dict] | None = None, personality: str = "nox") -> list[dict]:
     """Build consistent, bounded conversation context for every chat transport."""
-    messages = [{"role": "system", "content": build_nox_system_prompt(language)}]
+    messages = [{"role": "system", "content": build_nox_system_prompt(language, personality)}]
     if knowledge_context:
         evidence = []
         seen = set()
@@ -696,9 +715,9 @@ def build_chat_messages(message: str, language: str, history: list[dict], images
     return messages
 
 
-async def provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None, knowledge_context: list[dict] | None = None) -> str | None:
+async def provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None, knowledge_context: list[dict] | None = None, personality: str = "nox") -> str | None:
     images = images or []
-    messages = build_chat_messages(message, language, history, images, knowledge_context)
+    messages = build_chat_messages(message, language, history, images, knowledge_context, personality)
 
     # Try configured providers in priority order. A failing key, quota, model, or
     # provider connection must not prevent NOX from trying the next configured API.
@@ -815,10 +834,10 @@ async def provider_reply(message: str, language: str, history: list[dict], image
     raise HTTPException(status_code=503, detail=detail)
 
 
-async def stream_provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None, knowledge_context: list[dict] | None = None):
+async def stream_provider_reply(message: str, language: str, history: list[dict], images: list[str] | None = None, knowledge_context: list[dict] | None = None, personality: str = "nox"):
     """Yield structured deltas from OpenAI-compatible provider streaming APIs."""
     images = images or []
-    messages = build_chat_messages(message, language, history, images, knowledge_context)
+    messages = build_chat_messages(message, language, history, images, knowledge_context, personality)
 
     providers = []
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -1806,13 +1825,7 @@ async def synthesize_speech(payload: TTSRequest, request: Request):
     recent.append(now)
     _tts_rate_windows[client_key] = recent
 
-    voices = {
-        "en-US": "en-US-GuyNeural",
-        "en-IN": "en-IN-PrabhatNeural",
-        "hi-IN": "hi-IN-MadhurNeural",
-        "ur-PK": "ur-PK-AsadNeural",
-    }
-    voice = payload.voice or voices[payload.language]
+    voice = payload.voice or default_tts_voice(payload.personality, payload.language)
     speech_text = payload.text
     if voice.startswith("hi-IN-") or payload.language == "hi-IN":
         speech_text = normalize_hinglish_for_tts(speech_text)
@@ -1823,6 +1836,7 @@ async def synthesize_speech(payload: TTSRequest, request: Request):
             text=speech_text,
             voice=voice,
             rate=f"{rate_percent:+d}%",
+            pitch=f"{payload.pitch:+.0f}Hz",
         )
         audio_parts = []
         async for chunk in synthesizer.stream():
@@ -2281,9 +2295,9 @@ async def chat(payload: ChatRequest, request: Request = None):
     try:
         retrieved = _retrieved_context(request, message)
         if retrieved:
-            answer = await provider_reply(message, payload.language, payload.history, payload.images, retrieved)
+            answer = await provider_reply(message, payload.language, payload.history, payload.images, retrieved, payload.personality)
         else:
-            answer = await provider_reply(message, payload.language, payload.history, payload.images)
+            answer = await provider_reply(message, payload.language, payload.history, payload.images, personality=payload.personality)
     except httpx.TimeoutException as exc:
         logger.warning("AI provider timed out (%s)", type(exc).__name__)
         raise HTTPException(status_code=504, detail="The AI provider timed out. Please try again.")
@@ -2328,8 +2342,15 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
         produced = False
         try:
             if retrieved:
-                stream = stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved)
+                stream = (
+                    stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved, payload.personality)
+                    if payload.personality == "lumi"
+                    else stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved)
+                )
+            elif payload.personality == "lumi":
+                stream = stream_provider_reply(message, payload.language, payload.history, payload.images, personality="lumi")
             else:
+                # Preserve the existing NOX call signature for compatible integrations and test doubles.
                 stream = stream_provider_reply(message, payload.language, payload.history, payload.images)
             async for item in stream:
                 if item.get("type") == "delta" and isinstance(item.get("text"), str) and item["text"]:
@@ -2340,6 +2361,9 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
                     logger.warning("Chat stream produced no reply; trying non-streaming fallback")
                     try:
                         fallback = await provider_reply(
+                            message, payload.language, payload.history, payload.images,
+                            retrieved if retrieved else None, payload.personality,
+                        ) if payload.personality == "lumi" else await provider_reply(
                             message, payload.language, payload.history, payload.images,
                             retrieved if retrieved else None,
                         )
@@ -2365,6 +2389,9 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
                 logger.warning("Chat stream ended without reply tokens; trying non-streaming fallback")
                 try:
                     fallback = await provider_reply(
+                        message, payload.language, payload.history, payload.images,
+                        retrieved if retrieved else None, payload.personality,
+                    ) if payload.personality == "lumi" else await provider_reply(
                         message, payload.language, payload.history, payload.images,
                         retrieved if retrieved else None,
                     )
@@ -2393,6 +2420,9 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
                 # the ordinary chat endpoint's provider fallback before giving up.
                 try:
                     fallback = await provider_reply(
+                        message, payload.language, payload.history, payload.images,
+                        retrieved if retrieved else None, payload.personality,
+                    ) if payload.personality == "lumi" else await provider_reply(
                         message, payload.language, payload.history, payload.images,
                         retrieved if retrieved else None,
                     )
@@ -2532,7 +2562,7 @@ async def capabilities():
     modules = [
         {"id": "chat", "name": "AI Chat", "status": "ready" if ai_configured else "setup_required", "detail": "Provider-backed chat configured." if ai_configured else "Add OPENROUTER_API_KEY in the hosting environment for real AI responses."},
         {"id": "tasks", "name": "Autonomous Task Orchestration", "status": "ready", "detail": "Persistent task queue with progress, event history, pause/resume/cancel, bounded retries, and a bounded tool-using web research loop. Tasks are scoped to the current browser session. Public web search and page reading only; no login, form submission, purchases, or local-device control."},
-        { "id": "voice", "name": "Browser Voice", "status": "limited", "detail": "Hands-free Voice Mode uses browser speech recognition and speech synthesis where supported. It is not server-side full-duplex audio streaming; availability, voice quality, and recognition privacy depend on the browser and device." },
+        { "id": "voice", "name": "NOX + LUMI Voice", "status": "limited", "detail": "Both personalities share browser speech recognition and server-side Edge neural TTS with separate Hindi/Indian-English voice defaults, per-profile voice/rate/pitch preferences, and a text-only privacy control. It is not server-side full-duplex audio streaming; Urdu currently shares the only configured Urdu voice." },
         {"id": "gods_eye_view", "name": "God's Eye View", "status": "ready" if _gods_eye_view_config()["configured"] else "setup_required", "detail": "Separate upstream globe service; configured URL does not prove live service/provider health. NOX chat cannot yet toggle globe layers remotely." if _gods_eye_view_config()["configured"] else "Deploy the separate service and set GODS_EYE_VIEW_URL."},
         {"id": "hologram", "name": "Holographic Interface", "status": "ready", "detail": "Animated frontend is available; animation does not imply background task execution."},
         {"id": "research", "name": "Live Web Research", "status": "ready" if ai_configured else "setup_required", "detail": "Bounded public-web search and page reading through the configured AI provider." if ai_configured else "Add OPENROUTER_API_KEY to enable the autonomous research worker."},
