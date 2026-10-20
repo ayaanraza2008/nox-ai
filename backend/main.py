@@ -355,6 +355,16 @@ def normalize_hinglish_for_tts(text: str) -> str:
     return re.sub(r"\b[a-zA-Z]+\b", replace_word, text)
 
 
+def default_tts_voice(personality: str, language: str) -> str:
+    """Return a voice ID from the project's existing, explicitly supported Edge TTS voice set."""
+    profiles = {
+        "nox": {"en-US": "en-US-GuyNeural", "en-IN": "en-IN-PrabhatNeural", "hi-IN": "hi-IN-MadhurNeural", "ur-PK": "ur-PK-AsadNeural"},
+        "lumi": {"en-US": "en-IN-NeerjaNeural", "en-IN": "en-IN-NeerjaNeural", "hi-IN": "hi-IN-SwaraNeural", "ur-PK": "ur-PK-AsadNeural"},
+    }
+    selected = profiles.get(personality, profiles["nox"])
+    return selected.get(language, selected["en-US"])
+
+
 class TaskCreateRequest(BaseModel):
     goal: str = Field(min_length=3, max_length=6000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
@@ -603,7 +613,7 @@ def build_nox_system_prompt(language: str, personality: str = "nox") -> str:
         "PERSONALITY: You are LUMI, a female-voiced AI companion with a warm, sweet, expressive, cute-but-mature and intelligent conversational style. Use gentle enthusiasm, natural humor and contextual empathy when appropriate, without repetitive pet names, forced cheerfulness, excessive flirting, or childish behavior. Remain fully capable in serious and technical conversations. Never claim to literally experience human emotions or manipulate the user. "
     )
     return (
-        "You are NOX, a capable conversational assistant. Your first job is to understand the user's "
+        "You are the selected NOX AI personality. Your first job is to understand the user's "
         "actual message and answer THAT message directly. Relevance is more important than sounding impressive. "
         "Before answering, silently identify the user's intent, the specific question or task, and any reference "
         "to earlier turns. Answer the main question first; do not give a generic introduction, unrelated advice, "
@@ -1815,11 +1825,7 @@ async def synthesize_speech(payload: TTSRequest, request: Request):
     recent.append(now)
     _tts_rate_windows[client_key] = recent
 
-    profiles = {
-        "nox": {"en-US": "en-US-GuyNeural", "en-IN": "en-IN-PrabhatNeural", "hi-IN": "hi-IN-MadhurNeural", "ur-PK": "ur-PK-AsadNeural"},
-        "lumi": {"en-US": "en-IN-NeerjaNeural", "en-IN": "en-IN-NeerjaNeural", "hi-IN": "hi-IN-SwaraNeural", "ur-PK": "ur-PK-AsadNeural"},
-    }
-    voice = payload.voice or profiles[payload.personality][payload.language]
+    voice = payload.voice or default_tts_voice(payload.personality, payload.language)
     speech_text = payload.text
     if voice.startswith("hi-IN-") or payload.language == "hi-IN":
         speech_text = normalize_hinglish_for_tts(speech_text)
