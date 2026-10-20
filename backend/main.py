@@ -415,11 +415,21 @@ def _prioritize_providers(providers: list[dict]) -> list[dict]:
 
 
 def _stream_retry_provider(provider: dict, status_code: int | None = None, connection_failure: bool = False) -> dict | None:
-    """Return one bounded streaming retry or an OpenRouter free-model fallback."""
+    """Return a bounded retry, then try OpenRouter's free router for model-specific failures."""
+    transient = status_code in (408, 429, 500, 502, 503, 504)
+    if (transient or connection_failure) and not provider.get("_stream_retried"):
+        retry = dict(provider)
+        retry["_stream_retried"] = True
+        return retry
+
+    # A configured OpenRouter model may be unavailable even when the provider itself
+    # is reachable. After a single transient retry, allow one free-router fallback too.
+    model_rejected = status_code in (400, 404, 422)
+    transient_retry_exhausted = transient and provider.get("_stream_retried")
     if (
         provider.get("name") == "OpenRouter"
         and provider.get("model") != "openrouter/free"
-        and status_code in (400, 404, 422)
+        and (model_rejected or transient_retry_exhausted)
         and not provider.get("_stream_fallback_model")
     ):
         fallback = dict(provider)
@@ -427,12 +437,6 @@ def _stream_retry_provider(provider: dict, status_code: int | None = None, conne
         fallback["_stream_fallback_model"] = True
         fallback.pop("_stream_retried", None)
         return fallback
-
-    transient = status_code in (408, 429, 500, 502, 503, 504)
-    if (transient or connection_failure) and not provider.get("_stream_retried"):
-        retry = dict(provider)
-        retry["_stream_retried"] = True
-        return retry
     return None
 
 
