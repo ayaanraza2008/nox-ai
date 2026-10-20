@@ -243,3 +243,63 @@ async def github_publish(payload: PublishRequest, request: Request):
     return {"published": True, "branch": branch, "pull_request": pr.get("html_url"),
             "number": pr.get("number"), "state": pr.get("state"), "draft": pr.get("draft", True),
             "note": "Draft PR created. NOX did not merge it or deploy the application."}
+
+
+@router.get("/ci/runs")
+async def github_ci_runs(request: Request, limit: int = 10):
+    """Return a bounded summary of recent GitHub Actions runs for the configured base branch."""
+    _owner(request)
+    token, repo, base = _config()
+    limit = max(1, min(int(limit), 20))
+    async with httpx.AsyncClient(headers=_headers(token), timeout=15.0) as client:
+        data = await _request(client, "GET", f"{API}/repos/{repo}/actions/runs",
+                              params={"branch": base, "per_page": limit})
+    runs = []
+    for item in data.get("workflow_runs", [])[:limit]:
+        runs.append({
+            "id": item.get("id"),
+            "name": str(item.get("name") or "GitHub Actions")[:160],
+            "event": str(item.get("event") or "")[:40],
+            "status": item.get("status"),
+            "conclusion": item.get("conclusion"),
+            "branch": str(item.get("head_branch") or "")[:160],
+            "sha": str(item.get("head_sha") or "")[:40],
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("updated_at"),
+            "html_url": item.get("html_url"),
+            "run_number": item.get("run_number"),
+            "attempt": item.get("run_attempt"),
+        })
+    return {"repository": repo, "base_branch": base, "runs": runs,
+            "note": "Status comes from GitHub Actions metadata; it does not guarantee Render deployment or runtime health."}
+
+
+@router.get("/ci/runs/{run_id}")
+async def github_ci_run_detail(run_id: int, request: Request):
+    """Return bounded job/step status metadata for one workflow run in this repository."""
+    _owner(request)
+    token, repo, base = _config()
+    if run_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid workflow run ID.")
+    async with httpx.AsyncClient(headers=_headers(token), timeout=15.0) as client:
+        run = await _request(client, "GET", f"{API}/repos/{repo}/actions/runs/{run_id}")
+        if run.get("repository", {}).get("full_name", "").lower() not in ("", repo.lower()):
+            raise HTTPException(status_code=404, detail="Workflow run is not in the configured repository.")
+        jobs_data = await _request(client, "GET", f"{API}/repos/{repo}/actions/runs/{run_id}/jobs",
+                                   params={"per_page": 50})
+    jobs = []
+    for job in jobs_data.get("jobs", [])[:50]:
+        steps = []
+        for step in job.get("steps", [])[:80]:
+            steps.append({"name": str(step.get("name") or "Step")[:180],
+                          "status": step.get("status"), "conclusion": step.get("conclusion"),
+                          "number": step.get("number")})
+        jobs.append({"id": job.get("id"), "name": str(job.get("name") or "Job")[:180],
+                     "status": job.get("status"), "conclusion": job.get("conclusion"),
+                     "started_at": job.get("started_at"), "completed_at": job.get("completed_at"),
+                     "html_url": job.get("html_url"), "steps": steps})
+    return {"id": run.get("id"), "name": str(run.get("name") or "GitHub Actions")[:160],
+            "status": run.get("status"), "conclusion": run.get("conclusion"),
+            "branch": run.get("head_branch"), "sha": run.get("head_sha"),
+            "html_url": run.get("html_url"), "jobs": jobs,
+            "note": "These are GitHub Actions job/step states, not a live deployment health check."}

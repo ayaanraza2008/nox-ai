@@ -68,6 +68,8 @@ jobs:
         run: node --check frontend/dist/nox-project-workspace.js
       - name: Validate GitHub bridge JavaScript syntax
         run: node --check frontend/dist/nox-github-bridge.js
+      - name: Validate GitHub CI dashboard JavaScript syntax
+        run: node --check frontend/dist/nox-github-ci.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

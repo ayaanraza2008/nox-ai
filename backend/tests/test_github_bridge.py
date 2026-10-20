@@ -40,6 +40,11 @@ class GitHubBridgeValidationTests(unittest.TestCase):
         valid = "a" * 48
         self.assertEqual(bridge._owner(SimpleNamespace(cookies={"nox_session": valid})), valid)
 
+    def test_ci_endpoints_are_registered(self):
+        paths = {route.path for route in bridge.router.routes}
+        self.assertIn("/api/github/ci/runs", paths)
+        self.assertIn("/api/github/ci/runs/{run_id}", paths)
+
     def test_repository_and_token_are_not_required_to_import_module(self):
         # Configuration is checked at request time, so NOX can boot without GitHub secrets.
         self.assertTrue(hasattr(bridge, "router"))
