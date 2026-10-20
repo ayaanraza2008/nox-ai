@@ -95,7 +95,7 @@ class LiveBrowserIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await session.run_action("fill", value="Search", text="NOX test")
                 await session.run_action("click", value="More")
                 report = await session.run_action("inspect")
-                self.assertEqual(report["page_title"], "NOX Browser Test")
+                self.assertIn("Title: NOX Browser Test", report["result"])
                 self.assertIn("clicked", report["result"])
                 screenshot = await session.screenshot()
                 self.assertTrue(screenshot.startswith(b"\x89PNG\r\n\x1a\n"))
