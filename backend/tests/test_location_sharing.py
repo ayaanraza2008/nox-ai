@@ -111,6 +111,19 @@ class LocationSharingTests(unittest.TestCase):
                 location.update_location("", 0, 0, 10)
         self.assertEqual(caught.exception.status_code, 401)
 
+    def test_dashboard_requires_authenticated_nox_account(self):
+        from starlette.requests import Request
+        from backend import main
+        request = Request({
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+            "method": "GET", "scheme": "https", "path": "/api/location/devices",
+            "raw_path": b"/api/location/devices", "query_string": b"",
+            "headers": [], "client": ("testclient", 1234), "server": ("test", 443),
+        })
+        with self.assertRaises(HTTPException) as caught:
+            main._location_account_owner(request)
+        self.assertEqual(caught.exception.status_code, 401)
+
     def test_rate_limit_blocks_excess_requests(self):
         key = "test-location-rate-limit"
         location._RATE_BUCKETS.pop(key, None)
