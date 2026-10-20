@@ -141,15 +141,15 @@
     row.append(male, female, preview, volume, status);
     controls.insertAdjacentElement("afterend", row);
     setVoiceGender(voiceGender(), false);
-    updateVoiceModeButtons(false);
+    updateVoiceModeButtons(null);
   }
 
   function updateVoiceModeButtons(active) {
     const voice = $("noxVoiceMode"), text = $("noxTextMode");
-    if (voice) voice.setAttribute("aria-pressed", active ? "true" : "false");
-    if (text) text.setAttribute("aria-pressed", active ? "false" : "true");
-    if (voice) voice.classList.toggle("primary", active);
-    if (text) text.classList.toggle("primary", !active);
+    if (voice) voice.setAttribute("aria-pressed", active === true ? "true" : "false");
+    if (text) text.setAttribute("aria-pressed", active === false ? "true" : "false");
+    if (voice) voice.classList.toggle("primary", active === true);
+    if (text) text.classList.toggle("primary", active === false);
   }
 
   function setVoiceGender(gender, persist = true) {
@@ -160,7 +160,7 @@
     if (female) female.setAttribute("aria-pressed", gender === "female" ? "true" : "false");
     // Auto lets the active voice profile select a provider-supported voice for each speech language.
     const selector = $("voiceChoice");
-    if (selector) selector.value = "auto";
+    if (selector && persist) selector.value = "auto";
     const status = $("noxVoicePreviewStatus");
     if (status) status.textContent = gender === "female" ? "Female profile selected. Urdu currently uses the provider's available Asad voice." : "Male profile selected.";
   }
