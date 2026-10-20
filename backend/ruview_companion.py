@@ -7,8 +7,10 @@ running on the same computer as the optional RuView installation.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +30,7 @@ def parse_capture_summary(output: str) -> dict[str, Any] | None:
         if not candidate:
             continue
         try:
-            parsed = __import__("json").loads(candidate)
+            parsed = json.loads(candidate)
         except (ValueError, TypeError):
             continue
         if isinstance(parsed, dict):
@@ -64,11 +66,11 @@ def parse_capture_summary(output: str) -> dict[str, Any] | None:
             "csi_rate_hz": numeric(rate),
             "csi_loss_fraction": numeric(loss),
             "synthetic": synthetic,
-            "quality": "synthetic" if synthetic is True else "observed" if synthetic is False and frame_count > 0 else "unknown",
+            "quality": "synthetic" if synthetic is True else "observed" if frame_count > 0 and (synthetic is False or str(node.get("source", "")) == "esp32") else "unknown",
         })
     return {
         "source": "ruview_esp32_csi_capture",
-        "captured_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "captured_at": datetime.now(timezone.utc).isoformat(),
         "nodes": summaries,
         "quality": "observed" if any(n["quality"] == "observed" for n in summaries) else
                    "synthetic" if summaries and all(n["quality"] == "synthetic" for n in summaries) else "unknown",
