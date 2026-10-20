@@ -807,11 +807,11 @@ async def task_event_stream(task_id: str, request: Request):
             updated_at = task.get("updated_at")
             if updated_at != last_updated:
                 last_updated = updated_at
-                yield "event: task\\ndata: " + json.dumps({"task": task}, ensure_ascii=False) + "\\n\\n"
+                yield "event: task\ndata: " + json.dumps({"task": task}, ensure_ascii=False) + "\n\n"
             if task.get("status") in ("completed", "failed", "cancelled"):
                 return
             if time.monotonic() - last_heartbeat >= 12:
-                yield ": keep-alive\\n\\n"
+                yield ": keep-alive\n\n"
                 last_heartbeat = time.monotonic()
             await asyncio.sleep(0.8)
 
