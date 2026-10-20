@@ -33,7 +33,7 @@
     <section class="nox-cyber-drawer" role="dialog" aria-modal="true" aria-labelledby="noxCyberTitle">
       <header class="nox-cyber-head"><div><div class="nox-cyber-kicker">DEFENSIVE SECURITY / LAB MODE</div><h2 id="noxCyberTitle">Cybersecurity Center</h2><p>Read-only review, scope checks and tool readiness.</p></div><button type="button" class="nox-cyber-close" aria-label="Close Cybersecurity Center">×</button></header>
       <div class="nox-cyber-content">
-        <section class="nox-cyber-card"><h3>Runtime & Tool Readiness</h3><p id="noxCyberStatusText">Checking server prerequisites…</p><div id="noxCyberTools"></div><p class="nox-cyber-help">This status describes the NOX API server, not your phone or PC. Active scans and local filesystem access require the local companion.</p><div class="nox-cyber-actions"><button id="noxCyberRefresh" class="nox-cyber-btn" type="button">Refresh status</button><button id="noxCyberExport" class="nox-cyber-btn" type="button">Export latest report</button></div></section>
+        <section class="nox-cyber-card"><h3>Runtime & Tool Readiness</h3><p id="noxCyberStatusText">Checking server prerequisites…</p><div id="noxCyberTools"></div><p class="nox-cyber-help">This status describes the NOX API server, not your phone or PC. Active scans and local filesystem access require the local companion.</p><div class="nox-cyber-actions"><button id="noxCyberRefresh" class="nox-cyber-btn" type="button">Refresh status</button><button id="noxCyberExport" class="nox-cyber-btn" type="button">Export latest report</button><button id="noxCyberAskNOX" class="nox-cyber-btn" type="button">Ask NOX about report</button></div></section>
         <section class="nox-cyber-card"><h3>Source Code Security Review</h3><p>Paste source code for bounded heuristic checks. The code is not executed or sent to an AI provider.</p><input id="noxCyberFilename" class="nox-cyber-input" maxlength="160" value="pasted-source" aria-label="Filename" placeholder="Filename (optional)"><textarea id="noxCyberSource" class="nox-cyber-area" maxlength="50000" placeholder="Paste code here (up to 50,000 characters)"></textarea><div class="nox-cyber-actions"><button id="noxCyberReview" class="nox-cyber-btn nox-cyber-primary" type="button">Review code</button></div><pre id="noxCyberReviewOutput" class="nox-cyber-output" hidden></pre></section>
         <section class="nox-cyber-grid">
           <div class="nox-cyber-card"><h3>Server Log Triage</h3><p>Find common authentication and service-error patterns.</p><textarea id="noxCyberLogs" class="nox-cyber-area" maxlength="100000" placeholder="Paste sanitized logs"></textarea><div class="nox-cyber-actions"><button id="noxCyberLogReview" class="nox-cyber-btn" type="button">Analyze logs</button></div><pre id="noxCyberLogOutput" class="nox-cyber-output" hidden></pre></div>
@@ -171,6 +171,26 @@
     if (!localScanId) throw new Error("There is no active local scan to cancel.");
     return localApi("/v1/cybersecurity/scans/cancel", { task_id: localScanId });
   }, "local-scan-cancel"));
+  $("noxCyberAskNOX").addEventListener("click", () => {
+    if (!latestReport) { $("noxCyberStatusText").textContent = "Run a review first; there is no report to discuss yet."; return; }
+    const data = latestReport.data || {};
+    const findings = Array.isArray(data.findings) ? data.findings.slice(0, 10).map(item =>
+      (item.severity || "INFO") + " " + (item.rule || item.check || "finding") + ": " + (item.recommendation || item.detail || "")
+    ) : [];
+    const summary = "Help me interpret and prioritize this NOX cybersecurity report. Report type: " + latestReport.type +
+      ". Findings: " + (data.finding_count ?? "not provided") + ". Severity counts: " +
+      JSON.stringify(data.severity_counts || {}) + ". Top recommendations: " + (findings.join(" | ") || "Please explain the report summary and limitations.") +
+      ". Treat results as heuristic leads, explain false-positive checks, and recommend defensive remediation. Do not run commands.";
+    const input = $("messageInput");
+    if (!input || !window.NOXMinimalHome || typeof window.NOXMinimalHome.openChat !== "function") {
+      $("noxCyberStatusText").textContent = "NOX Text Chat is not available in this page session.";
+      return;
+    }
+    window.NOXMinimalHome.openChat();
+    input.value = summary;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus({ preventScroll: true });
+  });
   $("noxCyberExport").addEventListener("click", () => {
     if (!latestReport) { $("noxCyberStatusText").textContent = "Run a review first; there is no report to export yet."; return; }
     const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), ...latestReport }, null, 2)], { type: "application/json" });
