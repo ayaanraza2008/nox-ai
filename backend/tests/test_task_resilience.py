@@ -9,6 +9,21 @@ from backend.task_manager import TaskManager
 
 
 class TaskResilienceTests(unittest.TestCase):
+    def test_unreachable_postgres_falls_back_without_crashing_and_stays_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env = {
+                "SUPABASE_DB_URL": "",
+                "DATABASE_URL": "postgresql://nox:test@db.invalid/nox",
+                "NOX_TASK_DB": os.path.join(temp_dir, "fallback.sqlite3"),
+            }
+            with patch.dict(os.environ, env, clear=False), patch("psycopg.connect", side_effect=OSError("database unavailable")):
+                manager = TaskManager(lambda goal, language, context: asyncio.sleep(0, result="unused"))
+                self.assertFalse(manager.use_postgres)
+                self.assertTrue(manager.emergency_storage_degraded)
+                self.assertTrue(manager.emergency_status("deploy-test-owner")["stopped"])
+                with self.assertRaisesRegex(RuntimeError, "database is unavailable"):
+                    asyncio.run(manager.resume_emergency_stop("deploy-test-owner"))
+
     def test_provider_timeout_fails_clearly_and_queue_continues(self):
         async def processor(goal, language, context):
             if goal == "slow task":
