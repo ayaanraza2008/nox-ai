@@ -1015,7 +1015,10 @@ async def resume_after_emergency_stop(request: Request):
     tasks = task_manager.list(limit=50, owner_id=owner_id)
     if any(t["status"] == "cancelling" for t in tasks):
         raise HTTPException(status_code=409, detail="Cleanup is still running. Wait until NOX reports STOPPED.")
-    result = await task_manager.resume_emergency_stop(owner_id)
+    try:
+        result = await task_manager.resume_emergency_stop(owner_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"state": "running", "stopped": result["stopped"],
             "message": "System resumed by explicit user action. Cancelled tasks remain cancelled."}
 
