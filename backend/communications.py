@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -322,9 +322,8 @@ async def gmail_callback(request: Request, code: str = "", state: str = "", erro
             (owner, "gmail", user["email"], _fernet().encrypt(json.dumps(tokens).encode()), json.dumps(scopes), utcnow(), utcnow()))
     _audit(owner, "connect", "connected", user["email"], "Google OAuth completed")
     # Redirect only to the configured NOX origin; never echo authorization codes or tokens.
-    base = os.getenv("NOX_PUBLIC_BASE_URL", "").strip().rstrip("/")
-    if not base:
-        base = str(request.base_url).rstrip("/")
+    configured_redirect = urlsplit(redirect_uri)
+    base = os.getenv("NOX_PUBLIC_BASE_URL", "").strip().rstrip("/") or f"{configured_redirect.scheme}://{configured_redirect.netloc}"
     if not (base.startswith("https://") or base.startswith("http://127.0.0.1")):
         raise HTTPException(503, "Set NOX_PUBLIC_BASE_URL to the HTTPS NOX origin for the post-OAuth redirect.")
     return RedirectResponse(url=base + "/?connected=gmail", status_code=303)
