@@ -209,9 +209,10 @@ class RuViewRunner:
     async def _collect_output(self, proc: asyncio.subprocess.Process) -> None:
         try:
             output, _ = await proc.communicate()
-            self._last_output = output.decode("utf-8", errors="replace")[-MAX_OUTPUT:]
+            decoded_output = output.decode("utf-8", errors="replace")
+            self._measurement_summary = parse_capture_summary(decoded_output)
+            self._last_output = decoded_output[-MAX_OUTPUT:]
             self._last_exit_code = proc.returncode
-            self._measurement_summary = parse_capture_summary(self._last_output)
         except Exception as exc:
             self._last_output = ("Could not collect RuView output: " + str(exc))[-MAX_OUTPUT:]
         finally:
