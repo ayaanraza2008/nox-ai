@@ -36,7 +36,7 @@ def audit_synthesis_citations(text: str, source_count: int) -> list[str]:
     """Check citation labels syntactically; this cannot prove that a citation supports a claim."""
     import re
 
-    found = {int(number) for number in re.findall(r"\\[E(\\d+)\\]", text or "")}
+    found = {int(number) for number in re.findall(r"\[E(\d+)\]", text or "")}
     valid = {number for number in found if 1 <= number <= min(3, max(0, source_count))}
     invalid = sorted(found - valid)
     warnings = []
