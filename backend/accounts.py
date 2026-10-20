@@ -569,6 +569,42 @@ def update_profile(token: str, full_name: str, username: str, country_code: str,
         conn.close()
 
 
+
+def update_email(token: str, email: str, password: str, client_key: str = "") -> dict:
+    email = (email or "").strip().casefold()
+    if not _EMAIL.fullmatch(email):
+        raise ValueError("Enter a valid email address.")
+    conn = _connect()
+    try:
+        row = conn.execute("""SELECT a.* FROM nox_account_sessions s JOIN nox_accounts a ON a.id=s.account_id
+            WHERE s.token_hash=%s AND s.revoked=0 AND s.expires_at>%s""",
+            (hashlib.sha256((token or "").encode()).hexdigest(), _iso(_now()))).fetchone()
+        if not row or not _password_matches(row, password):
+            raise ValueError("Password confirmation failed.")
+        if email == row["email"]:
+            return {"account": _public_account(row), "email_delivery": "unchanged"}
+        collision = conn.execute("SELECT id FROM nox_accounts WHERE email=%s AND id<>%s", (email, row["id"])).fetchone()
+        if collision:
+            raise ValueError("That email address is already in use.")
+        _rate_limit(conn, "email_update", row["id"] + ":" + client_key, 3, 3600)
+        now = _iso(_now())
+        conn.execute("UPDATE nox_accounts SET email=%s,email_verified=FALSE,status=CASE WHEN phone_verified THEN 'phone_verified' ELSE 'pending_verification' END,updated_at=%s WHERE id=%s",
+                     (email, now, row["id"]))
+        conn.execute("UPDATE nox_account_challenges SET consumed_at=%s WHERE account_id=%s AND purpose='email_verify' AND consumed_at IS NULL",
+                     (now, row["id"]))
+        conn.execute("UPDATE nox_account_sessions SET revoked=1 WHERE account_id=%s AND token_hash<>%s",
+                     (row["id"], hashlib.sha256(token.encode()).hexdigest()))
+        fresh = conn.execute("SELECT * FROM nox_accounts WHERE id=%s", (row["id"],)).fetchone()
+        delivery = _send_challenge(conn, fresh, "email_verify", "email", client_key)
+        conn.commit()
+        return {"account": _public_account(fresh), "email_delivery": delivery}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def logout(token: str) -> None:
     if not token:
         return
