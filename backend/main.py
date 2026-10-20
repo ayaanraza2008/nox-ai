@@ -7,7 +7,8 @@ import secrets
 import sqlite3
 import string
 import time
-from contextlib import contextmanager
+from collections import deque
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -36,6 +37,65 @@ import edge_tts
 logger = logging.getLogger("nox.provider")
 app = FastAPI(title="NOX AI API", version="0.1.0")
 ROOT = Path(__file__).resolve().parent.parent
+
+# Reuse outbound connections across chat requests to avoid repeated TLS handshakes.
+HTTP_CLIENT: httpx.AsyncClient | None = None
+PERFORMANCE_SAMPLES = deque(maxlen=500)
+
+
+@app.on_event("startup")
+async def _startup_http_client():
+    global HTTP_CLIENT
+    if HTTP_CLIENT is None or HTTP_CLIENT.is_closed:
+        HTTP_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(60.0, connect=8.0),
+            trust_env=True,
+            limits=httpx.Limits(max_connections=80, max_keepalive_connections=20, keepalive_expiry=30.0),
+        )
+
+
+@app.on_event("shutdown")
+async def _shutdown_http_client():
+    global HTTP_CLIENT
+    client, HTTP_CLIENT = HTTP_CLIENT, None
+    if client is not None and not client.is_closed:
+        await client.aclose()
+
+
+@asynccontextmanager
+async def _provider_http_client():
+    """Use the pooled app client, with a temporary fallback for direct unit-test calls."""
+    if HTTP_CLIENT is not None and not HTTP_CLIENT.is_closed:
+        yield HTTP_CLIENT
+        return
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(60.0, connect=8.0),
+        trust_env=True,
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=5, keepalive_expiry=20.0),
+    ) as client:
+        yield client
+
+
+@app.middleware("http")
+async def _measure_request_latency(request: Request, call_next):
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = (time.perf_counter() - started) * 1000
+        if request.url.path.startswith("/api/"):
+            route = request.scope.get("route")
+            route_name = getattr(route, "path", "/api/unmatched")
+            PERFORMANCE_SAMPLES.append((route_name, 500, duration_ms))
+        raise
+    duration_ms = (time.perf_counter() - started) * 1000
+    response.headers["X-NOX-Process-Time-Ms"] = f"{duration_ms:.1f}"
+    response.headers["Server-Timing"] = f"app;dur={duration_ms:.1f}"
+    if request.url.path.startswith("/api/") and request.url.path != "/api/performance":
+        route = request.scope.get("route")
+        route_name = getattr(route, "path", "/api/unmatched")
+        PERFORMANCE_SAMPLES.append((route_name, response.status_code, duration_ms))
+    return response
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 GODS_EYE_VIEW_REPOSITORY = "https://github.com/bilawalsidhu/gods-eye-view"
@@ -616,7 +676,7 @@ async def provider_reply(message: str, language: str, history: list[dict], image
         return None
 
     failures = []
-    async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=12.0), trust_env=True) as client:
+    async with _provider_http_client() as client:
         for provider in providers:
             headers = {
                 "Authorization": f"Bearer {provider['key']}",
@@ -629,6 +689,7 @@ async def provider_reply(message: str, language: str, history: list[dict], image
                         provider["url"],
                         headers=headers,
                         json={"model": provider["model"], "messages": messages, "temperature": 0.7},
+                        timeout=httpx.Timeout(45.0, connect=8.0),
                     )
                     if response.status_code < 400:
                         try:
@@ -736,7 +797,7 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
 
     failures = []
     pending = list(providers)
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=12.0), trust_env=True) as client:
+    async with _provider_http_client() as client:
         while pending:
             provider = pending.pop(0)
             produced = False
@@ -745,6 +806,7 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
                     "POST", provider["url"],
                     headers={"Authorization": f"Bearer {provider['key']}", "Content-Type": "application/json", **provider["headers"]},
                     json={"model": provider["model"], "messages": messages, "temperature": 0.7, "stream": True},
+                    timeout=httpx.Timeout(60.0, connect=8.0),
                 ) as response:
                     if response.status_code >= 400:
                         body = (await response.aread()).decode("utf-8", errors="replace")[:400]
@@ -1375,6 +1437,37 @@ async def delete_user_chat(chat_id: str, request: Request):
             PRIMARY KEY(user_id, chat_id))""")
         conn.execute("DELETE FROM user_chat_history WHERE user_id=? AND chat_id=?", (owner_id, chat_id))
     return {"status": "deleted", "chat_id": chat_id}
+
+
+@app.get("/api/performance")
+async def performance_metrics():
+    """Expose rolling, aggregate server timings without request contents or user identifiers."""
+    samples = list(PERFORMANCE_SAMPLES)
+    if not samples:
+        return {"sample_count": 0, "window_size": 500, "p50_ms": None, "p95_ms": None, "error_rate": None, "routes": []}
+    durations = sorted(sample[2] for sample in samples)
+    def percentile(values, fraction):
+        return round(values[min(len(values) - 1, max(0, int((len(values) - 1) * fraction)))], 1)
+    route_totals = {}
+    for route, status, duration in samples:
+        item = route_totals.setdefault(route, {"route": route, "count": 0, "errors": 0, "durations": []})
+        item["count"] += 1
+        item["errors"] += int(status >= 500)
+        item["durations"].append(duration)
+    routes = []
+    for item in route_totals.values():
+        values = sorted(item.pop("durations"))
+        routes.append({
+            "route": item["route"], "count": item["count"], "errors": item["errors"],
+            "p50_ms": percentile(values, 0.50), "p95_ms": percentile(values, 0.95),
+        })
+    routes.sort(key=lambda item: item["count"], reverse=True)
+    return {
+        "sample_count": len(samples), "window_size": 500,
+        "p50_ms": percentile(durations, 0.50), "p95_ms": percentile(durations, 0.95),
+        "error_rate": round(sum(1 for _, status, _ in samples if status >= 500) / len(samples), 4),
+        "routes": routes[:12],
+    }
 
 
 @app.get("/api/health")
