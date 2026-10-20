@@ -144,7 +144,7 @@
   trigger.type = "button";
   trigger.id = "noxFeatureTrigger";
   trigger.className = "iconbtn nox-feature-trigger";
-  trigger.innerHTML = '<span aria-hidden="true">☷</span> Features <span class="feature-count">17</span>';
+  trigger.innerHTML = '<span aria-hidden="true">☷</span> Features <span class="feature-count">' + groups.reduce((sum, group) => sum + group.ids.length, 0) + '</span>';
   trigger.setAttribute("aria-haspopup", "dialog");
   trigger.setAttribute("aria-expanded", "false");
   const topRight = document.querySelector(".topright");
