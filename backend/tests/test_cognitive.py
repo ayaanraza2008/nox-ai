@@ -1,7 +1,7 @@
 """Regression tests for NOX Cognitive Intelligence prompt preparation and pattern detection."""
 import unittest
 
-from backend.cognitive import build_cognitive_prompt, detect_repeated_patterns
+from backend.cognitive import build_cognitive_prompt, detect_repeated_patterns, split_pattern_samples
 
 
 class CognitiveIntelligenceTests(unittest.TestCase):
@@ -10,6 +10,10 @@ class CognitiveIntelligenceTests(unittest.TestCase):
         self.assertIn("at least two plausible explanations", prompt.lower())
         self.assertIn("hidden intentions", prompt)
         self.assertIn("Hinglish", prompt)
+
+    def test_pattern_samples_split_lines_and_sentences(self):
+        self.assertEqual(split_pattern_samples("Deploy failed\\nDeploy retried"), ["Deploy failed", "Deploy retried"])
+        self.assertEqual(split_pattern_samples("First failed. Second passed."), ["First failed.", "Second passed."])
 
     def test_pattern_detection_avoids_substring_false_positives(self):
         result = detect_repeated_patterns(["art", "partial"])

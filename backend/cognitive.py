@@ -55,6 +55,15 @@ def build_cognitive_prompt(mode: CognitiveMode, content: str, language: str = "a
     )
 
 
+
+def split_pattern_samples(content: str) -> list[str]:
+    """Split user-provided text into bounded lines/sentences for descriptive comparison."""
+    lines = [line.strip() for line in str(content or "").splitlines() if line.strip()]
+    if len(lines) < 2:
+        lines = [part.strip() for part in re.split(r"(?<=[.!?。！？])\s+", str(content or "")) if part.strip()]
+    return lines[:200]
+
+
 _TOKEN = re.compile(r"[\w\u0900-\u097f\u0600-\u06ff]+", re.UNICODE)
 _STOP = {
     "the", "and", "that", "this", "with", "from", "have", "were", "was", "are", "for", "you", "your",

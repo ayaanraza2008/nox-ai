@@ -1791,6 +1791,10 @@ async def cognitive_analyze(payload: CognitiveAnalysisRequest):
         prompt = cognitive.build_cognitive_prompt(payload.mode, payload.content, payload.language)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    observed_patterns = None
+    if payload.mode == "patterns":
+        samples = cognitive.split_pattern_samples(payload.content)
+        observed_patterns = cognitive.detect_repeated_patterns(samples)
     try:
         analysis = await provider_reply(prompt, payload.language, [], None, None)
     except HTTPException:
@@ -1801,18 +1805,28 @@ async def cognitive_analyze(payload: CognitiveAnalysisRequest):
     except httpx.RequestError as exc:
         logger.warning("Cognitive analysis provider connection failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Cognitive analysis provider is unavailable.") from exc
-    if not analysis:
+    provider_status = "response_received"
+    if not analysis and payload.mode == "patterns":
+        analysis = (
+            "AI provider unavailable. The local repeated-token scan below is descriptive only; "
+            "it cannot interpret meaning, diagnose behavior, or establish causation."
+        )
+        provider_status = "unavailable_local_patterns_only"
+    elif not analysis:
         raise HTTPException(
             status_code=503,
             detail="Cognitive analysis needs a configured AI provider. Add a valid OpenRouter, Groq, or Gemini API key in Render.",
         )
-    return {
+    result = {
         "mode": payload.mode,
         "analysis": analysis,
         "profile_saved": False,
         "data_scope": "request_text_only",
-        "provider_status": "response_received",
+        "provider_status": provider_status,
     }
+    if observed_patterns is not None:
+        result["observed_patterns"] = observed_patterns
+    return result
 
 
 @app.post("/api/chat", response_model=ChatResponse)

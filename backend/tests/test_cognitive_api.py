@@ -28,6 +28,18 @@ class CognitiveAnalysisAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(args[1], "hinglish")
         self.assertEqual(args[2], [])
 
+    async def test_pattern_mode_returns_local_signals_without_provider(self):
+        with patch.object(main, "provider_reply", new=AsyncMock(return_value=None)):
+            result = await main.cognitive_analyze(CognitiveAnalysisRequest(
+                mode="patterns",
+                content="Deploy failed\nDeploy retried",
+                language="en",
+            ))
+        self.assertEqual(result["provider_status"], "unavailable_local_patterns_only")
+        self.assertEqual(result["observed_patterns"]["sample_count"], 2)
+        self.assertIn("not proof", result["observed_patterns"]["limitations"])
+        self.assertFalse(result["profile_saved"])
+
     async def test_missing_provider_returns_clear_service_error(self):
         with patch.object(main, "provider_reply", new=AsyncMock(return_value=None)):
             with self.assertRaises(HTTPException) as error:
