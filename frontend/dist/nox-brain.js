@@ -227,7 +227,7 @@
     });
     $("brainExportMemories")?.addEventListener("click", async () => {
       try {
-        const data = await api("/api/brain/memories?limit=200");
+        const data = await api("/api/brain/memories?limit=1000");
         const exportData = {
           exported_at: new Date().toISOString(),
           notice: "Contains only saved NOX memory entries. Store this file privately.",
