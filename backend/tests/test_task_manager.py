@@ -37,6 +37,25 @@ class TaskManagerStorageTests(unittest.TestCase):
                 asyncio.run(manager.create("Second research task", "en"))
                 self.assertEqual(len(manager.list(limit=1)), 1)
 
+
+    def test_unreachable_postgres_falls_back_to_sqlite_for_task_queue(self):
+        # A broken hosted DB must not prevent the whole FastAPI app from starting.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "tasks.sqlite3")
+            env = {
+                "NOX_TASK_DB": db_path,
+                "SUPABASE_DB_URL": "postgresql://nox:invalid@127.0.0.1:5432/nox",
+                "DATABASE_URL": "postgresql://nox:invalid@127.0.0.1:5432/nox",
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with patch("psycopg.connect", side_effect=OSError("database unavailable")):
+                    manager = TaskManager(unused_processor)
+
+                self.assertFalse(manager.use_postgres)
+                self.assertTrue(manager.emergency_storage_degraded)
+                created = asyncio.run(manager.create("Check temporary fallback", "en"))
+                self.assertIsNotNone(manager.get(created["id"]))
+
     def test_unknown_task_returns_none(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch.dict(os.environ, {"NOX_TASK_DB": os.path.join(temp_dir, "tasks.sqlite3")}, clear=False):
