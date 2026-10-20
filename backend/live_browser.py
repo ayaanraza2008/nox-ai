@@ -77,6 +77,39 @@ def plan_instruction(instruction: str) -> list[dict[str, str]]:
                 steps.extend(plan_instruction(part.strip()))
         return steps[:MAX_STEPS_PER_TASK]
 
+    # Common site aliases avoid asking for a URL when the destination is unambiguous.
+    alias = re.fullmatch(
+        r"\\s*(?:nox[, ]*)?(?:open|visit|go to|navigate to)\\s+"
+        r"(youtube|google|wikipedia|github|reddit|stackoverflow|amazon|instagram|facebook|tiktok)"
+        r"(?:\\s+(?:and\\s+)?(?:search|find)\\s+(?:for\\s+)?(.+?))?\\s*",
+        text, re.I,
+    )
+    if alias:
+        site = alias.group(1).lower()
+        query = (alias.group(2) or "").strip().strip(" .?!")
+        base_urls = {
+            "youtube": "https://www.youtube.com/",
+            "google": "https://www.google.com/",
+            "wikipedia": "https://en.wikipedia.org/",
+            "github": "https://github.com/",
+            "reddit": "https://www.reddit.com/",
+            "stackoverflow": "https://stackoverflow.com/",
+            "amazon": "https://www.amazon.com/",
+            "instagram": "https://www.instagram.com/",
+            "facebook": "https://www.facebook.com/",
+            "tiktok": "https://www.tiktok.com/",
+        }
+        url = base_urls[site]
+        if query and site == "youtube":
+            url = "https://www.youtube.com/results?search_query=" + quote_plus(query)
+        elif query and site == "google":
+            url = "https://www.google.com/search?q=" + quote_plus(query)
+        elif query and site == "wikipedia":
+            url = "https://en.wikipedia.org/w/index.php?search=" + quote_plus(query)
+        elif query:
+            return [{"action": "clarify", "value": f"I can open {site.title()}, but I cannot safely assume its search interface. Open the site first, then tell me the exact search control label."}]
+        return [{"action": "navigate", "value": url}, {"action": "inspect", "value": ""}]
+
     # Explicit URL is the least ambiguous start point.
     urls = re.findall(r"https?://[^\s<>\"']+", text, re.I)
     if urls:
@@ -376,6 +409,10 @@ class BrowserSession:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
+                    if isinstance(exc, PermissionError) and self.stop_event.is_set():
+                        self.steps[index]["status"] = "cancelled"
+                        self.state = "cancelled"
+                        return
                     self.steps[index]["status"] = "failed"
                     self.steps[index]["error"] = str(exc)[:500]
                     self.error = str(exc)[:500]
