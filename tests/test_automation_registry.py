@@ -32,6 +32,7 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertEqual(registry["ios_app_control"]["status"], "not_implemented")
         self.assertEqual(registry["remote_browser_automation"]["status"], "implemented_with_setup")
         self.assertIn("verify_visible_page_change", registry["remote_browser_automation"]["actions"])
+        self.assertIn("research_public_sources_to_markdown_report", registry["remote_browser_automation"]["actions"])
         self.assertEqual(registry["authenticated_service_connectors"]["status"], "not_implemented")
 
 
