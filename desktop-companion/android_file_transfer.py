@@ -8,7 +8,7 @@ from __future__ import annotations
 import hmac
 import os
 import re
-import shutil
+import shlex
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,7 +28,7 @@ _ALLOWED_DIRS = {
     "Pictures": "/sdcard/Pictures",
     "Documents": "/sdcard/Documents",
 }
-_ALLOWED_PATH_RE = re.compile(r"^/sdcard/(?:Download|DCIM|Pictures|Documents)/[A-Za-z0-9._/-]{1,240}$")
+_ALLOWED_PATH_RE = re.compile(r"^/sdcard/(?:Download|DCIM|Pictures|Documents)/[A-Za-z0-9][A-Za-z0-9._ -]{0,179$")
 
 
 class PullRequest(BaseModel):
@@ -115,7 +115,7 @@ def pull_android_file(payload: PullRequest, x_nox_token: str | None = Header(def
             or remote.rsplit("/", 1)[-1] in {"", ".", ".."}):
         raise HTTPException(status_code=400, detail="Choose a file directly under Download, DCIM, Pictures, or Documents.")
     adb = _require_authorized_device(payload.serial)
-    check = _run_adb(adb, payload.serial, ["shell", "test", "-f", remote], timeout=8)
+    check = _run_adb(adb, payload.serial, ["shell", "test", "-f", shlex.quote(remote)], timeout=8)
     if check.returncode != 0:
         raise HTTPException(status_code=404, detail="The selected path is not a readable regular file.")
     transfer_dir = Path.home() / "Downloads" / "NOX-Device-Transfers"
