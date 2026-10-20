@@ -539,3 +539,6 @@ class BrowserAgent:
         if self.playwright:
             await self.playwright.stop()
         self.browser = self.playwright = None
+
+# Shared process-level agent used by the FastAPI browser routes.
+browser_agent = BrowserAgent()
