@@ -3,11 +3,15 @@
 Discovers apps from Windows Start Menu shortcuts. Only an explicit, confirmed,
 token-authenticated request can launch one discovered shortcut. No arbitrary shell.
 """
+import asyncio
 import hashlib
 import hmac
 import os
 import re
+import secrets
 import subprocess
+import threading
+from datetime import datetime, timezone
 
 import httpx
 import webbrowser
@@ -21,6 +25,14 @@ from pydantic import BaseModel, Field
 
 from device_control import discover_adb_devices, launch_android_app
 from emergency_state import EmergencyStopActive, get_state as get_emergency_state, run_managed_process, set_stopped as set_emergency_stopped
+
+try:
+    from cybersecurity_worker import CybersecurityError, CONFIRMATION as CYBER_SCAN_CONFIRMATION, discover_tools as discover_cyber_tools, scan_services as run_cyber_scan
+except ImportError:
+    CybersecurityError = ValueError
+    CYBER_SCAN_CONFIRMATION = "I OWN OR AM AUTHORIZED TO TEST THIS TARGET"
+    discover_cyber_tools = None
+    run_cyber_scan = None
 
 try:
     from home_assistant import execute_home_assistant_command
@@ -62,7 +74,7 @@ app.add_middleware(
 @app.middleware("http")
 async def enforce_local_emergency_stop(request: Request, call_next):
     """Fail closed for every mutating companion endpoint while locally stopped."""
-    exempt = {"/v1/emergency/stop", "/v1/emergency/resume"}
+    exempt = {"/v1/emergency/stop", "/v1/emergency/resume", "/v1/cybersecurity/scans/cancel"}
     if request.method == "POST" and request.url.path not in exempt:
         supplied = request.headers.get("X-NOX-Token", "")
         if not TOKEN or not hmac.compare_digest(supplied, TOKEN):
@@ -799,3 +811,104 @@ if __name__ == "__main__":
     print("Loopback-only local API. The paired relay supports only app opening and web search.")
     threading.Thread(target=pairing_worker, daemon=True, name="nox-pairing-relay").start()
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+
+
+# Local cybersecurity worker endpoints. These are loopback-only and token-authenticated.
+ACTIVE_CYBER_SCANS = {}
+MAX_ACTIVE_CYBER_SCANS = 3
+MAX_CYBER_SCAN_HISTORY = 30
+
+class CyberScanRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=253)
+    authorized: bool = False
+    scope_note: str = Field(min_length=10, max_length=500)
+    confirmation: str = Field(min_length=1, max_length=80)
+
+class CyberScanCancelRequest(BaseModel):
+    task_id: str = Field(min_length=8, max_length=80)
+
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat()
+
+@app.get("/v1/cybersecurity/status")
+def local_cybersecurity_status(x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    return {
+        "status": "ok",
+        "system": os.name,
+        "active_scan_adapter_available": run_cyber_scan is not None,
+        "tools": discover_cyber_tools() if discover_cyber_tools else [],
+        "note": "This is the local companion machine. Tool discovery does not execute tools.",
+    }
+
+async def _run_cyber_scan_task(task_id: str, request: CyberScanRequest, cancel_event):
+    record = ACTIVE_CYBER_SCANS[task_id]
+    record["status"] = "running"
+    record["started_at"] = _utc_now()
+    try:
+        if run_cyber_scan is None:
+            result = {"status": "unavailable", "message": "The local cybersecurity worker is not installed."}
+        else:
+            result = await asyncio.to_thread(
+                run_cyber_scan,
+                request.target,
+                authorized=request.authorized,
+                scope_note=request.scope_note,
+                confirmation=request.confirmation,
+                cancel_event=cancel_event,
+            )
+        record["result"] = result
+        record["status"] = result.get("status", "error")
+    except CybersecurityError as exc:
+        record["status"] = "rejected"
+        record["result"] = {"status": "rejected", "message": str(exc)}
+    except Exception as exc:
+        record["status"] = "error"
+        record["result"] = {"status": "error", "message": "Local scan failed (" + type(exc).__name__ + "). Check companion logs."}
+    finally:
+        record["finished_at"] = _utc_now()
+
+@app.post("/v1/cybersecurity/scans")
+async def local_cybersecurity_scan(request: CyberScanRequest, x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    if get_emergency_state()["stopped"]:
+        raise HTTPException(status_code=423, detail="Local NOX Emergency Stop is latched.")
+    if run_cyber_scan is None:
+        raise HTTPException(status_code=501, detail="Local cybersecurity worker is unavailable.")
+    active = sum(1 for item in ACTIVE_CYBER_SCANS.values() if item.get("status") in ("queued", "running"))
+    if active >= MAX_ACTIVE_CYBER_SCANS:
+        raise HTTPException(status_code=429, detail="The local companion already has the maximum number of active security scans.")
+    if request.confirmation != CYBER_SCAN_CONFIRMATION:
+        raise HTTPException(status_code=400, detail="Exact authorization confirmation is required.")
+    task_id = secrets.token_urlsafe(12)
+    cancel_event = threading.Event()
+    ACTIVE_CYBER_SCANS[task_id] = {
+        "task_id": task_id, "status": "queued", "created_at": _utc_now(),
+        "target": request.target.strip(), "cancel_event": cancel_event, "result": None,
+    }
+    record["runner"] = asyncio.create_task(_run_cyber_scan_task(task_id, request, cancel_event))
+    finished = [key for key, item in ACTIVE_CYBER_SCANS.items() if item.get("status") not in ("queued", "running")]
+    while len(ACTIVE_CYBER_SCANS) > MAX_CYBER_SCAN_HISTORY and finished:
+        ACTIVE_CYBER_SCANS.pop(finished.pop(0), None)
+    return {"status": "queued", "task_id": task_id, "target": request.target.strip(),
+            "message": "Scan queued on this local computer. Poll its status or cancel it at any time."}
+
+@app.get("/v1/cybersecurity/scans/{task_id}")
+def local_cybersecurity_scan_status(task_id: str, x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    record = ACTIVE_CYBER_SCANS.get(task_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Local security scan was not found or its history expired.")
+    return {key: value for key, value in record.items() if key not in {"cancel_event", "runner"}}
+
+@app.post("/v1/cybersecurity/scans/cancel")
+def local_cybersecurity_scan_cancel(request: CyberScanCancelRequest, x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    record = ACTIVE_CYBER_SCANS.get(request.task_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Local security scan was not found.")
+    if record.get("status") not in ("queued", "running"):
+        raise HTTPException(status_code=409, detail="Local security scan is already finished.")
+    record["cancel_event"].set()
+    record["status"] = "cancelling"
+    return {"status": "cancelling", "task_id": request.task_id, "message": "Cancellation requested; the local worker is stopping the process."}

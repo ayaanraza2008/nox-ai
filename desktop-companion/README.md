@@ -154,6 +154,17 @@ If ADB is missing, install Platform-Tools or set `NOX_ADB_PATH`. If the device i
 **Not implemented yet:** USB file push/pull endpoints, screen capture, generic screen tap/type automation, Bluetooth Classic/BLE scanning or GATT, automatic LAN discovery, one-tap ADB-over-Wi-Fi pairing, iOS control, and a dedicated NOX dashboard UI for these new local endpoints. The hosted Render backend cannot directly see a USB device attached to your PC; the local Windows companion must be installed and running.
 
 
+## Local cybersecurity scan endpoints
+
+The companion includes a token-authenticated local security adapter. It binds to loopback only and does not make these endpoints available through the hosted Render API.
+
+- `GET http://127.0.0.1:8765/v1/cybersecurity/status` — detects local tool paths and probes selected fixed --version flags with a two-second timeout; it does not start scans.
+- `POST http://127.0.0.1:8765/v1/cybersecurity/scans` — starts bounded Nmap service discovery. Requires JSON fields `target`, `authorized: true`, a `scope_note` of at least 10 characters, and the exact confirmation `I OWN OR AM AUTHORIZED TO TEST THIS TARGET`.
+- `GET http://127.0.0.1:8765/v1/cybersecurity/scans/TASK_ID` — polls a scan's actual result.
+- `POST http://127.0.0.1:8765/v1/cybersecurity/scans/cancel` with JSON `{"task_id":"TASK_ID"}` — requests cancellation.
+
+Every request requires `X-NOX-Token`. Nmap must already be installed. The adapter scans at most the top 100 ports with service detection, conservative timing, a 45-second hard limit, and bounded output. By default it accepts private/local lab IPs and local lab names; other hosts require an exact comma-separated `NOX_CYBER_ALLOWED_HOSTS` entry. Configure only assets you administer and have explicit permission to assess. This is not a vulnerability exploit engine. Emergency Stop blocks starting new scans, but authenticated cancellation remains available.
+
 ## Emergency Stop and Windows tray controls
 
 Install the current optional tray dependencies with the companion requirements:
