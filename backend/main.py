@@ -91,6 +91,10 @@ class BrainReviewRequest(BaseModel):
     decision: Literal["approved", "rejected"]
 
 
+class BrainMemoryReviewRequest(BaseModel):
+    decision: Literal["revalidate", "mark_stale"]
+
+
 class BrainProposalRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     summary: str = Field(min_length=1, max_length=1500)
@@ -1428,6 +1432,16 @@ async def brain_memories_delete(memory_id: str, request: Request):
     if not brain.delete_memory(session_owner(request), memory_id):
         raise HTTPException(status_code=404, detail="Memory not found.")
     return {"deleted": True, "memory_id": memory_id}
+
+
+@app.post("/api/brain/memories/{memory_id}/review")
+async def brain_memories_review(memory_id: str, payload: BrainMemoryReviewRequest, request: Request):
+    if not re.fullmatch(r"[a-f0-9]{32}", memory_id):
+        raise HTTPException(status_code=400, detail="Invalid memory ID.")
+    result = _brain_call(brain.review_memory, session_owner(request), memory_id, payload.decision)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Memory not found.")
+    return result
 
 
 @app.post("/api/brain/device-context")
