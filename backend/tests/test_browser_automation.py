@@ -1,6 +1,6 @@
 """Regression tests for remote browser destination safety."""
 import unittest
-from backend.browser_automation import BrowserAgent, BrowserAgentError, page_state_changed, unwrap_search_result_url
+from backend.browser_automation import BrowserAgent, BrowserAgentError, page_state_changed, unwrap_search_result_url, extractive_summary, shared_source_terms
 
 class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_non_http_scheme(self):
@@ -37,6 +37,27 @@ class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_search_result_strips_fragment(self):
         self.assertEqual(unwrap_search_result_url("https://example.com/page#section"), "https://example.com/page")
+
+    async def test_extractive_summary_prefers_topic_relevant_sentences(self):
+        text = (
+            "Quantum computing systems use quantum bits to represent information and solve selected problems. "
+            "Researchers also study quantum error correction to reduce noise in quantum processors. "
+            "The local football team won its match after a late goal."
+        )
+        summary = extractive_summary(text, "quantum computing")
+        self.assertTrue(summary)
+        self.assertTrue(any("Quantum computing" in sentence for sentence in summary))
+
+    async def test_shared_terms_only_include_terms_present_in_multiple_sources(self):
+        sources = [
+            {"text": "Quantum processors need error correction and stable hardware."},
+            {"text": "Error correction helps quantum processors manage noise."},
+            {"text": "Gardening soil needs water and sunlight."},
+        ]
+        terms = shared_source_terms(sources)
+        self.assertIn("quantum", terms)
+        self.assertIn("processors", terms)
+        self.assertNotIn("gardening", terms)
 
     async def test_idle_state(self):
         result = await BrowserAgent().state("test-owner")
