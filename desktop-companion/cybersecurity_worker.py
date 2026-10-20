@@ -52,7 +52,7 @@ def validate_target(target: str, authorized: bool, scope_note: str) -> tuple[str
         raise CybersecurityError("Use a single host/IP, not a URL, path, or command.")
     try:
         address = ipaddress.ip_address(host)
-        if not _is_local_lab_ip(address)
+        if not _is_local_lab_ip(address):
             allowed = {v.strip().casefold().rstrip(".") for v in os.getenv("NOX_CYBER_ALLOWED_HOSTS", "").split(",") if v.strip()}
             if host not in allowed:
                 raise CybersecurityError("Public IP targets require an exact NOX_CYBER_ALLOWED_HOSTS entry.")
