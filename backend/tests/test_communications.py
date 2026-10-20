@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import unittest
 from email import message_from_bytes
@@ -32,11 +33,16 @@ class CommunicationAdapterTests(unittest.TestCase):
             with self.subTest(address=address), self.assertRaises(HTTPException):
                 communications._email_message(address, "Subject", "Body")
 
-    def test_send_requires_explicit_confirmation(self):
-        with self.assertRaises(HTTPException) as caught:
-            communications.EmailSendRequest(to="rahul@example.com", subject="Update", body="Hello")
-            # The API handler itself checks this flag before any network operation.
-            raise HTTPException(428, "Review and confirm before sending.")
+    def test_send_requires_explicit_confirmation_before_network_access(self):
+        from starlette.requests import Request
+        payload = communications.EmailSendRequest(to="rahul@example.com", subject="Update", body="Hello", confirmed=False)
+        request = Request({"type":"http","method":"POST","scheme":"http","server":("127.0.0.1",8000),
+                           "client":("127.0.0.1",1234),"path":"/api/connected/gmail/send",
+                           "raw_path":b"/api/connected/gmail/send","query_string":b"",
+                           "headers":[(b"cookie",b"nox_session=" + b"a"*40)]})
+        with patch.object(communications, "_gmail_request", side_effect=AssertionError("network must not be called")):
+            with self.assertRaises(HTTPException) as caught:
+                asyncio.run(communications.gmail_send(payload, request))
         self.assertEqual(caught.exception.status_code, 428)
 
     def test_token_encryption_key_is_required(self):
