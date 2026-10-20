@@ -35,6 +35,10 @@ class BrowserPlannerTests(unittest.TestCase):
         self.assertEqual(plan[0]["action"], "navigate")
         self.assertIn("free+open+source+browser+automation", plan[0]["value"])
 
+    def test_chained_commands_create_ordered_steps(self):
+        plan = live_browser.plan_instruction("open https://example.com then inspect this page then scroll down")
+        self.assertEqual([step["action"] for step in plan], ["navigate", "inspect", "scroll"])
+
     def test_click_and_fill_commands_are_explicit(self):
         self.assertEqual(live_browser.plan_instruction('click "Sign in"')[0]["value"], "Sign in")
         fill = live_browser.plan_instruction('type "sample text" into "Search"')[0]
