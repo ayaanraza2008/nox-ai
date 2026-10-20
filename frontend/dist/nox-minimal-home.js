@@ -20,6 +20,10 @@
     .nox-home-control{position:fixed;z-index:5000;display:flex;align-items:center;justify-content:center;gap:9px;min-height:48px;border:1px solid rgba(113,234,255,.4);border-radius:16px;background:linear-gradient(135deg,rgba(12,29,47,.94),rgba(17,17,40,.94));color:#e8faff;box-shadow:0 10px 40px #0007,0 0 26px rgba(79,211,255,.09);backdrop-filter:blur(18px);font:750 11px/1 ui-monospace,monospace;letter-spacing:.11em;padding:0 18px;cursor:pointer;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
     .nox-home-control:hover,.nox-home-control:focus-visible{transform:translateY(-2px);border-color:#71eaff;box-shadow:0 12px 42px #0008,0 0 28px rgba(79,211,255,.18)}
     .nox-home-control .control-icon{font-size:17px;line-height:1}
+    .nox-emergency-control{top:74px!important;right:12px!important;bottom:auto!important;max-width:calc(100vw - 24px)!important;z-index:6000!important}
+    .nox-emergency-control button{padding:8px 10px!important;font-size:9px!important}
+    .nox-emergency-status{min-width:60px!important;font-size:8px!important}
+
     #noxVoiceHome{left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);min-width:174px;min-height:54px;border-radius:999px;background:linear-gradient(115deg,rgba(14,47,64,.97),rgba(31,24,67,.97));border-color:#71eaff88;box-shadow:0 8px 38px #0008,0 0 30px #56ddff17}
     #noxVoiceHome:hover{transform:translate(-50%,-2px)}
     #noxVoiceHome[data-active="true"]{border-color:#9fffe0;box-shadow:0 0 0 1px #9fffe055,0 0 32px #62e9cb30}
