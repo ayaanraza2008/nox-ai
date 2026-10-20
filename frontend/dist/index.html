@@ -41,6 +41,14 @@
   <div class="brain-form-row"><input id="brainDeviceLabel" maxlength="80" value="This browser" aria-label="Device label"><button class="secondary" id="brainDiscoverDevice" type="button">Share capabilities</button></div>
   <div id="brainDeviceList" class="brain-memory-list"><div class="tiny">No capability summary shared yet.</div></div>
   <div class="divider"></div>
+  <div class="brain-section-title">Evaluate a completed task</div>
+  <label class="brain-label" for="brainOutcomeType">Task type</label><input id="brainOutcomeType" maxlength="1500" placeholder="e.g. frontend build fix">
+  <label class="brain-label" for="brainOutcomeGoal">Requested outcome</label><input id="brainOutcomeGoal" maxlength="1500" placeholder="What was supposed to happen?">
+  <label class="brain-label" for="brainOutcomeResult">Actual result</label><textarea id="brainOutcomeResult" rows="2" maxlength="1500" placeholder="What happened, including failures?"></textarea>
+  <label class="brain-label" for="brainOutcomeEvidence">Evidence / test result (optional)</label><input id="brainOutcomeEvidence" maxlength="2000" placeholder="Test command and observed result; no secrets">
+  <div class="brain-form-row"><select id="brainOutcomeStatus" aria-label="Task outcome"><option value="succeeded">Succeeded</option><option value="partial">Partial</option><option value="failed">Failed</option></select><button class="secondary" id="brainRecordOutcome" type="button">Record outcome</button></div>
+  <p class="footnote">An outcome is not automatically promoted to verified memory. Evidence must be reviewed before reuse as a durable lesson.</p>
+  <div class="divider"></div>
   <div class="brain-section-title">Improvement proposals</div><p class="footnote">NOX can record proposals for review. It does not silently rewrite its production code or permissions.</p>
   <div id="brainProposalList" class="brain-memory-list"><div class="tiny">Loading proposals…</div></div>
   <button class="secondary" id="brainRefresh" type="button" style="width:100%;margin-top:8px">Refresh brain status</button>
