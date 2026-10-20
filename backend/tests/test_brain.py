@@ -1,6 +1,7 @@
 """Regression tests for NOX's privacy-first operational brain."""
 import tempfile
 import unittest
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,8 +13,11 @@ class BrainMemoryTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.db_patch = patch.object(brain, "DB_PATH", Path(self.temp.name) / "brain.sqlite3")
         self.db_patch.start()
+        self.env_patch = patch.dict(os.environ, {"DATABASE_URL": "", "SUPABASE_DB_URL": ""})
+        self.env_patch.start()
 
     def tearDown(self):
+        self.env_patch.stop()
         self.db_patch.stop()
         self.temp.cleanup()
 
@@ -47,9 +51,10 @@ class BrainMemoryTests(unittest.TestCase):
             brain.remember("session-a", content="My password is hunter2", category="preference")
         self.assertEqual(brain.list_memories("session-a")["count"], 0)
 
-    def test_temporary_memory_has_maximum_seven_day_retention(self):
-        saved = brain.remember("session-a", content="Temporary deploy window", category="temporary", retention_days=365)
-        self.assertLessEqual(saved["memory"]["retention_days"], 7)
+    def test_saved_memories_never_expire_automatically(self):
+        saved = brain.remember("session-a", content="Temporary deploy window", category="temporary", retention_days=1)
+        self.assertIsNone(saved["memory"]["expires_at"])
+        self.assertEqual(brain.list_memories("session-a")["count"], 1)
 
     def test_disabled_memory_blocks_writes_and_retrieval(self):
         brain.update_settings("session-a", {"enabled": False})
