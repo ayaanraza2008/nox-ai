@@ -233,7 +233,7 @@ def remember(owner_id: str, *, content: str, category: str, source: str = "user_
 
 
 def list_memories(owner_id: str, query: str = "", category: str | None = None, limit: int = 100) -> dict:
-    limit = min(max(int(limit), 1), 200)
+    limit = min(max(int(limit), 1), 1000)
     with _connect() as conn:
         _ensure_settings(conn, owner_id)
         conn.execute("DELETE FROM brain_memories WHERE owner_id=? AND expires_at IS NOT NULL AND expires_at < ?", (owner_id, now_iso()))
