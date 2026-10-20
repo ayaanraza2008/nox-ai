@@ -43,7 +43,10 @@ def _public_http_url(raw_url: str) -> str:
     if parsed.username or parsed.password:
         raise ValueError("URLs containing embedded credentials are not allowed.")
     host = parsed.hostname.rstrip(".").lower()
+    allow_local_tests = os.getenv("NOX_BROWSER_ALLOW_LOCAL_TESTS", "").strip() == "1"
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost") or host.endswith(".local"):
+        if allow_local_tests and host in {"localhost", "localhost.localdomain"}:
+            return value
         raise ValueError("Local and private network destinations are blocked by the browser safety policy.")
     try:
         addresses = {ipaddress.ip_address(host)}
@@ -52,6 +55,8 @@ def _public_http_url(raw_url: str) -> str:
             addresses = {ipaddress.ip_address(item[4][0]) for item in socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)}
         except (OSError, ValueError) as exc:
             raise ValueError("The website host could not be resolved.") from exc
+    if allow_local_tests and addresses and all(addr.is_loopback for addr in addresses):
+        return value
     if not addresses or any(not addr.is_global for addr in addresses):
         raise ValueError("Local, private, reserved, or non-public IP destinations are blocked.")
     return value
