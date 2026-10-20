@@ -132,7 +132,7 @@ class BrowserAgent:
         return {"available": self.available, "active": True, "session_id": s["id"], "status": s["status"], "task": s["task"],
                 "title": title, "url": url, "events": list(s["events"]), "pending_confirmation": bool(s["pending"]),
                 "last_verification": s.get("last_verification"),
-                "downloads": [{**item, "index": i} for i, item in enumerate(s["downloads"])[-10:]], "updated_at": s["updated_at"], "remote": True}
+                "downloads": [{**item, "index": i} for i, item in enumerate(s["downloads"][-10:], start=max(0, len(s["downloads"]) - 10))], "updated_at": s["updated_at"], "remote": True}
 
     async def screenshot(self, owner):
         s = self.sessions.get(owner)
