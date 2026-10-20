@@ -78,6 +78,8 @@ jobs:
         run: node --check frontend/dist/nox-brain.js
       - name: Validate NOX account JavaScript syntax
         run: node --check frontend/dist/nox-account.js
+      - name: Validate Visual Intelligence JavaScript syntax
+        run: node --check frontend/dist/nox-visual-intelligence.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
