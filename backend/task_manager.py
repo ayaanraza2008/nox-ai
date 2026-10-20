@@ -171,7 +171,7 @@ class TaskManager:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._init_db()
             with self._connect() as db:
-                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused') AND owner_id <> ''").fetchall()
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused','cancelling') AND owner_id <> ''").fetchall()
         for row in rows:
             item = self._row(row)
             if self.is_stopped(str(item.get("owner_id") or "")):
@@ -264,7 +264,7 @@ class TaskManager:
         with self._connect() as db:
             row = db.execute("SELECT * FROM emergency_state WHERE owner_id=?", (owner_id,)).fetchone()
         if not row:
-            return {"stopped": False, "stopped_at": None, "details": {}, "state_persistent": bool(self.use_postgres)}
+            return {"stopped": False, "stopped_at": None, "details": {}, "state_persistent": True}
         item = dict(row)
         try:
             details = json.loads(item.get("details") or "{}")
