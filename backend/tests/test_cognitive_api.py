@@ -28,6 +28,45 @@ class CognitiveAnalysisAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(args[1], "hinglish")
         self.assertEqual(args[2], [])
 
+    async def test_opt_in_knowledge_uses_only_session_owner_index_and_returns_source_ids(self):
+        request = object()
+        source = {
+            "title": "Personal notes", "text": "A habit tracking method",
+            "url": "https://example.org/notes", "filename": "notes.txt",
+            "source_type": "file",
+        }
+        with patch.object(main, "session_owner", return_value="owner-123") as owner, \
+             patch.object(main.knowledge, "search_knowledge", return_value={"results": [source]}) as search, \
+             patch.object(main, "provider_reply", new=AsyncMock(return_value="Evidence suggests [K1].")) as provider:
+            result = await main.cognitive_analyze(CognitiveAnalysisRequest(
+                mode="thinking", content="How can I improve my habit?", language="en", use_knowledge=True
+            ), request=request)
+        owner.assert_called_once_with(request)
+        search.assert_called_once_with("owner-123", "How can I improve my habit?", limit=4)
+        self.assertIn("AUTHORIZED KNOWLEDGE INDEX EVIDENCE", provider.await_args.args[0])
+        self.assertTrue(result["knowledge_used"])
+        self.assertTrue(result["knowledge_requested"])
+        self.assertEqual(result["knowledge_sources"][0]["citation_id"], "K1")
+        self.assertEqual(result["knowledge_sources"][0]["title"], "Personal notes")
+
+    async def test_knowledge_index_is_not_touched_without_explicit_opt_in(self):
+        with patch.object(main.knowledge, "search_knowledge") as search, \
+             patch.object(main, "provider_reply", new=AsyncMock(return_value="Text-only analysis.")):
+            result = await main.cognitive_analyze(CognitiveAnalysisRequest(
+                mode="behavior", content="A supplied situation.", language="en"
+            ))
+        search.assert_not_called()
+        self.assertFalse(result["knowledge_requested"])
+        self.assertFalse(result["knowledge_used"])
+        self.assertEqual(result["knowledge_sources"], [])
+
+    async def test_knowledge_opt_in_requires_browser_session(self):
+        with self.assertRaises(HTTPException) as error:
+            await main.cognitive_analyze(CognitiveAnalysisRequest(
+                mode="thinking", content="Find evidence", use_knowledge=True
+            ))
+        self.assertEqual(error.exception.status_code, 401)
+
     async def test_pattern_mode_returns_local_signals_without_provider(self):
         with patch.object(main, "provider_reply", new=AsyncMock(return_value=None)):
             result = await main.cognitive_analyze(CognitiveAnalysisRequest(

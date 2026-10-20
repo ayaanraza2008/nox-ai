@@ -110,6 +110,7 @@ class CognitiveAnalysisRequest(BaseModel):
     mode: Literal["behavior", "patterns", "bias", "omnivore", "thinking", "personality", "stoicism"]
     content: str = Field(min_length=1, max_length=12000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+    use_knowledge: bool = False
 
 class BrainMemoryCreate(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
@@ -1785,12 +1786,25 @@ async def knowledge_remove_source(source_id: str, request: Request):
 
 
 @app.post("/api/cognitive/analyze")
-async def cognitive_analyze(payload: CognitiveAnalysisRequest):
+async def cognitive_analyze(payload: CognitiveAnalysisRequest, request: Request = None):
     """Run an explicit, non-persistent cognitive analysis through configured NOX providers."""
     try:
         prompt = cognitive.build_cognitive_prompt(payload.mode, payload.content, payload.language)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    knowledge_sources = []
+    if payload.use_knowledge:
+        try:
+            if request is None:
+                raise HTTPException(status_code=401, detail="A browser session is required to search your Knowledge Index.")
+            owner_id = session_owner(request)
+            knowledge_sources = knowledge.search_knowledge(owner_id, payload.content, limit=4).get("results", [])
+            prompt = cognitive.append_knowledge_evidence(prompt, knowledge_sources)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Cognitive knowledge retrieval unavailable (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="Your Knowledge Index could not be searched. Please try again.") from exc
     observed_patterns = None
     if payload.mode == "patterns":
         samples = cognitive.split_pattern_samples(payload.content)
@@ -1823,6 +1837,15 @@ async def cognitive_analyze(payload: CognitiveAnalysisRequest):
         "profile_saved": False,
         "data_scope": "request_text_only",
         "provider_status": provider_status,
+        "knowledge_requested": payload.use_knowledge,
+        "knowledge_used": bool(knowledge_sources),
+        "knowledge_sources": [{
+            "citation_id": f"K{index}",
+            "title": str(source.get("title") or "Untitled source")[:200],
+            "url": str(source.get("url") or "")[:1000],
+            "filename": str(source.get("filename") or "")[:200],
+            "source_type": str(source.get("source_type") or "unknown")[:80],
+        } for index, source in enumerate(knowledge_sources, start=1)],
     }
     if observed_patterns is not None:
         result["observed_patterns"] = observed_patterns

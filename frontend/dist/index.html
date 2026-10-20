@@ -91,12 +91,13 @@ body[data-nox-brain-state="retrieving"] #corePanel,body[data-nox-brain-state="pl
     </select>
     <label for="cognitiveInput" class="eyebrow">YOUR QUESTION OR SUPPLIED MATERIAL</label>
     <textarea id="cognitiveInput" rows="5" maxlength="12000" required placeholder="Describe the situation, decision, text, or pattern you want to examine…" style="width:100%;resize:vertical"></textarea>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin:4px 0"><input id="cognitiveUseKnowledge" type="checkbox" style="margin-top:3px;flex:0 0 auto"><span><strong>Use my Knowledge Index</strong><br><span class="footnote">Optional. Search only your session-scoped indexed sources and show source references. Leave off for text-only analysis.</span></span></label>
     <button id="cognitiveRun" class="secondary" type="submit">Run cognitive analysis</button>
    </form>
    <div id="cognitiveStatus" class="footnote" role="status" aria-live="polite" style="margin-top:10px">Ready · uses your configured NOX AI provider</div>
    <div id="cognitiveOutput" class="researchresults" aria-live="polite" style="margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere">Your analysis will appear here.</div>
    <button id="cognitiveContinueChat" class="secondary" type="button" hidden style="margin-top:8px">Continue in Conversation Workspace</button>
-   <p class="footnote" style="margin-top:9px">Privacy: this workspace sends only the text you submit to the existing configured AI provider. It does not save a behavioral profile. Provider availability and response quality vary.</p>
+   <p class="footnote" style="margin-top:9px">Privacy: only submitted text is sent to the configured AI provider. Your Knowledge Index is searched only when you opt in; its matching snippets may be sent with your prompt. No behavioral profile is saved.</p>
   </div>
  </section>
  <section class="panel visual-workspace" id="visualIntelligencePanel">

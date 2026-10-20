@@ -5,11 +5,12 @@
   const form = $("cognitiveForm");
   const mode = $("cognitiveMode");
   const input = $("cognitiveInput");
+  const useKnowledge = $("cognitiveUseKnowledge");
   const run = $("cognitiveRun");
   const status = $("cognitiveStatus");
   const output = $("cognitiveOutput");
   const continueChat = $("cognitiveContinueChat");
-  if (!form || !mode || !input || !run || !status || !output || !continueChat) return;
+  if (!form || !mode || !input || !run || !status || !output || !continueChat || !useKnowledge) return;
 
   const languageValue = () => {
     const selected = $("language");
@@ -34,7 +35,7 @@
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: mode.value, content, language: languageValue() })
+        body: JSON.stringify({ mode: mode.value, content, language: languageValue(), use_knowledge: useKnowledge.checked })
       });
       let data = {};
       try { data = await response.json(); } catch (_) {}
@@ -52,9 +53,14 @@
           : "No exact repeated terms found across the supplied lines or sentences.");
         if (observed.limitations) parts.push(observed.limitations);
       }
+      if (data.knowledge_requested) {
+        const sources = Array.isArray(data.knowledge_sources) ? data.knowledge_sources : [];
+        parts.push("\n\nKNOWLEDGE INDEX SOURCES");
+        parts.push(sources.length ? sources.map(source => "[" + source.citation_id + "] " + source.title + (source.filename ? " — " + source.filename : "") + (source.url ? "\n" + source.url : "")).join("\n\n") : "No matching indexed sources were found for this query.");
+      }
       output.textContent = parts.join("\n\n");
       continueChat.hidden = false;
-      status.textContent = (data.provider_status === "response_received" ? "Response received" : "Local pattern scan only") + " · profile saved: no · scope: submitted text only";
+      status.textContent = (data.provider_status === "response_received" ? "Response received" : "Local pattern scan only") + " · knowledge used: " + (data.knowledge_used ? "yes" : (data.knowledge_requested ? "no matching sources" : "no")) + " · profile saved: no";
     } catch (error) {
       output.textContent = error && error.message ? error.message : "Unable to contact NOX Cognitive Intelligence.";
       continueChat.hidden = true;
