@@ -59,6 +59,23 @@ class KnowledgeSearchIntegrationTests(unittest.TestCase):
         self.assertEqual(result["results"], [])
         self.assertEqual(result["count"], 0)
 
+    def test_semantic_search_can_find_meaning_related_passage(self):
+        with patch.object(knowledge, "embed_texts", side_effect=lambda texts: [[1.0, 0.0] for _ in texts]):
+            knowledge.index_text(
+                "owner-a",
+                title="Plant biology",
+                text="Photosynthesis converts sunlight into chemical energy.",
+                source_type="upload",
+                filename="biology.txt",
+            )
+            result = knowledge.search_knowledge("owner-a", "how plants use sunlight", limit=6)
+
+        self.assertEqual(result["retrieval"], "hybrid_lexical_semantic")
+        self.assertEqual(result["semantic_embeddings"], "enabled")
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["title"], "Plant biology")
+        self.assertGreater(result["results"][0]["semantic_similarity"], 0.9)
+
     def test_empty_query_returns_no_results(self):
         result = knowledge.search_knowledge("owner-a", "   ")
 

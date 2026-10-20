@@ -1,7 +1,7 @@
 """Session-scoped document and public-web knowledge indexing for NOX AI.
 
-The first implementation deliberately uses SQLite FTS5 for dependable lexical retrieval.
-It does not pretend to provide vector embeddings or OAuth connectors.
+SQLite FTS5 provides lexical retrieval; optional configured embeddings add semantic ranking.
+OAuth connectors are not implemented by this module.
 """
 from __future__ import annotations
 

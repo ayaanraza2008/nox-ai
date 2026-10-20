@@ -27,10 +27,11 @@ def rank_knowledge_candidates(query: str, rows: list[dict]) -> list[dict]:
         body_tokens = set(_tokens(body))
         all_tokens = title_tokens | body_tokens
         matched = {term for term in terms if _term_matches(term, all_tokens)}
-        if not matched:
+        semantic_similarity = float(row.get("semantic_similarity") or 0.0)
+        if not matched and semantic_similarity < 0.15:
             continue
 
-        score = 0.0
+        score = 10.0 * semantic_similarity
         for term in terms:
             if _term_matches(term, body_tokens):
                 score += min(sum(1 for token in body_tokens if token == term or
@@ -42,7 +43,7 @@ def rank_knowledge_candidates(query: str, rows: list[dict]) -> list[dict]:
         if phrase and phrase in normalized_combined:
             score += 7.0
         item = dict(row)
-        item["relevance"] = round(len(matched) / max(1, len(terms)), 3)
+        item["relevance"] = round(max(len(matched) / max(1, len(terms)), semantic_similarity), 3)
         scored.append((score, str(row.get("updated_at") or ""), item))
     scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
     return [item for _, _, item in scored]
