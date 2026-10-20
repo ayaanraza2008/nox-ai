@@ -540,6 +540,48 @@ def audit_log(owner_id: str, limit: int = 50) -> list[dict]:
              "detail": json.loads(r["detail_json"]), "created_at": r["created_at"]} for r in rows]
 
 
+def transfer_owner_data(source_owner: str, target_owner: str) -> dict:
+    """Move a browser session's Brain records under a logged-in account ID."""
+    if not source_owner or not target_owner or source_owner == target_owner:
+        return {"memories_moved": 0}
+    moved = 0
+    with _connect() as conn:
+        source_settings = conn.execute("SELECT * FROM brain_settings WHERE owner_id=?", (source_owner,)).fetchone()
+        target_settings = conn.execute("SELECT * FROM brain_settings WHERE owner_id=?", (target_owner,)).fetchone()
+        if source_settings and not target_settings:
+            conn.execute(
+                "INSERT INTO brain_settings(owner_id,enabled,sync_mode,retention_days,categories_json,updated_at) VALUES(?,?,?,?,?,?)",
+                (target_owner, source_settings["enabled"], source_settings["sync_mode"], source_settings["retention_days"], source_settings["categories_json"], now_iso()),
+            )
+        else:
+            _ensure_settings(conn, target_owner)
+
+        old_memories = conn.execute("SELECT id,content_hash FROM brain_memories WHERE owner_id=?", (source_owner,)).fetchall()
+        for row in old_memories:
+            duplicate = conn.execute("SELECT id FROM brain_memories WHERE owner_id=? AND content_hash=?", (target_owner, row["content_hash"])).fetchone()
+            if duplicate:
+                conn.execute("DELETE FROM brain_memories WHERE owner_id=? AND id=?", (source_owner, row["id"]))
+            else:
+                conn.execute("UPDATE brain_memories SET owner_id=? WHERE owner_id=? AND id=?", (target_owner, source_owner, row["id"]))
+                moved += 1
+
+        # Resolve per-owner unique keys before moving devices and custom skills.
+        conn.execute(
+            "DELETE FROM brain_devices WHERE owner_id=? AND label IN (SELECT label FROM brain_devices WHERE owner_id=?)",
+            (source_owner, target_owner),
+        )
+        conn.execute(
+            "DELETE FROM brain_skills WHERE owner_id=? AND name IN (SELECT name FROM brain_skills WHERE owner_id=?)",
+            (source_owner, target_owner),
+        )
+        for table in ("brain_devices", "brain_outcomes", "brain_skills", "brain_proposals", "brain_audit"):
+            conn.execute(f"UPDATE {table} SET owner_id=? WHERE owner_id=?", (target_owner, source_owner))
+        conn.execute("DELETE FROM brain_settings WHERE owner_id=?", (source_owner,))
+        _audit(conn, target_owner, "session_memory_transferred", "account", detail={"memories_moved": moved})
+        conn.commit()
+    return {"memories_moved": moved}
+
+
 def overview(owner_id: str) -> dict:
     settings = get_settings(owner_id)
     with _connect() as conn:
