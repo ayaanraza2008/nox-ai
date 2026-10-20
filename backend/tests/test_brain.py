@@ -95,6 +95,53 @@ class BrainMemoryTests(unittest.TestCase):
         reviewed = brain.review_proposal("session-a", proposal["id"], "rejected")
         self.assertEqual(reviewed["status"], "rejected")
 
+
+    def test_restore_backup_merges_records_and_downgrades_imported_verification(self):
+        backup = {
+            "format": "nox-brain-backup",
+            "schema_version": 1,
+            "data": {
+                "memories": {"results": [{
+                    "content": "Prefer short Hinglish answers",
+                    "category": "preference",
+                    "source": "verified_lesson",
+                    "confidence": 1.0,
+                    "verification": "verified",
+                    "retention_days": 365
+                }]},
+                "devices": {"devices": [{"label": "Imported browser", "capabilities": {
+                    "platform": "Android", "online": True, "private_path": "/not-allowed"
+                }}]},
+                "skills": {"skills": [{
+                    "id": "custom-skill-id", "name": "safe-backup-restore",
+                    "purpose": "Restore safe records from a backup",
+                    "definition": {"inputs": ["backup"], "permissions": ["review"]}
+                }]},
+                "proposals": [{
+                    "title": "Imported improvement",
+                    "summary": "Review this imported proposal before applying it.",
+                    "proposal": {"kind": "workflow", "rollback_plan": "Revert changes"}
+                }]
+            }
+        }
+        result = brain.restore_backup("account-restore", backup)
+        self.assertEqual(result["memories_added"], 1)
+        self.assertEqual(result["devices_restored"], 1)
+        self.assertEqual(result["skills_restored"], 1)
+        self.assertEqual(result["proposals_restored"], 1)
+        memory = brain.list_memories("account-restore")["results"][0]
+        self.assertEqual(memory["verification"], "user_confirmed")
+        self.assertEqual(memory["source"], "approved_import")
+        self.assertIsNone(memory["expires_at"])
+        device = brain.list_devices("account-restore")[0]
+        self.assertNotIn("private_path", device["capabilities"])
+        self.assertEqual(brain.list_skills("account-restore")["skills"][-1]["status"], "proposed")
+        self.assertEqual(brain.list_proposals("account-restore")[0]["status"], "pending")
+
+    def test_restore_backup_rejects_unknown_schema(self):
+        with self.assertRaises(ValueError):
+            brain.restore_backup("account-restore", {"format": "other", "schema_version": 99, "data": {}})
+
     def test_unverified_lessons_cannot_be_marked_verified(self):
         with self.assertRaises(ValueError):
             brain.remember("session-a", content="A guess about a bug fix", category="experience",
