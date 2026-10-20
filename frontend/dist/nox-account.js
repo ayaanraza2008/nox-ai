@@ -33,6 +33,61 @@
     notice("");
   }
 
+  function ensureBackupButton() {
+    const signedView = $("accountSignedView");
+    if (!signedView || $("accountExportBackup")) return;
+    const button = document.createElement("button");
+    button.id = "accountExportBackup";
+    button.type = "button";
+    button.className = "secondary";
+    button.textContent = "Export NOX Brain backup (JSON)";
+    button.style.cssText = "width:100%;margin:8px 0";
+    const logout = $("accountLogout");
+    if (logout && logout.parentNode) logout.parentNode.insertBefore(button, logout);
+    else signedView.appendChild(button);
+    button.addEventListener("click", exportBrainBackup);
+  }
+
+  async function exportBrainBackup() {
+    const button = $("accountExportBackup");
+    if (button) { button.disabled = true; button.textContent = "Preparing backup…"; }
+    notice("Collecting account-linked Brain records. Nothing will be deleted.");
+    try {
+      const paths = [
+        ["overview", "/api/brain/overview"],
+        ["settings", "/api/brain/settings"],
+        ["memories", "/api/brain/memories?limit=100"],
+        ["devices", "/api/brain/devices"],
+        ["skills", "/api/brain/skills"],
+        ["proposals", "/api/brain/proposals"],
+        ["audit", "/api/brain/audit?limit=100"]
+      ];
+      const entries = await Promise.all(paths.map(async ([key, path]) => [key, await api(path, { headers: {} })]));
+      const payload = {
+        format: "nox-brain-backup",
+        schema_version: 1,
+        exported_at: new Date().toISOString(),
+        account_email: $("accountEmailLabel").textContent || null,
+        note: "This backup contains NOX Brain data exposed by the current API. It does not include passwords, session tokens, full chat history, or indexed document contents. Keep this file private.",
+        data: Object.fromEntries(entries)
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "nox-brain-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      notice("Backup exported. Store it somewhere private; exporting does not change saved data.");
+    } catch (error) {
+      notice("Backup failed: " + error.message, true);
+    } finally {
+      if (button) { button.disabled = false; button.textContent = "Export NOX Brain backup (JSON)"; }
+    }
+  }
+
   function showState(account) {
     const signedIn = Boolean(account);
     $("accountAuthView").classList.toggle("hidden", signedIn);
@@ -40,6 +95,7 @@
     $("accountEmailLabel").textContent = account?.email || "";
     $("accountOpen").textContent = account ? "Account" : "Sign in";
     $("accountSubtitle").textContent = account ? "Memory linked to this account" : "Your memories, linked to your account";
+    if (signedIn) ensureBackupButton();
   }
 
   async function refreshAccount() {
