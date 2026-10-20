@@ -1971,6 +1971,24 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
             raise
         except Exception as exc:
             logger.exception("Unexpected /api/chat/stream failure (%s)", type(exc).__name__)
+            if not produced:
+                # If the streaming transport itself crashes before any token, attempt
+                # the ordinary chat endpoint's provider fallback before giving up.
+                try:
+                    fallback = await provider_reply(
+                        message, payload.language, payload.history, payload.images,
+                        retrieved if retrieved else None,
+                    )
+                    if fallback and fallback.strip():
+                        yield "data: " + json.dumps({"type": "delta", "text": fallback}, ensure_ascii=False) + "\n\n"
+                        yield "data: " + json.dumps({"type": "done", "mode": "ai-fallback"}, ensure_ascii=False) + "\n\n"
+                        return
+                except HTTPException as fallback_exc:
+                    event = {"type": "error", "message": str(fallback_exc.detail)}
+                    yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                    return
+                except Exception as fallback_exc:
+                    logger.exception("Non-streaming fallback after stream crash failed (%s)", type(fallback_exc).__name__)
             event = {"type": "error", "message": "NOX's response stream encountered a server error. Please retry."}
             yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
 
