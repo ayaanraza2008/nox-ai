@@ -24,6 +24,7 @@ from xml.etree import ElementTree
 
 import httpx
 from fastapi import HTTPException, UploadFile
+from backend.knowledge_ranking import rank_knowledge_candidates
 
 logger = logging.getLogger("nox.knowledge")
 ROOT = Path(__file__).resolve().parent.parent
@@ -304,13 +305,19 @@ def list_sources(owner_id: str) -> dict:
 
 
 def search_knowledge(owner_id: str, query: str, limit: int = 6) -> dict:
+    """Owner-scoped hybrid lexical retrieval with relevance reranking.
+
+    Uses FTS5 plus a bounded owner-only candidate scan. It does not claim vector
+    semantics; semantic embeddings remain explicitly unconfigured.
+    """
     query = query.strip()[:500]
     if not query:
-        return {"results": [], "query": query}
+        return {"results": [], "query": query, "retrieval": "hybrid_lexical", "count": 0}
     terms = re.findall(r"[\w\u0900-\u097f\u0600-\u06ff]+", query, flags=re.UNICODE)[:16]
     if not terms:
-        return {"results": [], "query": query}
-    fts_query = " OR ".join('"' + term.replace('"', '""') + '"*' for term in terms if len(term) > 1)
+        return {"results": [], "query": query, "retrieval": "hybrid_lexical", "count": 0}
+    fts_terms = list(dict.fromkeys(term.casefold() for term in terms if len(term) > 1))
+    fts_query = " OR ".join('"' + term.replace('"', '""') + '"*' for term in fts_terms)
     conn = _connect()
     try:
         rows = []
@@ -323,34 +330,27 @@ def search_knowledge(owner_id: str, query: str, limit: int = 6) -> dict:
                     JOIN knowledge_sources s ON s.id=f.source_id AND s.owner_id=f.owner_id
                     JOIN knowledge_chunks c ON c.id=f.chunk_id AND c.owner_id=f.owner_id
                     WHERE f.owner_id=? AND knowledge_fts MATCH ?
-                    ORDER BY rank LIMIT ?""", (owner_id, fts_query, max(1, min(limit, 10)))).fetchall()
+                    ORDER BY rank LIMIT 1500""", (owner_id, fts_query)).fetchall()
             except sqlite3.OperationalError as exc:
                 logger.info("FTS query fallback (%s)", type(exc).__name__)
-        if not rows:
-            candidates = conn.execute("""SELECT c.id AS chunk_id,c.source_id,s.title,c.content,
-                s.source_url,s.filename,s.updated_at,s.source_type,c.chunk_index
-                FROM knowledge_chunks c JOIN knowledge_sources s ON s.id=c.source_id AND s.owner_id=c.owner_id
-                WHERE c.owner_id=? ORDER BY s.updated_at DESC LIMIT 1500""", (owner_id,)).fetchall()
-            scored = []
-            lower_query = query.casefold()
-            for row in candidates:
-                body = row["content"].casefold()
-                score = sum(body.count(term.casefold()) * (2 if len(term) > 4 else 1) for term in terms)
-                if lower_query in body:
-                    score += 8
-                if score:
-                    scored.append((score, row))
-            scored.sort(key=lambda pair: (pair[0], pair[1]["updated_at"]), reverse=True)
-            rows = [row for _, row in scored[:max(1, min(limit, 10))]]
+        candidates = {row["chunk_id"]: dict(row) for row in rows}
+        fallback = conn.execute("""SELECT c.id AS chunk_id,c.source_id,s.title,c.content,
+            s.source_url,s.filename,s.updated_at,s.source_type,c.chunk_index
+            FROM knowledge_chunks c JOIN knowledge_sources s ON s.id=c.source_id AND s.owner_id=c.owner_id
+            WHERE c.owner_id=? ORDER BY s.updated_at DESC LIMIT 1500""", (owner_id,)).fetchall()
+        for row in fallback:
+            candidates.setdefault(row["chunk_id"], dict(row))
+        ranked = rank_knowledge_candidates(query, list(candidates.values()))
         results = []
-        for row in rows:
+        for row in ranked[:max(1, min(limit, 10))]:
             results.append({
                 "chunk_id": row["chunk_id"], "source_id": row["source_id"], "title": row["title"],
                 "text": row["content"], "url": row["source_url"], "filename": row["filename"],
                 "source_type": row["source_type"], "updated_at": row["updated_at"],
-                "chunk_index": row["chunk_index"],
+                "chunk_index": row["chunk_index"], "relevance": row["relevance"],
             })
-        return {"query": query, "results": results, "retrieval": "lexical", "count": len(results)}
+        return {"query": query, "results": results, "retrieval": "hybrid_lexical",
+                "semantic_embeddings": "not_configured", "count": len(results)}
     finally:
         conn.close()
 
