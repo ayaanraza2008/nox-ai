@@ -326,3 +326,43 @@ All routes use the existing server-issued HttpOnly `nox_session` cookie as the d
 - Retrieval currently uses bounded keyword matching, not embeddings. The browser capability report is approximate and reflects browser-exposed metadata only; it is not a full hardware inventory.
 - Do not save sensitive personal information or secrets. Use the delete control to remove an entry. Disabling memory prevents retrieval and new writes; existing entries remain available for later re-enabling or deletion.
 - Automated regression tests live in `backend/tests/test_brain.py`. Run the backend suite with `python -m unittest discover -s backend/tests`.
+
+## Account verification, login, and recovery policy
+
+The account panel now supports a verified account lifecycle backed by the existing PostgreSQL database. New registrations collect full name, a unique lowercase username, normalized email, country calling code, exactly 10 national mobile digits, and a password. New passwords are hashed with Argon2id; existing PBKDF2 account hashes are upgraded to Argon2id after a successful sign-in. Session tokens, OTPs, and OTP challenge values are stored only as hashes. “Remember me” controls a 30-day session versus a one-day session; passwords are never saved in browser storage.
+
+### Verification policy
+
+- Both email and mobile verification are required before protected NOX API features are available. Accounts remain in \`pending_verification\`, \`email_verified\`, or \`phone_verified\` until both checks succeed, then transition to \`active\`. Suspended accounts remain blocked.
+- Verification uses six-digit, single-use OTPs that expire after 10 minutes. Each challenge allows at most five incorrect attempts; resend requests have a 60-second cooldown and a database-backed hourly limit.
+- Login accepts a username, email address, or 10-digit mobile number plus its country calling code. Password verification is required for every login method.
+- Password recovery uses an email or mobile OTP, applies rate limits, revokes existing sessions after a successful reset, and returns the same public request response regardless of whether the account exists.
+- Profile and email changes require password reauthentication. Changing the mobile number clears its verification flag; changing the email clears email verification. The account checklist and account button display the saved full name.
+- Protected API endpoints require an authenticated, fully verified account. Health/status/capability endpoints and account onboarding/recovery routes remain accessible before verification. Existing anonymous browser sessions are no longer sufficient to use protected NOX features.
+- Logout revokes the current server-side session without deleting the account. Account deletion continues to require password confirmation and the exact phrase \`DELETE MY ACCOUNT\`.
+
+### Provider setup (server-side only)
+
+Configure secrets in Render or the server environment, never in frontend files or Git:
+
+**Email via SMTP**
+- \`SMTP_HOST\` — SMTP server hostname
+- \`SMTP_PORT\` — optional; defaults to \`587\`
+- \`SMTP_FROM\` — sender address
+- \`SMTP_USER\` and \`SMTP_PASSWORD\` — optional together for authenticated SMTP
+- \`SMTP_STARTTLS\` — optional; defaults to \`true\`
+- \`NOX_VERIFICATION_SECRET\` — recommended dedicated random secret for hashing verification codes; if omitted, the database URL is used as a fallback secret
+
+**SMS via Twilio**
+- \`TWILIO_ACCOUNT_SID\`
+- \`TWILIO_AUTH_TOKEN\`
+- \`TWILIO_FROM_NUMBER\` — SMS-capable Twilio number in international format
+
+If the corresponding provider is not configured, NOX explicitly reports \`setup_required\`; it does not claim that a code was sent or mark the contact verified. A configured provider can still reject a message because of account status, sender registration, destination restrictions, or provider/network errors; such delivery failures remain unverified and are shown as failures.
+
+### Verification and deployment checks
+
+- CI runs backend regression tests, Python compilation, frontend JavaScript syntax checks, and the Android companion build.
+- Automated tests cover password hashing and legacy migration compatibility, profile normalization, duplicate registration checks, all three login identifiers, wrong passwords, expired and successful OTP checks, recovery-response privacy, remember-me expiry, and session revocation.
+- A live PostgreSQL + SMTP + Twilio end-to-end test requires real provider credentials and is not claimed by CI. Configure the database first, deploy the change, then test registration, email OTP, SMS OTP, login with each identifier, recovery, logout, and persistence after a server restart on the actual deployment.
+

@@ -1,4 +1,4 @@
-"""Regression tests for browser-session isolation on task and chat APIs."""
+"""Regression tests for the verified-account gate on protected NOX APIs."""
 import os
 import tempfile
 import unittest
@@ -44,45 +44,30 @@ class SessionIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("nox_session", client.cookies)
         return client
 
-    async def test_task_endpoints_require_and_scope_browser_session(self):
-        response = await self.client.get("/api/tasks")
-        self.assertEqual(response.status_code, 401)
+    async def test_anonymous_browser_cookie_cannot_unlock_protected_features(self):
+        browser = await self.new_browser()
+        self.assertEqual((await browser.get("/api/tasks")).status_code, 401)
+        self.assertEqual((await browser.get("/api/chats")).status_code, 401)
+        await browser.aclose()
 
-        first = await self.new_browser()
-        created = await first.post("/api/tasks", json={"goal": "Research public docs", "language": "en"})
-        self.assertEqual(created.status_code, 202, created.text)
-        task_id = created.json()["task"]["id"]
+    async def test_unverified_account_is_blocked_from_protected_features(self):
+        self.client.cookies.set("nox_account_session", "pending-session")
+        pending = {"id": "account-1", "status": "email_verified"}
+        with patch.object(main.accounts, "resolve_session", return_value=pending):
+            tasks = await self.client.get("/api/tasks")
+            chats = await self.client.get("/api/chats")
+        self.assertEqual(tasks.status_code, 403)
+        self.assertEqual(chats.status_code, 403)
+        self.assertIn("verification", tasks.json()["detail"].lower())
 
-        second = await self.new_browser()
-        self.assertEqual((await second.get("/api/tasks")).json()["tasks"], [])
-        self.assertEqual((await second.get(f"/api/tasks/{task_id}")).status_code, 404)
-        self.assertEqual((await second.post(f"/api/tasks/{task_id}/cancel")).status_code, 404)
-        self.assertEqual(len((await first.get("/api/tasks")).json()["tasks"]), 1)
-
-        await first.aclose()
-        await second.aclose()
-
-    async def test_saved_chat_history_is_scoped_to_cookie_not_query_user_id(self):
-        first = await self.new_browser()
-        payload = {
-            "chat_id": "conversation-1",
-            "title": "Private conversation",
-            "updated_at": "2026-10-20T00:00:00Z",
-            "messages": [{"role": "user", "content": "private test text"}],
-        }
-        saved = await first.put("/api/chats?user_id=attacker-controlled", json=payload)
-        self.assertEqual(saved.status_code, 200, saved.text)
-
-        second = await self.new_browser()
-        chats = await second.get("/api/chats?user_id=attacker-controlled")
+    async def test_verified_account_can_access_protected_apis(self):
+        self.client.cookies.set("nox_account_session", "verified-session")
+        active = {"id": "account-1", "status": "active"}
+        with patch.object(main.accounts, "resolve_session", return_value=active):
+            tasks = await self.client.get("/api/tasks")
+            chats = await self.client.get("/api/chats")
+        self.assertEqual(tasks.status_code, 200, tasks.text)
         self.assertEqual(chats.status_code, 200, chats.text)
-        self.assertEqual(chats.json()["chats"], [])
-
-        no_session = await self.client.get("/api/chats?user_id=attacker-controlled")
-        self.assertEqual(no_session.status_code, 401)
-
-        await first.aclose()
-        await second.aclose()
 
 
 if __name__ == "__main__":

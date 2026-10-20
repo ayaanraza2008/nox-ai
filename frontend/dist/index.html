@@ -322,6 +322,19 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
 })();
 </script>
 
+<div id="accountGateOverlay" role="dialog" aria-modal="true" aria-labelledby="accountGateTitle" style="position:fixed;inset:0;z-index:90;background:radial-gradient(ellipse at 50% 30%,#102a3aee,#02060bf5 70%);backdrop-filter:blur(14px);display:flex;align-items:center;justify-content:center;padding:22px">
+ <section class="panel" style="width:min(520px,100%);border-color:#75eaff55;box-shadow:0 25px 90px #000b">
+  <div class="panelbody" style="display:grid;gap:12px;text-align:center;padding:28px 22px">
+   <div style="font-size:12px;letter-spacing:.24em;color:#75eaff">NOX AI · ACCOUNT SECURITY</div>
+   <div id="accountGateTitle" class="ptitle" style="font-size:22px">Sign in to continue</div>
+   <p id="accountGateMessage" class="footnote">Create a NOX account and verify both your email and mobile number to unlock the AI workspace.</p>
+   <div id="accountGateStatus" class="footnote">Account verification is required for protected features.</div>
+   <button id="accountGateOpen" class="primary" type="button">Sign in / create account</button>
+   <p class="footnote">Your account stays saved after logout. Verification codes are sent only when the server's email/SMS provider is configured.</p>
+  </div>
+ </section>
+</div>
+
 <div id="accountModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="accountTitle" style="position:fixed;inset:0;z-index:100;background:#02060bdc;backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:16px">
  <section class="panel" style="width:min(440px,100%);max-height:90vh;overflow:auto;border-color:#75eaff55;box-shadow:0 25px 90px #000b">
   <div class="panelhead"><div><div class="ptitle" id="accountTitle">NOX ACCOUNT</div><div class="pmeta" id="accountSubtitle">Your memories, linked to your account</div></div><button class="iconbtn" id="accountClose" type="button" aria-label="Close account dialog">✕</button></div>
@@ -329,13 +342,63 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
    <div id="accountAuthView">
     <div style="display:flex;gap:7px"><button class="secondary" id="accountLoginMode" type="button">Sign in</button><button class="secondary" id="accountRegisterMode" type="button">Create account</button></div>
     <form id="accountAuthForm" style="display:grid;gap:9px;margin-top:8px">
-     <label class="footnote" for="accountEmail">Email</label><input class="field" id="accountEmail" type="email" autocomplete="email" maxlength="320" required>
-     <label class="footnote" for="accountPassword">Password (minimum 10 characters for new accounts)</label><input class="field" id="accountPassword" type="password" autocomplete="current-password" minlength="10" maxlength="256" required>
+     <label class="footnote" id="accountIdentifierLabel" for="accountEmail">Username, email, or mobile number</label><input class="field" id="accountEmail" type="text" autocomplete="username" maxlength="320" required>
+     <div id="accountRegisterFields" hidden style="display:grid;gap:9px">
+      <label class="footnote" for="accountFullName">Full name</label><input class="field" id="accountFullName" type="text" autocomplete="name" maxlength="100">
+      <label class="footnote" for="accountUsername">Username (lowercase)</label><input class="field" id="accountUsername" type="text" autocomplete="username" minlength="3" maxlength="20" pattern="[a-z0-9_]+" autocapitalize="none">
+      <label class="footnote" for="accountRegisterEmail">Email address</label><input class="field" id="accountRegisterEmail" type="email" autocomplete="email" maxlength="320">
+      <label class="footnote" for="accountCountryCode">Country calling code</label><select class="field" id="accountCountryCode"><option value="+91">India (+91)</option><option value="+1">United States / Canada (+1)</option><option value="+44">United Kingdom (+44)</option><option value="+971">UAE (+971)</option><option value="+92">Pakistan (+92)</option><option value="+880">Bangladesh (+880)</option><option value="+61">Australia (+61)</option></select>
+      <label class="footnote" for="accountPhoneNumber">Mobile number (10 digits)</label><input class="field" id="accountPhoneNumber" type="tel" inputmode="numeric" autocomplete="tel-national" minlength="10" maxlength="10" pattern="[0-9]{10}">
+     </div>
+     <div id="accountLoginCountryWrap" hidden style="display:grid;gap:6px"><label class="footnote" for="accountLoginCountryCode">Country calling code (for mobile login)</label><select class="field" id="accountLoginCountryCode"><option value="+91">India (+91)</option><option value="+1">United States / Canada (+1)</option><option value="+44">United Kingdom (+44)</option><option value="+971">UAE (+971)</option><option value="+92">Pakistan (+92)</option><option value="+880">Bangladesh (+880)</option><option value="+61">Australia (+61)</option></select></div>
+     <label class="footnote" for="accountPassword">Password (minimum 10 characters)</label><input class="field" id="accountPassword" type="password" autocomplete="current-password" minlength="10" maxlength="256" required>
+     <label class="footnote" id="accountRememberWrap" style="display:flex;gap:8px;align-items:center"><input id="accountRemember" type="checkbox" checked> Remember me on this device</label>
      <button class="primary" id="accountSubmit" type="submit">Sign in</button>
     </form>
+    <button class="secondary" id="accountForgot" type="button" style="width:100%;margin-top:8px">Forgot password?</button>
+    <div id="accountRecoveryView" hidden style="display:grid;gap:8px;margin-top:10px">
+     <div class="ptitle">PASSWORD RECOVERY</div><p class="footnote">Use a registered email or mobile number. If a provider is not configured, no code will be sent.</p>
+     <label class="footnote" for="accountRecoveryChannel">Recovery method</label><select class="field" id="accountRecoveryChannel"><option value="email">Email</option><option value="sms">Mobile SMS</option></select>
+     <label class="footnote" for="accountRecoveryIdentifier">Registered email or 10-digit mobile</label><input class="field" id="accountRecoveryIdentifier" maxlength="320" required>
+     <label class="footnote" for="accountRecoveryCountry">Country calling code (SMS)</label><select class="field" id="accountRecoveryCountry"><option value="+91">India (+91)</option><option value="+1">United States / Canada (+1)</option><option value="+44">United Kingdom (+44)</option><option value="+971">UAE (+971)</option><option value="+92">Pakistan (+92)</option><option value="+880">Bangladesh (+880)</option><option value="+61">Australia (+61)</option></select>
+     <button class="secondary" id="accountRecoveryRequest" type="button">Request recovery code</button>
+     <label class="footnote" for="accountRecoveryCode">Six-digit code</label><input class="field" id="accountRecoveryCode" inputmode="numeric" minlength="6" maxlength="6">
+     <label class="footnote" for="accountRecoveryNewPassword">New password</label><input class="field" id="accountRecoveryNewPassword" type="password" minlength="10" maxlength="256" autocomplete="new-password">
+     <button class="primary" id="accountRecoveryReset" type="button">Reset password</button>
+     <button class="secondary" id="accountRecoveryClose" type="button">Back to sign in</button>
+    </div>
    </div>
    <div id="accountSignedView" class="hidden" style="display:grid;gap:10px">
-    <div class="metric"><div class="label">SIGNED IN AS</div><strong id="accountEmailLabel" style="font-size:13px;overflow-wrap:anywhere"></strong><small>Brain memories follow this account across browsers and devices.</small></div>
+    <div class="metric"><div class="label">NOX ACCOUNT</div><strong id="accountFullNameLabel" style="font-size:16px;overflow-wrap:anywhere"></strong><div id="accountEmailLabel" style="font-size:13px;overflow-wrap:anywhere"></div><small id="accountUsernameLabel"></small><small id="accountStatusLabel"></small></div>
+    <div id="accountVerificationPanel" style="display:grid;gap:9px;border:1px solid #75eaff33;border-radius:12px;padding:12px">
+     <div class="ptitle">VERIFICATION CHECKLIST</div>
+     <div id="accountEmailStatus" class="footnote">Email: checking…</div>
+     <div style="display:flex;gap:6px"><input class="field" id="accountEmailCode" inputmode="numeric" placeholder="Email code (6 digits)" maxlength="6"><button class="secondary" id="accountVerifyEmail" type="button">Verify</button></div>
+     <button class="secondary" id="accountResendEmail" type="button">Send / resend email code</button>
+     <div id="accountPhoneStatus" class="footnote">Mobile: checking…</div>
+     <div style="display:flex;gap:6px"><input class="field" id="accountPhoneCode" inputmode="numeric" placeholder="SMS code (6 digits)" maxlength="6"><button class="secondary" id="accountVerifyPhone" type="button">Verify</button></div>
+     <button class="secondary" id="accountResendPhone" type="button">Send / resend SMS code</button>
+     <p class="footnote">Both email and mobile must be verified before protected NOX AI features unlock. Codes expire in 10 minutes and can be used once.</p>
+    </div>
+    <details id="accountProfileDetails"><summary class="ptitle">PROFILE SETTINGS</summary>
+     <form id="accountProfileForm" style="display:grid;gap:7px;margin-top:9px">
+      <label class="footnote" for="accountProfileFullName">Full name</label><input class="field" id="accountProfileFullName" maxlength="100" required>
+      <label class="footnote" for="accountProfileUsername">Username</label><input class="field" id="accountProfileUsername" minlength="3" maxlength="20" pattern="[a-z0-9_]+" required>
+      <label class="footnote" for="accountProfileCountry">Country calling code</label><select class="field" id="accountProfileCountry"><option value="+91">India (+91)</option><option value="+1">United States / Canada (+1)</option><option value="+44">United Kingdom (+44)</option><option value="+971">UAE (+971)</option><option value="+92">Pakistan (+92)</option><option value="+880">Bangladesh (+880)</option><option value="+61">Australia (+61)</option></select>
+      <label class="footnote" for="accountProfilePhone">Mobile number (10 digits)</label><input class="field" id="accountProfilePhone" inputmode="numeric" minlength="10" maxlength="10" pattern="[0-9]{10}" required>
+      <label class="footnote" for="accountProfilePassword">Confirm password to save</label><input class="field" id="accountProfilePassword" type="password" autocomplete="current-password" required>
+      <button class="secondary" type="submit">Save profile / change mobile</button>
+     </form>
+     <form id="accountEmailForm" style="display:grid;gap:7px;margin-top:12px">
+      <label class="footnote" for="accountNewEmail">Change email (requires re-verification)</label><input class="field" id="accountNewEmail" type="email" maxlength="320" required>
+      <label class="footnote" for="accountEmailPassword">Confirm password</label><input class="field" id="accountEmailPassword" type="password" autocomplete="current-password" required>
+      <button class="secondary" type="submit">Change email</button>
+     </form>
+    </details>
+    <button class="secondary" id="accountExportBackup" type="button">Export NOX Brain backup (JSON)</button>
+    <button class="secondary" id="accountImportBackup" type="button">Restore from JSON backup</button>
+    <input id="accountBackupFile" type="file" accept=".json,application/json" hidden>
+    <button class="secondary" id="accountLogoutOthers" type="button">Sign out other sessions</button>
     <button class="secondary" id="accountLogout" type="button">Sign out</button>
     <div class="divider"></div>
     <div class="ptitle" style="color:var(--red)">Delete account and memories</div>
