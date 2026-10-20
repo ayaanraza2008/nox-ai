@@ -29,6 +29,8 @@
     let w = 1, h = 1, dpr = 1, raf = 0, disposed = false;
     let energy = 0, targetEnergy = 0, mode = "ambient", phase = 0, last = 0;
     let particles = [];
+    let pointer = { x: 0, y: 0, active: false };
+    let ripple = { x: 0, y: 0, start: -1 };
     const rand = (a,b) => a + Math.random() * (b-a);
     const makeParticle = (initial = false) => ({
       angle: rand(0, Math.PI*2),
@@ -64,6 +66,19 @@
       phase = Number(v.phase) || phase;
     };
     window.addEventListener("nox:core-frame", frameState);
+    const pointerMove = (e) => {
+      const r = canvas.getBoundingClientRect();
+      pointer.x = e.clientX - r.left; pointer.y = e.clientY - r.top; pointer.active = true;
+    };
+    const pointerLeave = () => { pointer.active = false; };
+    const pointerDown = (e) => {
+      const r = canvas.getBoundingClientRect();
+      ripple = { x: e.clientX - r.left, y: e.clientY - r.top, start: performance.now() };
+      targetEnergy = Math.min(1, Math.max(targetEnergy, 0.42));
+    };
+    canvas.addEventListener("pointermove", pointerMove, { passive: true });
+    canvas.addEventListener("pointerleave", pointerLeave, { passive: true });
+    canvas.addEventListener("pointerdown", pointerDown, { passive: true });
     const draw = (now) => {
       if (disposed) return;
       raf = 0;
@@ -144,6 +159,11 @@
         const perspective=.62+p.depth*.52;
         p.x=cx+Math.cos(p.angle+phase*.018)*radius*perspective;
         p.y=cy+Math.sin(p.angle+phase*.018)*radius*.73*perspective + Math.sin(now*.00055+p.seed)*min*.014;
+        if (pointer.active) {
+          const dx = p.x - pointer.x, dy = p.y - pointer.y, d = Math.hypot(dx,dy) || 1;
+          const reach = min * 0.19;
+          if (d < reach) { const push = (1 - d / reach) * min * 0.035; p.x += dx / d * push; p.y += dy / d * push; }
+        }
       }
       ctx.lineCap="round";
       const maxDist=min*(mobile() ? 0.12 : 0.105);
@@ -167,6 +187,19 @@
           ctx.strokeStyle="rgba(135,231,255,"+(energy*.22)+")";ctx.lineWidth=.7;ctx.stroke();
         }
       }
+      if (ripple.start >= 0) {
+        const age = (now - ripple.start) / 760;
+        if (age < 1) {
+          const rr = min * (0.025 + age * 0.22);
+          ctx.save(); ctx.globalCompositeOperation = "screen";
+          ctx.beginPath(); ctx.arc(ripple.x, ripple.y, rr, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(105,225,255," + ((1-age)*0.48) + ")";
+          ctx.lineWidth = 1.2 + (1-age)*1.5; ctx.shadowBlur = 12; ctx.shadowColor = "#6de7ff"; ctx.stroke();
+          ctx.beginPath(); ctx.arc(ripple.x, ripple.y, rr*0.72, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(164,135,255," + ((1-age)*0.32) + ")"; ctx.lineWidth = 0.8; ctx.stroke();
+          ctx.restore();
+        } else ripple.start = -1;
+      }
       if(energy>.34){
         const radius=min*(.18+((now*.00028)%1)*.3);
         ctx.beginPath();ctx.ellipse(cx,cy,radius,radius*.72,phase*.08,0,Math.PI*2);
@@ -183,7 +216,7 @@
     reduce?.addEventListener?.("change",visibility);
     document.addEventListener("visibilitychange",visibility);
     window.addEventListener("resize",resize,{passive:true});
-    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);document.removeEventListener("visibilitychange",visibility);reduce?.removeEventListener?.("change",visibility);motionObserver.disconnect();},{once:true});
+    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);canvas.removeEventListener("pointermove",pointerMove);canvas.removeEventListener("pointerleave",pointerLeave);canvas.removeEventListener("pointerdown",pointerDown);document.removeEventListener("visibilitychange",visibility);reduce?.removeEventListener?.("change",visibility);motionObserver.disconnect();},{once:true});
     resize();
     if(!reduce?.matches && !document.body.classList.contains("reduced")) raf=requestAnimationFrame(draw);
   };
