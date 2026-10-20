@@ -39,6 +39,12 @@ CODE_RULES = [
     ("MEDIUM", "sql-string-format", re.compile(r"(?i)\b(?:execute|executemany)\s*\(\s*f['\"]"), "Use parameterized SQL queries instead of string interpolation."),
     ("LOW", "debug-mode", re.compile(r"\bdebug\s*=\s*True\b"), "Disable debug mode in production."),
 ]
+def _redact_sensitive(value: str) -> str:
+    """Redact common credential fields before returning any evidence to the UI."""
+    value = re.sub(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+", r"\1[REDACTED]", value)
+    value = re.sub(r"(?i)(\b(?:password|passwd|token|api[_-]?key|secret|access[_-]?key)\b\s*[:=]\s*)[^\s,;]+", r"\1[REDACTED]", value)
+    return value[:180]
+
 LOG_PATTERNS = [
     ("HIGH", "repeated-auth-failure", re.compile(r"(?i)(?:failed|invalid|denied).{0,50}(?:login|password|authentication|credential)")),
     ("MEDIUM", "privilege-denied", re.compile(r"(?i)(?:permission denied|access denied|sudo:.*authentication failure)")),
@@ -102,7 +108,7 @@ def review_code(request: CodeReviewRequest) -> dict[str, Any]:
             continue
         for severity, rule_id, pattern, recommendation in CODE_RULES:
             if pattern.search(line):
-                evidence = "[redacted: possible credential]" if rule_id == "hardcoded-secret" else line.strip()[:180]
+                evidence = "[redacted: possible credential]" if rule_id == "hardcoded-secret" else _redact_sensitive(line.strip())
                 findings.append({"severity": severity, "rule": rule_id,
                     "file": request.filename.replace("\\", "/").split("/")[-1], "line": line_no,
                     "evidence": evidence, "recommendation": recommendation})
@@ -126,7 +132,7 @@ def review_logs(request: LogReviewRequest) -> dict[str, Any]:
         for severity, rule_id, pattern in LOG_PATTERNS:
             if pattern.search(line):
                 findings.append({"severity": severity, "rule": rule_id, "line": line_no,
-                    "evidence": line.strip()[:180],
+                    "evidence": _redact_sensitive(line.strip()),
                     "recommendation": "Correlate with surrounding timestamps and known-good activity before treating this as an incident."})
                 break
     counts = Counter(item["severity"] for item in findings)
