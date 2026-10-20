@@ -80,5 +80,23 @@ class ResearchSynthesisPromptTests(unittest.TestCase):
         self.assertIn("Do not invent", prompt)
 
 
+class ResearchCitationAuditTests(unittest.TestCase):
+    def test_detects_valid_citation_labels_without_claiming_support(self):
+        from backend.research_synthesis import audit_synthesis_citations
+        notes = audit_synthesis_citations("Finding supported by [E1] and [E2].", 2)
+        self.assertTrue(any("[E1], [E2]" in note for note in notes))
+        self.assertTrue(any("does not prove" in note for note in notes))
+
+    def test_warns_when_citations_are_missing(self):
+        from backend.research_synthesis import audit_synthesis_citations
+        notes = audit_synthesis_citations("A confident but uncited claim.", 2)
+        self.assertTrue(any("No [E#]" in note for note in notes))
+
+    def test_flags_unavailable_citation_ids(self):
+        from backend.research_synthesis import audit_synthesis_citations
+        notes = audit_synthesis_citations("Evidence [E1] and [E4].", 2)
+        self.assertTrue(any("[E4]" in note for note in notes))
+
+
 if __name__ == "__main__":
     unittest.main()
