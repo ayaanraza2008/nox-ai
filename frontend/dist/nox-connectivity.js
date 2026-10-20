@@ -83,6 +83,51 @@
               " · App launch: " + (device.capabilities && device.capabilities.app_launch ? "available" : "unavailable");
             card.append(heading, meta);
             if (device.authorized) {
+              const filePanel = document.createElement("div");
+              filePanel.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid var(--line)";
+              const folderSelect = document.createElement("select");
+              folderSelect.setAttribute("aria-label", "Android shared-storage folder");
+              folderSelect.style.cssText = "max-width:100%;margin-right:8px";
+              [["Download","Downloads"],["DCIM","Camera (DCIM)"],["Pictures","Pictures"],["Documents","Documents"]].forEach(([value,label]) => {
+                const option = document.createElement("option"); option.value = value; option.textContent = label; folderSelect.appendChild(option);
+              });
+              const browse = document.createElement("button");
+              browse.type = "button"; browse.className = "secondary"; browse.textContent = "Browse phone files";
+              const fileList = document.createElement("div"); fileList.className = "footnote"; fileList.style.cssText = "margin-top:8px;overflow-wrap:anywhere";
+              browse.addEventListener("click", async () => {
+                browse.disabled = true; fileList.textContent = "Listing shared files…";
+                try {
+                  const query = "?serial=" + encodeURIComponent(String(device.id)) + "&directory=" + encodeURIComponent(folderSelect.value);
+                  const result = await companionGet("/v1/devices/android/files" + query);
+                  fileList.replaceChildren();
+                  if (!Array.isArray(result.files) || !result.files.length) {
+                    fileList.textContent = "No supported files found in this folder.";
+                  } else {
+                    result.files.forEach(file => {
+                      const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:6px;flex-wrap:wrap";
+                      const name = document.createElement("span"); name.textContent = String(file.name || "Unnamed file"); name.style.overflowWrap = "anywhere";
+                      const pull = document.createElement("button"); pull.type = "button"; pull.className = "secondary"; pull.textContent = "Copy to PC";
+                      pull.addEventListener("click", async () => {
+                        if (!window.confirm("Copy " + String(file.name) + " from your phone to the Windows NOX-Device-Transfers folder?")) return;
+                        pull.disabled = true;
+                        try {
+                          const copied = await companionPost("/v1/devices/android/pull", {
+                            serial: String(device.id), remote_path: String(file.path), confirmed: true
+                          });
+                          const status = document.createElement("div"); status.className = "footnote";
+                          status.textContent = "Copied (" + Number(copied.size_bytes || 0) + " bytes): " + String(copied.local_path || "");
+                          fileList.appendChild(status);
+                        } catch (error) { alert(error.message || "File transfer failed."); }
+                        finally { pull.disabled = false; }
+                      });
+                      row.append(name, pull); fileList.appendChild(row);
+                    });
+                  }
+                } catch (error) { fileList.textContent = (error.message || "File listing failed.") + " Check the local companion and token."; }
+                finally { browse.disabled = false; }
+              });
+              filePanel.append(folderSelect, browse, fileList);
+              card.appendChild(filePanel);
               const launch = document.createElement("button");
               launch.type = "button";
               launch.className = "secondary";

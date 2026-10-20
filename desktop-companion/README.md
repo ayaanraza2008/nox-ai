@@ -152,3 +152,13 @@ If ADB is missing, install Platform-Tools or set `NOX_ADB_PATH`. If the device i
 **Implemented now:** Windows-side ADB enumeration, authorization-state reporting, and confirmation-gated app launch; read-only Windows Wi-Fi interface status.
 
 **Not implemented yet:** USB file push/pull endpoints, screen capture, generic screen tap/type automation, Bluetooth Classic/BLE scanning or GATT, automatic LAN discovery, one-tap ADB-over-Wi-Fi pairing, iOS control, and a dedicated NOX dashboard UI for these new local endpoints. The hosted Render backend cannot directly see a USB device attached to your PC; the local Windows companion must be installed and running.
+
+
+### Authorized Android file transfer (prototype)
+
+The local companion can list top-level files in the phone's shared **Download**, **DCIM**, **Pictures**, and **Documents** folders and copy one selected file to the Windows user's `Downloads/NOX-Device-Transfers` folder. Every request requires the companion token; a pull additionally requires explicit confirmation. Files are saved with timestamped names to avoid silently overwriting local files.
+
+- `GET /v1/devices/android/files?serial=ADB_SERIAL&directory=Download` — list filenames in one allowlisted folder. Supported `directory` values: `Download`, `DCIM`, `Pictures`, `Documents`.
+- `POST /v1/devices/android/pull` with JSON `{"serial":"ADB_SERIAL","remote_path":"/sdcard/Download/example.pdf","confirmed":true}` — copy one selected shared-storage file to the fixed NOX transfer folder.
+
+The endpoints do not access Android app-private storage, bypass the phone's lock screen, or accept arbitrary Windows destination paths. Choose files only from a device you own or are authorized to manage. The phone must be connected and authorized through ADB. This is a local API prototype; the hosted website may still be blocked by browser mixed-content/local-network policies, and no physical-device test has been performed yet.

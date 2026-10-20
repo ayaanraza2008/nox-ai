@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from device_control import discover_adb_devices, launch_android_app
+from android_file_transfer import router as android_file_transfer_router
 
 try:
     from home_assistant import execute_home_assistant_command
@@ -49,6 +50,7 @@ RUVIEW_API_TOKEN = os.getenv("RUVIEW_API_TOKEN", "").strip()
 RUVIEW_LOCAL_URL = "http://127.0.0.1:3000"
 
 app = FastAPI(title="NOX Local Desktop Companion", version="0.3.0")
+app.include_router(android_file_transfer_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[WEB_ORIGIN],
@@ -278,9 +280,9 @@ def device_control_capabilities(x_nox_token: str | None = Header(default=None)):
                 "id": "android_adb",
                 "status": "implemented_with_setup" if discovered.get("status") == "ok" else discovered.get("status", "setup_required"),
                 "transports": ["USB", "ADB-over-network-if-the-owner-configured-it"],
-                "actions": ["discover_devices", "inspect_authorization_state", "launch_installed_app"],
-                "requires": ["Android Platform Tools", "USB debugging enabled by the owner", "owner approval of this computer's debugging key"],
-                "limitations": ["App launch is reported as requested, not verified", "File transfer, screen capture, and general UI automation are not exposed by this prototype"],
+                "actions": ["discover_devices", "inspect_authorization_state", "launch_installed_app", "list_shared_storage_files", "pull_shared_storage_file"],
+                "requires": ["Android Platform Tools", "USB debugging enabled by the owner", "owner approval of this computer's debugging key", "explicit confirmation before each file pull"],
+                "limitations": ["File access is limited to top-level files in Download, DCIM, Pictures, and Documents", "App launch is reported as requested, not verified", "Screen capture and general UI automation are not exposed by this prototype"],
             },
             {
                 "id": "windows_wifi_status",
