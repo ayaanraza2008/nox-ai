@@ -31,7 +31,11 @@ NOX includes a session-scoped knowledge index for user-provided documents and in
 - For production, configure one of those environment variables with a managed PostgreSQL connection string (Render PostgreSQL or Supabase PostgreSQL). The URL stays server-side and must never be exposed in frontend code.
 - SQLite remains the local-development fallback. On hosts with ephemeral filesystems, the SQLite fallback is not durable across restarts/redeploys.
 - Saved memories no longer receive automatic expiry timestamps or get silently removed by retention cleanup. The retention-days setting is retained for compatibility/metadata; explicit user deletion is still available. Temporary is a category label, not an automatic deletion timer.
-- **Important limitation:** this is durable storage, but the current Brain owner key is still the opaque browser session cookie—not a real registered account. Cross-device continuity and delete-account-only cleanup require account authentication/account IDs and an explicit account deletion workflow; do not claim those are complete until that separate account layer is implemented.
+- NOX now provides email/password account registration and sign-in. Brain records are moved from the current anonymous browser session to the account on registration/sign-in, and subsequent devices retrieve memories under the same account ID.
+- Account passwords use salted PBKDF2-HMAC-SHA256 hashes; account session tokens are random opaque values stored only as SHA-256 hashes and sent in HttpOnly cookies. Use HTTPS in production.
+- The account deletion workflow requires the current password and the exact phrase `DELETE MY ACCOUNT`, then deletes that account and its Brain records in a single PostgreSQL transaction. Individual memory deletion remains available.
+- **Deployment requirement:** account authentication and durable memory require a persistent PostgreSQL connection in `DATABASE_URL` or `SUPABASE_DB_URL`. If it is missing, the app refuses account registration/login rather than silently pretending account data is durable. Anonymous browser-session mode still works locally.
+- Account recovery/email verification, OAuth, and migrating unrelated anonymous task/knowledge/chat records into accounts are not implemented in this release.
 
 ### Knowledge Index configuration and limitations
 
