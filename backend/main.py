@@ -107,7 +107,54 @@ class BrainBackupRestoreRequest(BaseModel):
     backup: dict
 
 
-class AccountCredentials(BaseModel):
+class AccountRegisterRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+    username: str = Field(min_length=3, max_length=20)
+    email: str = Field(min_length=3, max_length=320)
+    country_code: str = Field(min_length=2, max_length=5)
+    phone_number: str = Field(min_length=10, max_length=10)
+    password: str = Field(min_length=10, max_length=256)
+
+
+class AccountLoginRequest(BaseModel):
+    identifier: str = Field(min_length=1, max_length=320)
+    password: str = Field(min_length=1, max_length=256)
+    country_code: str = Field(default="+91", min_length=2, max_length=5)
+    remember_me: bool = True
+
+
+class AccountVerifyRequest(BaseModel):
+    channel: Literal["email", "sms"]
+    code: str = Field(min_length=6, max_length=6)
+
+
+class AccountResendRequest(BaseModel):
+    channel: Literal["email", "sms"]
+
+
+class AccountRecoveryRequest(BaseModel):
+    channel: Literal["email", "sms"]
+    identifier: str = Field(min_length=1, max_length=320)
+    country_code: str = Field(default="+91", min_length=2, max_length=5)
+
+
+class AccountResetRequest(BaseModel):
+    channel: Literal["email", "sms"]
+    identifier: str = Field(min_length=1, max_length=320)
+    country_code: str = Field(default="+91", min_length=2, max_length=5)
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=10, max_length=256)
+
+
+class AccountProfileRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+    username: str = Field(min_length=3, max_length=20)
+    country_code: str = Field(min_length=2, max_length=5)
+    phone_number: str = Field(min_length=10, max_length=10)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class AccountEmailUpdateRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=256)
 
@@ -327,7 +374,7 @@ ACCOUNT_COOKIE = "nox_account_session"
 
 
 def session_owner(request: Request) -> str:
-    """Resolve a logged-in account first, otherwise retain the anonymous browser session."""
+    """Resolve the current owner and require a fully verified account when signed in."""
     account_token = request.cookies.get(ACCOUNT_COOKIE, "")
     if account_token:
         try:
@@ -336,6 +383,8 @@ def session_owner(request: Request) -> str:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if not account:
             raise HTTPException(status_code=401, detail="Account session expired. Please sign in again.")
+        if account.get("status") != "active":
+            raise HTTPException(status_code=403, detail="Complete email and mobile verification to unlock NOX AI features.")
         return account["id"]
     value = request.cookies.get(SESSION_COOKIE, "")
     valid = (
@@ -1435,69 +1484,165 @@ def _request_is_secure(request: Request) -> bool:
     return request.url.scheme == "https" or forwarded == "https"
 
 
-def _set_account_cookie(response: Response, request: Request, token: str):
+def _set_account_cookie(response: Response, request: Request, token: str, max_age: int = 60 * 60 * 24 * 30):
     response.set_cookie(
-        key=ACCOUNT_COOKIE, value=token, max_age=60 * 60 * 24 * 30,
+        key=ACCOUNT_COOKIE, value=token, max_age=max_age,
         httponly=True, secure=_request_is_secure(request),
         samesite="lax", path="/",
     )
+
+
+def _account_client_key(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _check_same_origin(request: Request) -> None:
+    origin = request.headers.get("origin")
+    if not origin:
+        return
+    from urllib.parse import urlsplit
+    parsed = urlsplit(origin)
+    if not parsed.netloc or parsed.netloc.lower() != request.headers.get("host", "").lower() or parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=403, detail="Cross-origin account request rejected.")
+
+
+@app.middleware("http")
+async def account_verification_gate(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/") and request.cookies.get(ACCOUNT_COOKIE):
+        allowed = (
+            "/api/account/me", "/api/account/register", "/api/account/login",
+            "/api/account/logout", "/api/account/logout-others", "/api/account/verify",
+            "/api/account/verification/resend", "/api/account/profile", "/api/account/email",
+            "/api/account/recovery/request", "/api/account/recovery/reset", "/api/account",
+        )
+        if path not in allowed:
+            try:
+                account = accounts.resolve_session(request.cookies.get(ACCOUNT_COOKIE, ""))
+            except RuntimeError as exc:
+                return Response(content=json.dumps({"detail": str(exc)}), status_code=503, media_type="application/json")
+            if not account:
+                return Response(content=json.dumps({"detail": "Account session expired. Please sign in again."}),
+                                status_code=401, media_type="application/json")
+            if account.get("status") != "active":
+                return Response(content=json.dumps({"detail": "Complete email and mobile verification to unlock NOX AI features.",
+                                                    "account_status": account.get("status")}),
+                                status_code=403, media_type="application/json")
+    return await call_next(request)
 
 
 @app.get("/api/account/me")
 async def account_me(request: Request):
     token = request.cookies.get(ACCOUNT_COOKIE, "")
     if not token:
-        return {"authenticated": False}
+        return {"authenticated": False, "verification_required": True}
     account = _account_error(accounts.resolve_session, token)
     if not account:
-        return {"authenticated": False}
-    return {"authenticated": True, "account": account}
+        return {"authenticated": False, "verification_required": True}
+    return {"authenticated": True, "account": account, "verification_required": account.get("status") != "active"}
 
 
 @app.post("/api/account/register", status_code=201)
-async def account_register(payload: AccountCredentials, request: Request, response: Response):
-    result = _account_error(accounts.register, payload.email, payload.password)
+async def account_register(payload: AccountRegisterRequest, request: Request, response: Response):
+    _check_same_origin(request)
+    result = _account_error(accounts.register, payload.full_name, payload.username, payload.email,
+                            payload.country_code, payload.phone_number, payload.password, _account_client_key(request))
     old_owner = request.cookies.get(SESSION_COOKIE, "")
     if old_owner and 32 <= len(old_owner) <= 128 and all(ch.isalnum() or ch in "-_" for ch in old_owner):
         _account_error(brain.transfer_owner_data, old_owner, result["account"]["id"])
-    _set_account_cookie(response, request, result["token"])
-    return {"authenticated": True, "account": result["account"], "memory_scope": "account"}
+    _set_account_cookie(response, request, result["token"], result["max_age"])
+    return {"authenticated": True, "account": result["account"], "memory_scope": "account", "delivery": result["delivery"]}
 
 
 @app.post("/api/account/login")
-async def account_login(payload: AccountCredentials, request: Request, response: Response):
-    result = _account_error(accounts.login, payload.email, payload.password)
+async def account_login(payload: AccountLoginRequest, request: Request, response: Response):
+    _check_same_origin(request)
+    result = _account_error(accounts.login, payload.identifier, payload.password, payload.country_code,
+                            _account_client_key(request), payload.remember_me)
     old_owner = request.cookies.get(SESSION_COOKIE, "")
     if old_owner and 32 <= len(old_owner) <= 128 and all(ch.isalnum() or ch in "-_" for ch in old_owner):
         _account_error(brain.transfer_owner_data, old_owner, result["account"]["id"])
-    _set_account_cookie(response, request, result["token"])
-    return {"authenticated": True, "account": result["account"], "memory_scope": "account"}
+    _set_account_cookie(response, request, result["token"], result["max_age"])
+    return {"authenticated": True, "account": result["account"], "verification_required": result["account"].get("status") != "active"}
+
+
+@app.post("/api/account/verify")
+async def account_verify(payload: AccountVerifyRequest, request: Request):
+    _check_same_origin(request)
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in to verify your account.")
+    account = _account_error(accounts.verify_code, token, "email_verify" if payload.channel == "email" else "phone_verify",
+                             payload.channel, payload.code)
+    return {"account": account, "verified": account["email_verified"] if payload.channel == "email" else account["phone_verified"],
+            "status": account["status"]}
+
+
+@app.post("/api/account/verification/resend")
+async def account_verification_resend(payload: AccountResendRequest, request: Request):
+    _check_same_origin(request)
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in to resend verification.")
+    result = _account_error(accounts.resend_verification, token, payload.channel, _account_client_key(request))
+    return {"delivery": result, "channel": payload.channel}
+
+
+@app.post("/api/account/recovery/request")
+async def account_recovery_request(payload: AccountRecoveryRequest, request: Request):
+    _check_same_origin(request)
+    return {"message": accounts.request_recovery(payload.identifier, payload.channel, payload.country_code, _account_client_key(request))}
+
+
+@app.post("/api/account/recovery/reset")
+async def account_recovery_reset(payload: AccountResetRequest, request: Request):
+    _check_same_origin(request)
+    _account_error(accounts.reset_password, payload.identifier, payload.channel, payload.country_code,
+                   payload.code, payload.new_password, _account_client_key(request))
+    return {"reset": True, "message": "Password reset. Sign in with your new password."}
+
+
+@app.put("/api/account/profile")
+async def account_profile_update(payload: AccountProfileRequest, request: Request):
+    _check_same_origin(request)
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in to update your profile.")
+    return _account_error(accounts.update_profile, token, payload.full_name, payload.username,
+                          payload.country_code, payload.phone_number, payload.password, _account_client_key(request))
+
+
+@app.put("/api/account/email")
+async def account_email_update(payload: AccountEmailUpdateRequest, request: Request):
+    _check_same_origin(request)
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in to update your email.")
+    return _account_error(accounts.update_email, token, payload.email, payload.password, _account_client_key(request))
 
 
 @app.post("/api/account/logout")
 async def account_logout(request: Request, response: Response):
-    token = request.cookies.get(ACCOUNT_COOKIE, "")
-    _account_error(accounts.logout, token)
-    response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax",
-                           secure=_request_is_secure(request))
+    _check_same_origin(request)
+    _account_error(accounts.logout, request.cookies.get(ACCOUNT_COOKIE, ""))
+    response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax", secure=_request_is_secure(request))
     return {"authenticated": False, "logged_out": True}
 
 
 @app.post("/api/account/logout-others")
 async def account_logout_others(request: Request):
+    _check_same_origin(request)
     token = request.cookies.get(ACCOUNT_COOKIE, "")
     if not token:
         raise HTTPException(status_code=401, detail="Sign in to manage account sessions.")
-    revoked = _account_error(accounts.logout_other_sessions, token)
-    return {"authenticated": True, "sessions_revoked": revoked}
+    return {"authenticated": True, "sessions_revoked": _account_error(accounts.logout_other_sessions, token)}
 
 
 @app.delete("/api/account")
 async def account_delete(payload: AccountDeleteRequest, request: Request, response: Response):
-    token = request.cookies.get(ACCOUNT_COOKIE, "")
-    _account_error(accounts.delete_account, token, payload.password, payload.confirmation)
-    response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax",
-                           secure=_request_is_secure(request))
+    _check_same_origin(request)
+    _account_error(accounts.delete_account, request.cookies.get(ACCOUNT_COOKIE, ""), payload.password, payload.confirmation)
+    response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax", secure=_request_is_secure(request))
     return {"deleted": True, "memories_deleted": True}
 
 
