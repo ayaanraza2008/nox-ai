@@ -245,6 +245,24 @@ def revoke_share(owner_id: str, share_id: str) -> dict:
     return {"share_id": share_id, "revoked": True}
 
 
+def mobile_status(token: str) -> dict:
+    if not token or len(token) > 256:
+        raise HTTPException(status_code=401, detail="Device location token required.")
+    with _connect() as conn:
+        _context(conn, ingest=True)
+        row = conn.execute(
+            "SELECT id, sharing_enabled, consent_expires_at, revoked_at FROM nox_location_devices WHERE token_hash=%s",
+            (_hash(token),),
+        ).fetchone()
+        if not row or row.get("revoked_at"):
+            raise HTTPException(status_code=401, detail="Device token is invalid or revoked.")
+    now = _now()
+    active = bool(row["sharing_enabled"] and row["consent_expires_at"] and row["consent_expires_at"] > now)
+    return {"device_id": row["id"], "sharing_enabled": active,
+            "consent_expires_at": _iso(row["consent_expires_at"]),
+            "poll_after_seconds": 30}
+
+
 def update_location(token: str, latitude: float, longitude: float, accuracy_m: float,
                     captured_at: datetime | None = None) -> dict:
     if not token or len(token) > 256:
