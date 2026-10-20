@@ -4,9 +4,14 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from backend import public_research as research
+from backend.main import app
 
 
 class PublicResearchTests(unittest.IsolatedAsyncioTestCase):
+    def test_public_research_endpoint_is_registered(self):
+        paths = {route.path for route in app.routes if hasattr(route, "path")}
+        self.assertIn("/api/research/public", paths)
+
     def test_email_syntax_validation(self):
         self.assertTrue(research.EMAIL_RE.fullmatch("support@example.com"))
         self.assertFalse(research.EMAIL_RE.fullmatch("not-an-email"))
