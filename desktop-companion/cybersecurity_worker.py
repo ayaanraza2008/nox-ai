@@ -15,13 +15,13 @@ MAX_OUTPUT_CHARS = 12_000
 SCAN_TIMEOUT_SECONDS = 45
 CONFIRMATION = "I OWN OR AM AUTHORIZED TO TEST THIS TARGET"
 TOOLS = {
-    "nmap": {"binary": "nmap", "purpose": "Conservative lab service discovery"},
-    "semgrep": {"binary": "semgrep", "purpose": "Static code analysis"},
-    "trivy": {"binary": "trivy", "purpose": "Dependency and container vulnerability scanning"},
-    "tshark": {"binary": "tshark", "purpose": "Authorized packet-capture analysis"},
-    "zaproxy": {"binary": "zaproxy", "purpose": "Web security testing proxy"},
-    "ollama": {"binary": "ollama", "purpose": "Local model runtime"},
-    "kaligpt": {"binary": "kaligpt", "purpose": "Optional upstream CLI; arbitrary-command mode is never called by this adapter"},
+    "nmap": {"binary": "nmap", "version_args": ["--version"], "purpose": "Conservative lab service discovery"},
+    "semgrep": {"binary": "semgrep", "version_args": ["--version"], "purpose": "Static code analysis"},
+    "trivy": {"binary": "trivy", "version_args": ["--version"], "purpose": "Dependency and container vulnerability scanning"},
+    "tshark": {"binary": "tshark", "version_args": ["--version"], "purpose": "Authorized packet-capture analysis"},
+    "zaproxy": {"binary": "zaproxy", "version_args": None, "purpose": "Web security testing proxy"},
+    "ollama": {"binary": "ollama", "version_args": ["--version"], "purpose": "Local model runtime"},
+    "kaligpt": {"binary": "kaligpt", "version_args": ["--version"], "purpose": "Optional upstream CLI; arbitrary-command mode is never called by this adapter"},
 }
 class CybersecurityError(ValueError):
     pass
@@ -34,11 +34,33 @@ def _is_local_lab_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> 
     return any(address in ipaddress.ip_network(network) for network in ranges)
 
 def discover_tools() -> list[dict[str, Any]]:
-    """Detect executables without launching them."""
-    return [{"name": name, "available": bool(shutil.which(spec["binary"])),
-             "path": shutil.which(spec["binary"]), "purpose": spec["purpose"],
-             "version": None, "version_status": "not probed; no process was launched"}
-            for name, spec in TOOLS.items()]
+    """Detect tools and probe versions only with fixed, bounded version arguments."""
+    results = []
+    for name, spec in TOOLS.items():
+        path = shutil.which(spec["binary"])
+        version = None
+        version_status = "not installed"
+        if path and spec.get("version_args"):
+            try:
+                probe = subprocess.run(
+                    [path, *spec["version_args"]],
+                    shell=False, stdin=subprocess.DEVNULL, capture_output=True,
+                    text=True, timeout=2, check=False,
+                )
+                output = (probe.stdout or probe.stderr or "").strip().splitlines()
+                version = output[0][:160] if output else None
+                version_status = "probed" if probe.returncode == 0 and version else "probe failed"
+            except subprocess.TimeoutExpired:
+                version_status = "probe timed out"
+            except OSError:
+                version_status = "probe failed"
+        elif path:
+            version_status = "not probed; version flag may launch a GUI or interactive process"
+        results.append({
+            "name": name, "available": bool(path), "path": path, "purpose": spec["purpose"],
+            "version": version, "version_status": version_status,
+        })
+    return results
 
 def validate_target(target: str, authorized: bool, scope_note: str) -> tuple[str, str]:
     if not authorized:
