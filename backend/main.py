@@ -768,6 +768,36 @@ async def get_task(task_id: str, request: Request):
     return {"task": task}
 
 
+async def _task_event_stream(task_id: str, owner_id: str, request: Request):
+    """Stream owner-scoped task snapshots only when persisted state changes."""
+    last_updated = None
+    while True:
+        if await request.is_disconnected():
+            return
+        task = task_manager.get(task_id, owner_id=owner_id)
+        if not task:
+            return
+        updated_at = task.get("updated_at")
+        if updated_at != last_updated:
+            last_updated = updated_at
+            yield "data: " + json.dumps({"task": task}, ensure_ascii=False) + "\\n\\n"
+        if task.get("status") in ("completed", "failed", "cancelled"):
+            return
+        await asyncio.sleep(1)
+
+
+@app.get("/api/tasks/{task_id}/events")
+async def stream_task_events(task_id: str, request: Request):
+    owner_id = session_owner(request)
+    if not task_manager.get(task_id, owner_id=owner_id):
+        raise HTTPException(status_code=404, detail="Task not found.")
+    return StreamingResponse(
+        _task_event_stream(task_id, owner_id, request),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
 async def _task_action(task_id: str, action: str, owner_id: str):
     try:
         task = await getattr(task_manager, action)(task_id, owner_id=owner_id)
