@@ -34,6 +34,31 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class _HybridRow(dict):
+    """Mapping-style row that also supports SQLite-compatible numeric indexing."""
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
+
+class _Cursor:
+    def __init__(self, cursor, postgres=False):
+        self.cursor = cursor
+        self.postgres = postgres
+
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        return _HybridRow(row) if self.postgres and row is not None else row
+
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        return [_HybridRow(row) for row in rows] if self.postgres else rows
+
+    def __getattr__(self, name):
+        return getattr(self.cursor, name)
+
+
 class _Connection:
     """SQLite/PostgreSQL connection wrapper with consistent transaction cleanup."""
     def __init__(self, connection, postgres=False):
@@ -44,7 +69,7 @@ class _Connection:
         if self.postgres:
             query = query.replace("?", "%s")
             query = query.replace("MAX(confidence,%s)", "GREATEST(confidence,%s)")
-        return self.connection.execute(query, params)
+        return _Cursor(self.connection.execute(query, params), postgres=self.postgres)
 
     def commit(self):
         return self.connection.commit()
