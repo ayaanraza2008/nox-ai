@@ -224,7 +224,9 @@ def _code_hash(code: str) -> str:
 
 
 def _email_configured() -> bool:
-    return bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM") and (os.getenv("SMTP_USER") or os.getenv("SMTP_PASSWORD") is None))
+    return bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM") and
+                ((not os.getenv("SMTP_USER") and not os.getenv("SMTP_PASSWORD")) or
+                 (os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD"))))
 
 
 def _sms_configured() -> bool:
@@ -269,11 +271,11 @@ def _send_challenge(conn, account, purpose: str, channel: str, client_key: str =
             return "setup_required"
         destination = account["email"]
     elif channel == "sms":
+        if not account.get("phone_number"):
+            return "profile_required"
         if not _sms_configured():
             return "setup_required"
-        destination = (account.get("country_code") or "") + (account.get("phone_number") or "")
-        if not account.get("phone_number"):
-            return "setup_required"
+        destination = (account.get("country_code") or "") + account["phone_number"]
     else:
         raise ValueError("Unsupported verification channel.")
 
@@ -470,8 +472,9 @@ def resend_verification(token: str, channel: str, client_key: str = "") -> str:
 
 def request_recovery(identifier: str, channel: str, country_code: str = "+91", client_key: str = "") -> str:
     """Always returns the same public response to avoid account enumeration."""
-    conn = _connect()
+    conn = None
     try:
+        conn = _connect()
         _rate_limit(conn, "recovery", (client_key + ":" + (identifier or "").casefold()), 5, 3600)
         row = None
         value = (identifier or "").strip()
@@ -485,10 +488,12 @@ def request_recovery(identifier: str, channel: str, country_code: str = "+91", c
                             channel, client_key)
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         # Do not reveal existence, delivery configuration, or provider failures.
     finally:
-        conn.close()
+        if conn:
+            conn.close()
     return "If a matching account exists and this channel is configured, a recovery code will be sent."
 
 
