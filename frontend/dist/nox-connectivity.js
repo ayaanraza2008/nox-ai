@@ -65,7 +65,10 @@
         if (!state.acknowledged || !state.acknowledged[fingerprint]) {
           // One concise notice per newly observed issue; never claim more than the evidence shows.
           if ("Notification" in window && Notification.permission === "granted") {
-            try { new Notification("NOX AI: " + current[fingerprint].title, { body: current[fingerprint].detail, tag: "nox-connectivity-" + fingerprint, renotify: false }); } catch (_) {}
+            try {
+              new Notification("NOX AI: " + current[fingerprint].title, { body: current[fingerprint].detail, tag: "nox-connectivity-" + fingerprint, renotify: false });
+              current[fingerprint].notificationSent = true;
+            } catch (_) {}
           }
         }
       } else {
@@ -93,6 +96,20 @@
     if (permissionButton) permissionButton.addEventListener("click", async () => {
       if (!("Notification" in window)) { report.insertAdjacentHTML("beforeend", '<div class="finding warning">This browser does not support notifications. Findings remain visible here.</div>'); return; }
       const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        const current = readIssueState();
+        current.active = current.active || {};
+        Object.keys(current.active).forEach(code => {
+          const item = current.active[code];
+          if (!item.notificationSent && !(current.acknowledged || {})[code]) {
+            try {
+              new Notification("NOX AI: " + item.title, { body: item.detail, tag: "nox-connectivity-" + code, renotify: false });
+              item.notificationSent = true;
+            } catch (_) {}
+          }
+        });
+        saveIssueState(current);
+      }
       report.insertAdjacentHTML("beforeend", '<div class="finding">Browser notification permission: ' + escapeHTML(permission) + '.</div>');
     });
     const ackButton = $("connectivityAcknowledge");
