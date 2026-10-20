@@ -141,48 +141,19 @@ GODS_EYE_VIEW_COMMIT = "505d2cb5861905c76a98465799a29e1fd71b869b"
 
 
 def _gods_eye_view_config():
-    """Return validated launch metadata only; provider credentials stay server-side."""
-    base = {
+    """Report native integration readiness without exposing or launching a separate UI."""
+    return {
         "upstream_repository": GODS_EYE_VIEW_REPOSITORY,
         "upstream_commit": GODS_EYE_VIEW_COMMIT,
-        "launch_mode": "separate_service",
-        "status": "setup_required",
+        "launch_mode": "native_integration_pending",
+        "status": "native_integration_pending",
         "configured": False,
         "url": None,
-        "reason": "Deploy the separate God's Eye View service, then set GODS_EYE_VIEW_URL.",
+        "reason": (
+            "The upstream Cesium application has not yet been mounted as a native NOX module. "
+            "External dashboard launches are intentionally disabled."
+        ),
     }
-    raw = os.getenv("GODS_EYE_VIEW_URL", "").strip()
-    if not raw:
-        return base
-    try:
-        parsed = urlsplit(raw)
-        host = (parsed.hostname or "").lower()
-        custom_hosts = {
-            item.strip().lower()
-            for item in os.getenv("GODS_EYE_VIEW_ALLOWED_HOSTS", "").split(",")
-            if item.strip()
-        }
-        valid_origin = (
-            parsed.scheme.lower() == "https"
-            and bool(host)
-            and parsed.netloc.lower() == host
-            and parsed.path in ("", "/")
-            and not parsed.query
-            and not parsed.fragment
-            and parsed.username is None
-            and parsed.password is None
-            and (host.endswith(".onrender.com") or host in custom_hosts)
-        )
-    except ValueError:
-        valid_origin = False
-        host = ""
-    if not valid_origin:
-        return {
-            **base,
-            "reason": "GODS_EYE_VIEW_URL must be an HTTPS root origin on *.onrender.com or a hostname listed exactly in GODS_EYE_VIEW_ALLOWED_HOSTS.",
-        }
-    return {**base, "status": "configured", "configured": True, "url": f"https://{host}", "reason": None}
-
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
