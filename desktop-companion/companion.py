@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from device_control import discover_adb_devices, launch_android_app
+from android_file_transfer import router as android_file_transfer_router
 
 try:
     from home_assistant import execute_home_assistant_command
@@ -49,6 +50,7 @@ RUVIEW_API_TOKEN = os.getenv("RUVIEW_API_TOKEN", "").strip()
 RUVIEW_LOCAL_URL = "http://127.0.0.1:3000"
 
 app = FastAPI(title="NOX Local Desktop Companion", version="0.3.0")
+app.include_router(android_file_transfer_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[WEB_ORIGIN],
