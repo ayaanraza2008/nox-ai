@@ -89,6 +89,25 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(packets[0], {"type": "delta", "text": "Recovered after empty stream"})
         self.assertEqual(packets[1], {"type": "done", "mode": "ai-fallback"})
 
+    async def test_stream_endpoint_falls_back_when_stream_generator_raises(self):
+        async def broken_stream(message, language, history, images=None, knowledge_context=None):
+            raise RuntimeError("stream transport broke")
+            yield
+
+        async def fallback_reply(message, language, history, images=None, knowledge_context=None):
+            return "Recovered from stream crash"
+
+        transport = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            with patch.object(main, "stream_provider_reply", broken_stream), patch.object(main, "provider_reply", fallback_reply):
+                response = await client.post("/api/chat/stream", json={"message": "Hello", "images": []})
+
+        packets = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+        self.assertEqual(packets, [
+            {"type": "delta", "text": "Recovered from stream crash"},
+            {"type": "done", "mode": "ai-fallback"},
+        ])
+
     async def test_stream_endpoint_rejects_invalid_image_before_streaming(self):
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
