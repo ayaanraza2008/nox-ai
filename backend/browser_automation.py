@@ -137,7 +137,7 @@ class BrowserAgent:
             s["task"], s["status"] = summary[:300], "running"
             self._event(s, "Task started: " + summary)
             try:
-                steps = [part.strip() for part in re.split(r"\\s+(?:and then|then|after that)\\s+", command, flags=re.I) if part.strip()]
+                steps = [part.strip() for part in re.split(r"\s+(?:and then|then|after that)\s+", command, flags=re.I) if part.strip()]
                 if len(steps) > 8:
                     raise BrowserAgentError("Please split this into at most eight browser steps at a time.")
                 results = []
@@ -146,7 +146,7 @@ class BrowserAgent:
                     results.append(f"Step {index}: {result}")
                     if s["status"] in {"awaiting_confirmation", "auth_required", "stopped"}:
                         break
-                result = "\\n\\n".join(results)
+                result = "\n\n".join(results)
                 if s["status"] == "running":
                     s["status"] = "completed"
                 self._event(s, result, "success" if s["status"] == "completed" else "attention")
