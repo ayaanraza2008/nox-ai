@@ -257,6 +257,25 @@ class TaskManager:
             runner.cancel()
         return item
 
+    async def cancel_all(self, owner_id: str | None = None):
+        """Cancel all unfinished tasks visible to the caller; return actual affected tasks."""
+        with self._connect() as db:
+            if owner_id is None:
+                rows = db.execute(
+                    "SELECT id FROM tasks WHERE status IN ('queued','running','paused')"
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT id FROM tasks WHERE owner_id=? AND status IN ('queued','running','paused')",
+                    (owner_id,),
+                ).fetchall()
+        stopped = []
+        for row in rows:
+            task = await self.cancel(str(row["id"]), owner_id=owner_id)
+            if task:
+                stopped.append(task)
+        return stopped
+
     async def _work_loop(self):
         while True:
             task_id = await self.queue.get()
