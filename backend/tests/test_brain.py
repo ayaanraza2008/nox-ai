@@ -25,6 +25,15 @@ class BrainMemoryTests(unittest.TestCase):
         self.assertIn("pytest", results[0]["text"])
         self.assertEqual(brain.retrieve_memories("session-b", "pytest backend changes"), [])
 
+    def test_stale_memory_is_not_retrieved_until_revalidated(self):
+        saved = brain.remember("session-a", content="Use the legacy provider endpoint", category="operational")
+        memory_id = saved["memory"]["id"]
+        brain.review_memory("session-a", memory_id, "mark_stale")
+        self.assertEqual(brain.retrieve_memories("session-a", "legacy provider endpoint"), [])
+        reviewed = brain.review_memory("session-a", memory_id, "revalidate")
+        self.assertFalse(reviewed["stale"])
+        self.assertEqual(len(brain.retrieve_memories("session-a", "legacy provider endpoint")), 1)
+
     def test_duplicate_memory_is_merged_not_duplicated(self):
         brain.remember("session-a", content="Prefer concise Hinglish answers", category="preference")
         duplicate = brain.remember("session-a", content="  Prefer concise Hinglish answers  ", category="preference")
