@@ -299,7 +299,7 @@ The Brain & Memory workspace adds a session-scoped operational memory service to
 ### API endpoints
 - `GET /api/brain/overview`
 - `GET|PUT /api/brain/settings`
-- `GET|POST /api/brain/memories`, `DELETE /api/brain/memories/{memory_id}`
+- `GET|POST /api/brain/memories`, `DELETE /api/brain/memories/{memory_id}`, `POST /api/brain/memories/{memory_id}/review` (revalidate or mark stale)
 - `POST /api/brain/device-context`, `GET /api/brain/devices`
 - `POST /api/brain/outcomes`
 - `GET|POST /api/brain/skills`, `POST /api/brain/skills/{skill_id}/review`
