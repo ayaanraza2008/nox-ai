@@ -62,7 +62,7 @@ def _connect():
     CREATE TABLE IF NOT EXISTS brain_settings (
       owner_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1,
       sync_mode TEXT NOT NULL DEFAULT 'local_only', retention_days INTEGER NOT NULL DEFAULT 365,
-      categories_json TEXT NOT NULL DEFAULT '["operational","experience","preference","project"]',
+      categories_json TEXT NOT NULL DEFAULT '["operational","experience","preference","project","temporary"]',
       updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS brain_memories (
@@ -108,7 +108,7 @@ def _connect():
 def _ensure_settings(conn, owner_id: str):
     conn.execute(
         "INSERT OR IGNORE INTO brain_settings(owner_id, enabled, sync_mode, retention_days, categories_json, updated_at) VALUES(?,1,'local_only',365,?,?)",
-        (owner_id, json.dumps(["operational", "experience", "preference", "project"]), now_iso()),
+        (owner_id, json.dumps(["operational", "experience", "preference", "project", "temporary"]), now_iso()),
     )
 
 
@@ -358,7 +358,7 @@ def record_outcome(owner_id: str, task_type: str, requested_outcome: str, result
         _audit(conn, owner_id, "outcome_recorded", "outcome", outcome_id, {"status": status, "task_type": values[0]})
         conn.commit()
     return {"id": outcome_id, "task_type": values[0], "status": status, "created_at": now_iso(),
-            "lesson_eligible": status == "succeeded" and bool(evidence and evidence.strip())}
+            "evidence_attached": bool(evidence and evidence.strip()), "requires_validation_before_memory": status == "succeeded" and bool(evidence and evidence.strip())}
 
 
 BUILTIN_SKILLS = [
