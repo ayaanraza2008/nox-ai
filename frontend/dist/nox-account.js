@@ -35,6 +35,9 @@
     $("accountIdentifierLabel").hidden = mode !== "login";
     $("accountEmail").hidden = mode !== "login";
     $("accountRememberWrap").hidden = mode !== "login";
+    $("accountForgot").hidden = mode !== "login";
+    $("accountRecoveryView").hidden = true;
+    $("accountAuthForm").hidden = false;
     $("accountEmail").required = mode === "login";
     $("accountFullName").required = mode === "register";
     $("accountUsername").required = mode === "register";
