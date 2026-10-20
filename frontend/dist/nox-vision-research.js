@@ -84,12 +84,12 @@
     draw(predictions,source);
   }
   async function loop(){
-    if(!detectOn||paused||document.hidden){raf=requestAnimationFrame(loop);return;}
+    if(!detectOn||paused||document.hidden){raf=0;if(detectOn&&!paused&&!document.hidden)raf=requestAnimationFrame(loop);return;}
     const now=performance.now();
     if(now-lastRun<350){raf=requestAnimationFrame(loop);return;}
     lastRun=now;
     try{await detectOnce(video);}catch(e){detectOn=false;visionStatus("visionFrameState","STOPPED");status("Detection stopped: "+(e.message||"model error"));$("visionPause").disabled=true;return;}
-    raf=requestAnimationFrame(loop);
+    if(detectOn&&!paused&&!document.hidden)raf=requestAnimationFrame(loop);else raf=0;
   }
   function stopTracks(){
     detectOn=false;paused=false;if(raf)cancelAnimationFrame(raf);raf=0;
