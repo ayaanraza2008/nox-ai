@@ -12,7 +12,7 @@ class CognitiveIntelligenceTests(unittest.TestCase):
         self.assertIn("Hinglish", prompt)
 
     def test_pattern_samples_split_lines_and_sentences(self):
-        self.assertEqual(split_pattern_samples("Deploy failed\\nDeploy retried"), ["Deploy failed", "Deploy retried"])
+        self.assertEqual(split_pattern_samples("\n".join(["Deploy failed", "Deploy retried"])), ["Deploy failed", "Deploy retried"])
         self.assertEqual(split_pattern_samples("First failed. Second passed."), ["First failed.", "Second passed."])
 
     def test_pattern_detection_avoids_substring_false_positives(self):
