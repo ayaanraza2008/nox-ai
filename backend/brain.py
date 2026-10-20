@@ -1,7 +1,8 @@
 """Privacy-first operational brain for NOX AI.
 
-This is a bounded, session-scoped memory and evaluation service, not model-weight
-training. It stores only explicitly submitted candidates, never raw conversations.
+This is a bounded memory and evaluation service, not model-weight training. It stores
+only explicitly submitted candidates, never raw conversations. When DATABASE_URL or
+SUPABASE_DB_URL points to PostgreSQL, records survive app restarts and redeploys.
 """
 from __future__ import annotations
 
@@ -33,13 +34,54 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class _HybridRow(dict):
+    """Mapping-style row that also supports SQLite-compatible numeric indexing."""
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
+
+class _Cursor:
+    def __init__(self, cursor, postgres=False):
+        self.cursor = cursor
+        self.postgres = postgres
+
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        return _HybridRow(row) if self.postgres and row is not None else row
+
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        return [_HybridRow(row) for row in rows] if self.postgres else rows
+
+    def __getattr__(self, name):
+        return getattr(self.cursor, name)
+
+
 class _Connection:
-    """SQLite context wrapper that always closes the connection after each unit of work."""
-    def __init__(self, connection):
+    """SQLite/PostgreSQL connection wrapper with consistent transaction cleanup."""
+    def __init__(self, connection, postgres=False):
         self.connection = connection
+        self.postgres = postgres
+
+    def execute(self, query, params=()):
+        if self.postgres:
+            query = query.replace("?", "%s")
+            query = query.replace("MAX(confidence,%s)", "GREATEST(confidence,%s)")
+        return _Cursor(self.connection.execute(query, params), postgres=self.postgres)
+
+    def commit(self):
+        return self.connection.commit()
+
+    def rollback(self):
+        return self.connection.rollback()
+
+    def close(self):
+        return self.connection.close()
 
     def __enter__(self):
-        return self.connection
+        return self
 
     def __exit__(self, exc_type, exc, traceback):
         try:
@@ -52,14 +94,7 @@ class _Connection:
         return False
 
 
-def _connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=15)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=15000")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.executescript("""
-    CREATE TABLE IF NOT EXISTS brain_settings (
+_SCHEMA = """CREATE TABLE IF NOT EXISTS brain_settings (
       owner_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1,
       sync_mode TEXT NOT NULL DEFAULT 'local_only', retention_days INTEGER NOT NULL DEFAULT 365,
       categories_json TEXT NOT NULL DEFAULT '["operational","experience","preference","project","temporary"]',
@@ -100,14 +135,44 @@ def _connect():
     CREATE TABLE IF NOT EXISTS brain_audit (
       id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, action TEXT NOT NULL,
       item_type TEXT NOT NULL, item_id TEXT, detail_json TEXT NOT NULL, created_at TEXT NOT NULL
-    );
-    """)
-    return _Connection(conn)
+    );"""
+
+
+def _connect():
+    """Use durable PostgreSQL when configured; SQLite remains for local development/tests."""
+    database_url = (os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or "").strip()
+    postgres = database_url.startswith(("postgres://", "postgresql://"))
+    if postgres:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError("PostgreSQL is configured but psycopg is not installed.") from exc
+        raw = psycopg.connect(database_url, row_factory=dict_row, connect_timeout=10)
+        conn = _Connection(raw, postgres=True)
+    else:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        raw = sqlite3.connect(DB_PATH, timeout=15)
+        raw.row_factory = sqlite3.Row
+        raw.execute("PRAGMA busy_timeout=15000")
+        raw.execute("PRAGMA foreign_keys=ON")
+        conn = _Connection(raw)
+    try:
+        for statement in _SCHEMA.split(";"):
+            statement = statement.strip()
+            if statement:
+                conn.execute(statement)
+        conn.commit()
+        return conn
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
 
 
 def _ensure_settings(conn, owner_id: str):
     conn.execute(
-        "INSERT OR IGNORE INTO brain_settings(owner_id, enabled, sync_mode, retention_days, categories_json, updated_at) VALUES(?,1,'local_only',365,?,?)",
+        "INSERT INTO brain_settings(owner_id, enabled, sync_mode, retention_days, categories_json, updated_at) VALUES(?,1,'local_only',365,?,?) ON CONFLICT(owner_id) DO NOTHING",
         (owner_id, json.dumps(["operational", "experience", "preference", "project", "temporary"]), now_iso()),
     )
 
@@ -188,10 +253,10 @@ def remember(owner_id: str, *, content: str, category: str, source: str = "user_
         raise ValueError("Invalid verification status")
     if SENSITIVE.search(content) or SECRET_WORDS.search(content) or (source_ref and (SENSITIVE.search(source_ref) or SECRET_WORDS.search(source_ref))):
         raise ValueError("This looks like a secret or credential. NOX will not store it as a memory.")
-    if category == "temporary":
-        retention_days = min(max(int(retention_days or 1), 1), 7)
-    else:
-        retention_days = min(max(int(retention_days or get_settings(owner_id)["retention_days"]), 1), 3650)
+    # User-requested retention policy: saved memories never expire automatically.
+    # Keep retention_days as metadata for compatibility; account deletion is the
+    # only supported bulk deletion path (individual memory deletion remains explicit).
+    retention_days = min(max(int(retention_days or get_settings(owner_id)["retention_days"]), 1), 3650)
     confidence = min(max(float(confidence), 0.0), 1.0)
     if source == "verified_lesson" and (verification != "verified" or confidence < 0.65):
         raise ValueError("Lessons require verified evidence and confidence of at least 0.65")
@@ -199,7 +264,7 @@ def remember(owner_id: str, *, content: str, category: str, source: str = "user_
         raise ValueError("This memory category is disabled in Brain settings")
     digest = _digest(content)
     now = now_iso()
-    expires = (datetime.now(timezone.utc) + timedelta(days=retention_days)).isoformat()
+    expires = None
     with _connect() as conn:
         _ensure_settings(conn, owner_id)
         settings = conn.execute("SELECT enabled FROM brain_settings WHERE owner_id=?", (owner_id,)).fetchone()
@@ -236,7 +301,6 @@ def list_memories(owner_id: str, query: str = "", category: str | None = None, l
     limit = min(max(int(limit), 1), 1000)
     with _connect() as conn:
         _ensure_settings(conn, owner_id)
-        conn.execute("DELETE FROM brain_memories WHERE owner_id=? AND expires_at IS NOT NULL AND expires_at < ?", (owner_id, now_iso()))
         clauses = ["owner_id=?"]
         args: list[Any] = [owner_id]
         if category:
@@ -480,7 +544,6 @@ def overview(owner_id: str) -> dict:
     settings = get_settings(owner_id)
     with _connect() as conn:
         _ensure_settings(conn, owner_id)
-        conn.execute("DELETE FROM brain_memories WHERE owner_id=? AND expires_at IS NOT NULL AND expires_at < ?", (owner_id, now_iso()))
         counts = {
             "memories": conn.execute("SELECT COUNT(*) FROM brain_memories WHERE owner_id=?", (owner_id,)).fetchone()[0],
             "verified_memories": conn.execute("SELECT COUNT(*) FROM brain_memories WHERE owner_id=? AND verification IN ('verified','user_confirmed') AND stale=0", (owner_id,)).fetchone()[0],
