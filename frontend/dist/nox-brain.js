@@ -137,6 +137,12 @@
       $("brainEnabled").checked = !!overview.settings.enabled;
       $("brainSyncMode").value = overview.settings.sync_mode || "local_only";
       $("brainRetention").value = String(overview.settings.retention_days || 365);
+      const categories = new Set(overview.settings.categories || []);
+      $("brainCatOperational").checked = categories.has("operational");
+      $("brainCatExperience").checked = categories.has("experience");
+      $("brainCatPreference").checked = categories.has("preference");
+      $("brainCatProject").checked = categories.has("project");
+      $("brainCatTemporary").checked = categories.has("temporary");
       renderMemories(memories.results || []);
       renderDevices(devices.devices || []);
       renderProposals(proposals.proposals || []);
@@ -206,11 +212,34 @@
             enabled: $("brainEnabled").checked,
             sync_mode: $("brainSyncMode").value,
             retention_days: Number($("brainRetention").value),
-            categories: ["operational", "experience", "preference", "project", "temporary"]
+            categories: [
+              $("brainCatOperational").checked ? "operational" : null,
+              $("brainCatExperience").checked ? "experience" : null,
+              $("brainCatPreference").checked ? "preference" : null,
+              $("brainCatProject").checked ? "project" : null,
+              $("brainCatTemporary").checked ? "temporary" : null
+            ].filter(Boolean)
           })
         });
         notice("Privacy settings saved. Sync selection is a preference only; cross-device sync is not implemented.", true);
         await refresh();
+      } catch (error) { notice(error.message, false); }
+    });
+    $("brainExportMemories")?.addEventListener("click", async () => {
+      try {
+        const data = await api("/api/brain/memories?limit=200");
+        const exportData = {
+          exported_at: new Date().toISOString(),
+          notice: "Contains only saved NOX memory entries. Store this file privately.",
+          memories: data.results || []
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url; link.download = "nox-brain-memories.json";
+        document.body.append(link); link.click(); link.remove();
+        URL.revokeObjectURL(url);
+        notice("Memory export created. Keep the file private.");
       } catch (error) { notice(error.message, false); }
     });
     $("brainDiscoverDevice")?.addEventListener("click", async () => {
