@@ -555,6 +555,7 @@ class TaskManager:
                 self._save(item)
         finally:
             item = self._get(task_id)
-            if item and item["status"] == "cancelled":
-                self._event(item, "Task stopped; cancelled status preserved.")
+            if item and item["status"] in ("cancelled", "cancelling"):
+                item["status"] = "cancelled"
+                self._event(item, "Task worker cleanup finished; cancelled status preserved.")
                 self._save(item)
