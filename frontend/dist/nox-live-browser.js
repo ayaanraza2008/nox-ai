@@ -93,7 +93,7 @@
       if (!(s.downloads||[]).length) $("nbDownloads").textContent = "No downloaded files.";
       (s.downloads||[]).forEach((d,i) => {
         const a=document.createElement("a"); a.textContent=d.name+(d.saved?" · saved on remote server":" · detected");
-        if(d.saved) { a.href="/api/browser/download/"+i; a.target="_blank"; a.rel="noopener"; } else a.href="#";
+        if(d.saved) { a.href="/api/browser/download/"+(d.index ?? i); a.target="_blank"; a.rel="noopener"; } else a.href="#";
         $("nbDownloads").appendChild(a);
       });
       if(withShot && s.active) {
