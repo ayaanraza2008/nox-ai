@@ -22,6 +22,7 @@ from backend.agent_swarm import SwarmManager
 from backend.safe_tools import SafeToolError, run_tool
 from backend import project_workspace as workspace
 from backend import knowledge
+from backend import github_bridge
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
@@ -1459,6 +1460,8 @@ async def capabilities():
     ]
     return {"service": "NOX AI", "version": app.version, "ai_configured": ai_configured, "modules": modules}
 
+
+app.include_router(github_bridge.router)
 
 if FRONTEND_DIST.exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")

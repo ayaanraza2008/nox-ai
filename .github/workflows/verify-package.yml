@@ -66,6 +66,8 @@ jobs:
         run: node --check frontend/dist/nox-agent-swarm.js
       - name: Validate project workspace JavaScript syntax
         run: node --check frontend/dist/nox-project-workspace.js
+      - name: Validate GitHub bridge JavaScript syntax
+        run: node --check frontend/dist/nox-github-bridge.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
