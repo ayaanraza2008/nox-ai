@@ -62,6 +62,30 @@ jobs:
           print(f"Extracted {len(parser.scripts)} inline script block(s)")
           PY
           node --check /tmp/nox-inline.js
+      - name: Verify NOX and LUMI integration wiring
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("frontend/dist/index.html").read_text(encoding="utf-8")
+          home = Path("frontend/dist/nox-minimal-home.js").read_text(encoding="utf-8")
+          backend = Path("backend/main.py").read_text(encoding="utf-8")
+          required = [
+              'id="personalitySelect"', 'id="voicePreview"', 'id="voicePitch"',
+              'id="textOnlyMode"', 'personality:turnPersonality',
+              'nox_voice_choice_"+personality', 'state.personalityRevision',
+          ]
+          missing = [item for item in required if item not in html]
+          if missing:
+              raise SystemExit("Missing NOX/LUMI frontend wiring: " + ", ".join(missing))
+          if "noxPersonalityHome" not in home:
+              raise SystemExit("Home-screen personality switcher is missing")
+          for item in ('personality: Literal["nox", "lumi"] = "nox"',
+                       'def default_tts_voice(', 'payload.personality',
+                       'pitch=f"{payload.pitch:+.0f}Hz"'):
+              if item not in backend:
+                  raise SystemExit("Missing backend personality/voice integration: " + item)
+          print("Verified personality switcher, request metadata, per-profile voice settings and privacy control")
+          PY
       - name: Validate 3D lab JavaScript syntax
         run: node --check frontend/dist/nox-3d-lab.js
       - name: Validate agent swarm JavaScript syntax
