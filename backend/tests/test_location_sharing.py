@@ -50,8 +50,10 @@ class LocationSharingTests(unittest.TestCase):
         result = location.status_fields(item, now)
         self.assertFalse(result["online"])
         self.assertTrue(result["location_stale"])
-        self.assertIsNone(result["latitude"])
-        self.assertIsNone(result["longitude"])
+        # Keep the last-known point available as stale data; the dashboard must not
+        # draw it as a live marker because location_stale is true.
+        self.assertEqual(result["latitude"], 28.6)
+        self.assertEqual(result["longitude"], 77.2)
 
     def test_fresh_shared_location_requires_unexpired_consent(self):
         now = datetime.now(timezone.utc)
