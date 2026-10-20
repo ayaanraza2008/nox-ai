@@ -15,7 +15,7 @@ def build_synthesis_request(topic: str, sources: list[dict]) -> str:
         + "\n\nAvailable evidence IDs and source labels:\n"
         + "\n".join(source_list)
         + "\n\nRequired report structure: "
-        "1) Bottom line; 2) Claim-by-claim evidence comparison; 3) Areas of agreement; "
+        "1) Bottom line; 2) Claim-by-claim evidence comparison; 3) Areas of agreement and where sources disagree; "
         "4) Conflicting or non-comparable evidence; 5) Gaps and limitations. "
         "In the claim-by-claim section, use a compact table with columns: claim/question, source evidence, "
         "source IDs, and assessment (supported by captured text / sources differ / insufficient evidence). "
