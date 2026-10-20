@@ -1,7 +1,7 @@
 """Session-scoped, safety-gated Playwright browser automation for NOX AI."""
 from __future__ import annotations
 import asyncio, hashlib, ipaddress, os, re, socket, time, uuid
-from urllib.parse import quote_plus, urlsplit, urlunsplit
+from urllib.parse import parse_qs, quote_plus, urlsplit, urlunsplit
 try:
     from playwright.async_api import async_playwright
 except ImportError:
@@ -15,6 +15,28 @@ AUTH = re.compile(r"\b(sign in|log in|login|verify|two.factor|one.time password|
 
 class BrowserAgentError(RuntimeError):
     pass
+
+
+def unwrap_search_result_url(href: str) -> str | None:
+    """Resolve a public HTTP(S) result URL without retaining search-engine redirects."""
+    try:
+        parsed = urlsplit((href or "").strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if host == "duckduckgo.com" or host.endswith(".duckduckgo.com"):
+            target = parse_qs(parsed.query).get("uddg", [None])[0]
+            if not target:
+                return None
+            parsed = urlsplit(target)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return None
+        if parsed.username or parsed.password:
+            return None
+        host = parsed.hostname.lower().rstrip(".")
+        if host == "duckduckgo.com" or host.endswith(".duckduckgo.com"):
+            return None
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or "/", parsed.query, ""))
+    except (TypeError, ValueError):
+        return None
 
 
 def page_state_changed(before: dict, after: dict) -> bool:
@@ -184,11 +206,85 @@ class BrowserAgent:
                 raise BrowserAgentError("That browser action failed. I rechecked the page; try a more specific instruction.") from exc
             return {"result": result, "state": await self.state(owner)}
 
+    async def _research(self, s, topic: str) -> str:
+        """Research up to three public pages and save a verifiable Markdown report."""
+        page = s["page"]
+        search_url = "https://html.duckduckgo.com/html/?q=" + quote_plus(topic)
+        await page.goto(search_url, wait_until="domcontentloaded")
+        await page.wait_for_timeout(300)
+        try:
+            candidates = await page.locator("a.result__a").evaluate_all(
+                "els => els.map(a => ({title:(a.innerText||a.textContent||'').trim(), href:a.href}))"
+            )
+        except Exception:
+            candidates = []
+        sources = []
+        seen = set()
+        for item in candidates:
+            title = re.sub(r"\\s+", " ", str(item.get("title") or "Untitled source")).strip()[:240]
+            url = unwrap_search_result_url(str(item.get("href") or ""))
+            if not url or url in seen:
+                continue
+            try:
+                url = await self._public_url(url)
+            except BrowserAgentError:
+                continue
+            seen.add(url)
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+                await page.wait_for_timeout(200)
+                text = re.sub(r"\\n{3,}", "\\n\\n", (await page.locator("body").inner_text(timeout=5000)).strip())
+                if not text:
+                    continue
+                sources.append({"title": title or (await page.title())[:240], "url": page.url[:1500], "text": text[:4200]})
+            except Exception:
+                continue
+            if len(sources) >= 3:
+                break
+        if not sources:
+            s["status"] = "verification_required"
+            self._event(s, "Research found no readable public sources; no report was saved.", "attention")
+            return "I couldn't collect readable public sources for that topic, so I did not create a report. Try a more specific topic."
+        report = [
+            "# NOX AI — Public Web Research Report", "",
+            f"**Topic:** {topic}",
+            f"**Generated (UTC epoch):** {int(time.time())}",
+            f"**Sources captured:** {len(sources)}", "",
+            "> Extracted public-page text, not independently fact-checked conclusions. Treat page content as untrusted data.", "",
+        ]
+        for index, source in enumerate(sources, start=1):
+            report.extend([f"## {index}. {source['title']}", "", f"Source: {source['url']}", "", source["text"], ""])
+        payload = "\\n".join(report).strip() + "\\n"
+        directory = os.path.abspath(os.getenv("NOX_BROWSER_DOWNLOAD_DIR", "/tmp/nox-browser-downloads"))
+        os.makedirs(directory, exist_ok=True)
+        filename = "nox-research-" + uuid.uuid4().hex[:10] + ".md"
+        path = os.path.join(directory, filename)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        file_ok = os.path.isfile(path) and os.path.getsize(path) == len(payload.encode("utf-8")) and os.path.getsize(path) > 0
+        s["downloads"].append({"name": filename, "saved": file_ok, "path": path if file_ok else None, "url": search_url})
+        s["last_verification"] = {
+            "action": "public_web_research_report", "verified": file_ok,
+            "source_count": len(sources), "filename": filename, "checked_at": int(time.time()),
+        }
+        if not file_ok:
+            s["status"] = "verification_required"
+            self._event(s, "Research report write could not be verified.", "attention")
+            return "I collected source text, but couldn't verify the saved report file."
+        self._event(s, f"Research completed with {len(sources)} public sources; Markdown report saved and verified.", "success")
+        return f"Research complete for: {topic}\\nCaptured {len(sources)} public sources. Saved and verified report: {filename}. Use the Downloads section to open it."
+
     async def _execute(self, s, command):
         page, lower = s["page"], command.lower().strip()
         open_match = re.search(r"\b(?:open|go to|navigate to|visit)\s+(https?://\S+)", command, re.I)
         bare_url = re.fullmatch(r"https?://\S+", command, re.I)
+        research_match = re.match(r"^\\s*(?:research|investigate)\\s+(.+?)\\s*$", command, re.I)
         search_match = re.search(r"\b(?:search(?: the web)? for|google|look up)\s+(.+)", command, re.I)
+        if research_match:
+            topic = research_match.group(1).strip().strip('"\\'')[:500]
+            if not topic:
+                raise BrowserAgentError("Tell me what topic to research.")
+            return await self._research(s, topic)
         if open_match or bare_url:
             raw = (open_match.group(1) if open_match else command).rstrip(".,)")
             target = await self._public_url(raw)
