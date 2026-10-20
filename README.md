@@ -240,3 +240,12 @@ Set these in the hosting provider's **server-side environment/secrets**, never i
 - `NOX_GITHUB_BASE_BRANCH`: optional base branch name; defaults to `main`.
 
 If secrets are absent, NOX can still start; the panel reports setup required. The first version proposes one file per PR, limits each file to 50,000 characters and the overall request to 150,000 characters, filters hidden/sensitive paths, and opens a **draft** PR. GitHub permissions, branch rules, rate limits, and repository policies still apply. A multi-file operation can leave a proposal branch with partial commits if GitHub rejects a later file; inspect the branch and close it if needed. Review the PR on GitHub before merging. Creating a PR does not mean tests passed or the live Render site was updated.
+
+
+## GitHub Actions CI dashboard
+
+The **CI / TEST STATUS** panel uses the configured GitHub Bridge server-side token to show recent workflow runs for `NOX_GITHUB_BASE_BRANCH`, plus each run's jobs and step status. It displays actual GitHub Actions metadata and links to the canonical run page. The panel does not fetch or display secrets, environment values, or raw logs, and it does not start/cancel workflows.
+
+The dashboard requires the same server-side `GITHUB_TOKEN` and `NOX_GITHUB_REPOSITORY` configuration as the GitHub Bridge. Grant **Actions: Read-only** on the configured repository in the fine-grained token for workflow run/job status access, in addition to the existing contents and pull-request permissions if those Bridge features are used. Missing permissions produce an error status rather than fabricated results.
+
+A green workflow means the reported GitHub Actions run passed; it does **not** establish that Render deployed the same commit or that the live site is healthy. Check Render deploy logs and the live health endpoint separately.
