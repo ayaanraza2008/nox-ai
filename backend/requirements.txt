@@ -6,3 +6,5 @@ edge-tts>=7.0,<8.0
 python-multipart>=0.0.9,<1.0
 pypdf>=5.0,<7.0
 phonenumbers>=8.13,<10
+cryptography>=43.0,<47.0
+
