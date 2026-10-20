@@ -74,6 +74,8 @@ jobs:
         run: node --check frontend/dist/nox-vision-research.js
       - name: Validate grouped feature drawer JavaScript syntax
         run: node --check frontend/dist/nox-feature-drawer.js
+      - name: Validate NOX Brain dashboard JavaScript syntax
+        run: node --check frontend/dist/nox-brain.js
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
