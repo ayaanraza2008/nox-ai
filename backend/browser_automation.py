@@ -362,7 +362,7 @@ class BrowserAgent:
         if re.search(r"\b(inspect|read|summarize|what does this page|tell me about this page)\b", lower):
             if page.is_closed() or page.url == "about:blank":
                 raise BrowserAgentError("Open a website first, or say: open https://example.com")
-                text = re.sub(r"\n{3,}", "\n\n", (await page.locator("body").inner_text(timeout=5000)).strip())
+            text = re.sub(r"\n{3,}", "\n\n", (await page.locator("body").inner_text(timeout=5000)).strip())
             return f"Page: {await page.title()}\nURL: {page.url}\n\n{text[:6500] or '(No readable page text found.)'}"
         click = re.search(r"\bclick\s+(?:the\s+)?(?:button|link|tab|menu item)?\s*[\"']?(.+?)[\"']?$", command, re.I)
         if click:
