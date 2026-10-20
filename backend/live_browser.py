@@ -74,7 +74,10 @@ def plan_instruction(instruction: str) -> list[dict[str, str]]:
         steps: list[dict[str, str]] = []
         for part in chained:
             if part.strip():
-                steps.extend(plan_instruction(part.strip()))
+                part_steps = plan_instruction(part.strip())
+                if steps and part_steps and steps[-1]["action"] == "inspect" and part_steps[0]["action"] == "inspect":
+                    part_steps = part_steps[1:]
+                steps.extend(part_steps)
         return steps[:MAX_STEPS_PER_TASK]
 
     # Common site aliases avoid asking for a URL when the destination is unambiguous.
