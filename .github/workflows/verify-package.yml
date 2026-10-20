@@ -76,6 +76,25 @@ jobs:
         run: node --check frontend/dist/nox-feature-drawer.js
       - name: Validate minimal holographic home JavaScript syntax
         run: node --check frontend/dist/nox-minimal-home.js
+      - name: Verify minimal-home feature coverage
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          html = Path("frontend/dist/index.html").read_text(encoding="utf-8")
+          drawer = Path("frontend/dist/nox-feature-drawer.js").read_text(encoding="utf-8")
+          home = Path("frontend/dist/nox-minimal-home.js").read_text(encoding="utf-8")
+          panel_ids = set(re.findall(r'<section\\b[^>]*\\bclass="[^"]*\\bpanel\\b[^"]*"[^>]*\\bid="([^"]+)"', html))
+          groups = re.findall(r'ids:\\s*\\[([^\\]]*)\\]', drawer)
+          grouped_ids = set(re.findall(r'"([A-Za-z][A-Za-z0-9]+Panel)"', " ".join(groups)))
+          required = panel_ids - {"corePanel", "chatPanel"}
+          missing = sorted(required - grouped_ids)
+          if missing:
+              raise SystemExit("Panels not grouped in the feature drawer: " + ", ".join(missing))
+          if '/nox-minimal-home.js' not in html or 'noxChatLayer' not in home or 'noxVoiceHome' not in home:
+              raise SystemExit("Minimal home UI wiring is incomplete")
+          print(f"Verified {len(required)} feature panels are grouped outside the home screen")
+          PY
       - name: Validate NOX Brain dashboard JavaScript syntax
         run: node --check frontend/dist/nox-brain.js
       - name: Validate Cognitive Intelligence JavaScript syntax
