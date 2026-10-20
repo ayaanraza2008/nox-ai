@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
@@ -35,65 +34,6 @@ logger = logging.getLogger("nox.provider")
 app = FastAPI(title="NOX AI API", version="0.1.0")
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
-
-GODS_EYE_VIEW_REPOSITORY = "https://github.com/bilawalsidhu/gods-eye-view"
-GODS_EYE_VIEW_COMMIT = "505d2cb5861905c76a98465799a29e1fd71b869b"
-
-
-def _gods_eye_view_config():
-    """Return validated public launch metadata; never expose provider credentials."""
-    base = {
-        "upstream_repository": GODS_EYE_VIEW_REPOSITORY,
-        "upstream_commit": GODS_EYE_VIEW_COMMIT,
-        "launch_mode": "separate_service",
-        "status": "setup_required",
-        "configured": False,
-        "url": None,
-        "reason": "Set GODS_EYE_VIEW_URL to the HTTPS origin of the separately deployed God's Eye View service.",
-    }
-    raw = os.getenv("GODS_EYE_VIEW_URL", "").strip()
-    if not raw:
-        return base
-    try:
-        parsed = urlsplit(raw)
-        host = (parsed.hostname or "").lower()
-        allowed_custom_hosts = {
-            value.strip().lower()
-            for value in os.getenv("GODS_EYE_VIEW_ALLOWED_HOSTS", "").split(",")
-            if value.strip()
-        }
-        is_render_host = host.endswith(".onrender.com")
-        is_allowlisted_custom_host = host in allowed_custom_hosts
-        # Restrict to an HTTPS origin, with no credentials, port, path, query or fragment.
-        valid_origin = (
-            parsed.scheme.lower() == "https"
-            and bool(host)
-            and parsed.netloc.lower() == host
-            and parsed.path in ("", "/")
-            and not parsed.query
-            and not parsed.fragment
-            and parsed.username is None
-            and parsed.password is None
-            and (is_render_host or is_allowlisted_custom_host)
-        )
-    except ValueError:
-        valid_origin = False
-        host = ""
-    if not valid_origin:
-        return {
-            **base,
-            "reason": (
-                "GODS_EYE_VIEW_URL must be an HTTPS root origin on *.onrender.com "
-                "or a hostname listed exactly in GODS_EYE_VIEW_ALLOWED_HOSTS."
-            ),
-        }
-    return {
-        **base,
-        "status": "configured",
-        "configured": True,
-        "url": f"https://{host}",
-        "reason": None,
-    }
 
 
 class ChatRequest(BaseModel):
@@ -1862,12 +1802,6 @@ async def automation_capabilities():
     return get_automation_capabilities()
 
 
-@app.get("/api/integrations/gods-eye-view")
-async def gods_eye_view_integration():
-    """Expose only validated launch metadata for the separate upstream service."""
-    return _gods_eye_view_config()
-
-
 @app.get("/api/capabilities")
 async def capabilities():
     """Return truthful implementation/setup status for the current NOX build."""
@@ -1876,7 +1810,6 @@ async def capabilities():
         {"id": "chat", "name": "AI Chat", "status": "ready" if ai_configured else "setup_required", "detail": "Provider-backed chat configured." if ai_configured else "Add OPENROUTER_API_KEY in the hosting environment for real AI responses."},
         {"id": "tasks", "name": "Autonomous Task Orchestration", "status": "ready", "detail": "Persistent task queue with progress, event history, pause/resume/cancel, bounded retries, and a bounded tool-using web research loop. Tasks are scoped to the current browser session. Public web search and page reading only; no login, form submission, purchases, or local-device control."},
         { "id": "voice", "name": "Browser Voice", "status": "limited", "detail": "Hands-free Voice Mode uses browser speech recognition and speech synthesis where supported. It is not server-side full-duplex audio streaming; availability, voice quality, and recognition privacy depend on the browser and device." },
-        {"id": "gods_eye_view", "name": "God's Eye View", "status": "ready" if _gods_eye_view_config()["configured"] else "setup_required", "detail": "Launches the pinned upstream globe application in a separate service to preserve its live-data middleware and avoid NOX API route conflicts. Actual provider status must be checked inside the upstream app; cross-app layer control is not yet connected." if _gods_eye_view_config()["configured"] else "Set a validated GODS_EYE_VIEW_URL after deploying the separate upstream service."},
         {"id": "hologram", "name": "Holographic Interface", "status": "ready", "detail": "Animated frontend is available; animation does not imply background task execution."},
         {"id": "research", "name": "Live Web Research", "status": "ready" if ai_configured else "setup_required", "detail": "Bounded public-web search and page reading through the configured AI provider." if ai_configured else "Add OPENROUTER_API_KEY to enable the autonomous research worker."},
         {"id": "knowledge", "name": "Knowledge Index", "status": "ready", "detail": "Session-scoped URL and document ingestion with SQLite FTS5 lexical retrieval. Vector embeddings and OAuth connectors are not configured."},
