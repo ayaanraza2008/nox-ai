@@ -21,7 +21,7 @@ TOOLS = {
     "tshark": {"binary": "tshark", "version_args": ["--version"], "purpose": "Authorized packet-capture analysis"},
     "zaproxy": {"binary": "zaproxy", "version_args": None, "purpose": "Web security testing proxy"},
     "ollama": {"binary": "ollama", "version_args": ["--version"], "purpose": "Local model runtime"},
-    "kaligpt": {"binary": "kaligpt", "version_args": ["--version"], "purpose": "Optional upstream CLI; arbitrary-command mode is never called by this adapter"},
+    "kaligpt": {"binary": "kaligpt", "version_args": None, "purpose": "Optional upstream CLI; not invoked by this adapter"},
 }
 class CybersecurityError(ValueError):
     pass
