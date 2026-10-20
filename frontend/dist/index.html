@@ -50,6 +50,9 @@
   <p class="footnote">An outcome is not automatically promoted to verified memory. Evidence must be reviewed before reuse as a durable lesson.</p>
   <div class="divider"></div>
   <div class="brain-section-title">Improvement proposals</div><p class="footnote">NOX can record proposals for review. It does not silently rewrite its production code or permissions.</p>
+  <label class="brain-label" for="brainProposalTitle">Proposal title</label><input id="brainProposalTitle" maxlength="120" placeholder="A small, testable improvement">
+  <label class="brain-label" for="brainProposalSummary">Summary and validation plan</label><textarea id="brainProposalSummary" rows="2" maxlength="1500" placeholder="Why it may help, how to test it, and how to roll back…"></textarea>
+  <button class="secondary" id="brainCreateProposal" type="button" style="width:100%;margin-top:8px">Create proposal for review</button>
   <div id="brainProposalList" class="brain-memory-list"><div class="tiny">Loading proposals…</div></div>
   <button class="secondary" id="brainRefresh" type="button" style="width:100%;margin-top:8px">Refresh brain status</button>
  </div></section>
