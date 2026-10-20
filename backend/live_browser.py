@@ -193,7 +193,7 @@ class BrowserSession:
         headless = os.getenv("NOX_BROWSER_HEADLESS", "1").strip().lower() not in {"0", "false", "no"}
         try:
             self.browser = await self.playwright.chromium.launch(headless=headless)
-            self.context = await self.browser.new_context(accept_downloads=True, viewport={"width": 1365, "height": 850})
+            self.context = await self.browser.new_context(accept_downloads=False, viewport={"width": 1365, "height": 850})
             self.page = await self.context.new_page()
             self.page.set_default_navigation_timeout(NAVIGATION_TIMEOUT_MS)
             self.page.set_default_timeout(ACTION_TIMEOUT_MS)
