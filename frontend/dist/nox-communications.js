@@ -76,7 +76,7 @@
   $("noxCommSend").onclick = async () => {
     const p = emailPayload();
     if (!p.to || !p.subject || !p.body.trim()) { $("noxCommNotice").textContent="Enter the recipient, subject, and message first."; return; }
-    const summary = "Send this email through the connected Gmail account?\n\nTo: "+p.to+"\nCC: "+(p.cc||"—")+"\nSubject: "+p.subject+"\n\n"+p.body;
+    const summary = "Send this email through the connected Gmail account?\n\nTo: "+p.to+"\nCC: "+(p.cc||"—")+"\nBCC: "+(p.bcc||"—")+"\nSubject: "+p.subject+"\n\n"+p.body;
     if (!window.confirm(summary)) return;
     try {
       const d = await api("/api/connected/gmail/send",{method:"POST",body:JSON.stringify({...p,confirmed:true})});
@@ -101,8 +101,8 @@
     try {await api("/api/connected/audit",{method:"DELETE"});$("noxCommAuditResults").textContent="Audit history deleted."; }
     catch(e){$("noxCommAuditResults").textContent=e.message;}
   };
-  const mailIntent = /\b(?:send|draft|write|compose|reply|forward|search|find|read|check|open|email|e-mail|gmail|inbox)\b.{0,100}\b(?:email|gmail|inbox|mail|message|recipient|attachment|file|report|to|rahul)\b/i;
-  const unsupportedIntent = /\b(?:whatsapp|linkedin|outlook|sms|text message|phone call|call this contact|calendar invite)\b.{0,100}\b(?:send|message|call|invite|schedule|text|contact|reply|open)\b/i;
+  const mailIntent = /\b(?:send|draft|write|compose|reply|forward|search|find|read|check|open|email|e-mail|gmail|inbox)\b.{0,100}\b(?:email|gmail|inbox|mail|message|recipient|attachment|file|report|summary|manager|team|customer|supplier|to|rahul)\b/i;
+  const unsupportedIntent = /\b(?:whatsapp|linkedin|outlook|sms|text message|phone call|call this contact|calendar invite|call)\b.{0,100}\b(?:send|message|call|invite|schedule|text|contact|reply|open)\b/i;
   window.NOXCommunications = {
     shouldHandle(text) { return mailIntent.test(String(text||"")) || unsupportedIntent.test(String(text||"")); },
     async handleCommand(text) {
