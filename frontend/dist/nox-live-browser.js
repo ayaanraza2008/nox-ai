@@ -140,7 +140,7 @@
       $("noxLbCommand").value = String(text || "").slice(0, 2000);
       await status();
       const value = String(text || "").trim();
-      if (String.raw`/\b(?:stop|cancel) browser(?: task)?\b/i`.slice(1,-1) && /\b(?:stop|cancel) browser(?: task)?\b/i.test(value)) return act("/api/browser/stop");
+      if (/\b(?:stop|cancel) browser(?: task)?\b/i.test(value)) return act("/api/browser/stop");
       if (/\bpause browser(?: task)?\b/i.test(value)) return act("/api/browser/pause");
       if (/\b(?:resume|continue) browser(?: task)?\b/i.test(value)) return act("/api/browser/resume");
       if (lastSnapshot?.state === "awaiting_confirmation") {
