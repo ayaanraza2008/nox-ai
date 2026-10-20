@@ -80,6 +80,8 @@ jobs:
         run: node --check frontend/dist/nox-account.js
       - name: Validate Visual Intelligence JavaScript syntax
         run: node --check frontend/dist/nox-visual-intelligence.js
+      - name: Validate God's Eye View workspace JavaScript syntax
+        run: node --check frontend/dist/nox-gods-eye-view.js
       - name: Verify Visual Intelligence DOM bindings
         run: |
           python - <<'PY'
