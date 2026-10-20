@@ -236,6 +236,14 @@ def _sms_configured() -> bool:
     return bool(os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN") and os.getenv("TWILIO_FROM_NUMBER"))
 
 
+def provider_configured(channel: str) -> bool:
+    if channel == "email":
+        return _email_configured()
+    if channel == "sms":
+        return _sms_configured()
+    return False
+
+
 def _send_email(destination: str, subject: str, body: str) -> bool:
     if not _email_configured():
         return False
