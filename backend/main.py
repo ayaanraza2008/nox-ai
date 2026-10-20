@@ -738,7 +738,19 @@ async def create_task(payload: TaskCreateRequest, request: Request):
     goal = payload.goal.strip()
     if len(goal) < 3:
         raise HTTPException(status_code=400, detail="Task goal must contain at least 3 characters.")
-    return {"task": await task_manager.create(goal, payload.language, owner_id=owner_id)}
+    idempotency_key = request.headers.get("Idempotency-Key", "").strip() or None
+    if idempotency_key and not re.fullmatch(r"[A-Za-z0-9._:-]{8,128}", idempotency_key):
+        raise HTTPException(
+            status_code=400,
+            detail="Idempotency-Key must be 8-128 characters using letters, numbers, dot, underscore, colon, or hyphen.",
+        )
+    try:
+        task = await task_manager.create(
+            goal, payload.language, owner_id=owner_id, idempotency_key=idempotency_key
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"task": task}
 
 
 @app.get("/api/tasks")
