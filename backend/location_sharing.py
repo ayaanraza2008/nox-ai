@@ -311,6 +311,17 @@ def update_location(token: str, latitude: float, longitude: float, accuracy_m: f
     return {"accepted": True, "captured_at": _iso(captured), "server_received_at": _iso(now)}
 
 
+def cleanup_history() -> int:
+    """Delete expired history in a privileged, server-only transaction."""
+    with _connect() as conn:
+        _context(conn, ingest=True)
+        result = conn.execute(
+            "DELETE FROM nox_location_history WHERE captured_at < now() - (%s * interval '1 day')",
+            (_RETENTION_DAYS,),
+        )
+        return result.rowcount
+
+
 def get_history(owner_id: str, device_id: str, limit: int = 100) -> dict:
     limit = max(1, min(int(limit), 500))
     with _connect() as conn:
