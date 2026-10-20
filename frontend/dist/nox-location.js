@@ -169,6 +169,18 @@
           } catch (error) { notice(error.message, true); }
         });
         actions.appendChild(revoke);
+      } else if (d.share_id) {
+        const revokeAccess = el("button", "secondary", "Revoke my access");
+        revokeAccess.type = "button";
+        revokeAccess.addEventListener("click", async () => {
+          if (!window.confirm("Revoke your access to this person's shared location?")) return;
+          try {
+            await api("/api/location/shares/" + encodeURIComponent(d.share_id), { method: "DELETE" });
+            notice("Your access has been revoked.");
+            await refreshDevices();
+          } catch (error) { notice(error.message, true); }
+        });
+        actions.appendChild(revokeAccess);
       }
       card.appendChild(actions);
       list.appendChild(card);
