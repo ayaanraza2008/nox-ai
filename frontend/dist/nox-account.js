@@ -100,6 +100,7 @@
         sent: "Verification code sent. Check your " + (channel === "email" ? "email inbox" : "SMS messages") + ".",
         setup_required: channel === "email" ? "Email delivery is not configured. Set SMTP_HOST and SMTP_FROM on the server." : "SMS delivery is not configured. Set the Twilio server-side credentials.",
         delivery_failed: "The provider is configured but delivery failed. Check server-side provider settings and try later.",
+        profile_required: "Complete your profile and save a mobile number before requesting an SMS code.",
         already_verified: "This verification step is already complete."
       };
       notice(messages[result.delivery] || "Delivery status: " + result.delivery, result.delivery === "setup_required" || result.delivery === "delivery_failed");
