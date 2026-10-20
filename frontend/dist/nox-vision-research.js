@@ -95,7 +95,7 @@
     detectOn=false;paused=false;if(raf)cancelAnimationFrame(raf);raf=0;
     if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
     video.pause();video.srcObject=null;video.classList.add("hidden");
-    $("cameraStart").disabled=false;$("cameraStop").disabled=true;$("visionPause").disabled=true;$("visionSwitch").disabled=true;
+    $("cameraStart").disabled=false;$("cameraStop").disabled=true;$("visionPause").disabled=true;$("visionSwitch").disabled=true;if($("visionCapture"))$("visionCapture").disabled=true;
     visionStatus("cameraStatus","CAMERA OFF");visionStatus("visionFrameState","IDLE");clearBoxes();
   }
   async function startCamera(){
@@ -104,12 +104,24 @@
     try{
       stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:cameraFacing},width:{ideal:960},height:{ideal:540}}});
       video.srcObject=stream;video.classList.remove("hidden");await video.play();
-      $("cameraStart").disabled=true;$("cameraStop").disabled=false;$("visionPause").disabled=false;$("visionSwitch").disabled=false;
+      $("cameraStart").disabled=true;$("cameraStop").disabled=false;$("visionPause").disabled=false;$("visionSwitch").disabled=false;if($("visionCapture"))$("visionCapture").disabled=false;
       visionStatus("cameraStatus","● CAMERA ACTIVE");status("Camera active with your permission. Loading local object detector…");
       await loadDetector();detectOn=true;paused=false;lastRun=0;raf=requestAnimationFrame(loop);
     }catch(e){stopTracks();status("Camera/detector unavailable: "+(e.message||"permission denied")+". You can still upload an image.");}
   }
   $("cameraStart").onclick=()=>startCamera();
+  const captureButton=$("visionCapture");
+  if(captureButton)captureButton.onclick=()=>{
+    if(!stream||!video.videoWidth||!video.videoHeight){status("Enable the camera before capturing a frame.");return;}
+    const canvas=document.createElement("canvas");canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+    canvas.getContext("2d",{alpha:false}).drawImage(video,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob=>{
+      if(!blob){status("Could not capture this frame.");return;}
+      const file=new File([blob],"nox-camera-frame.jpg",{type:"image/jpeg",lastModified:Date.now()});
+      try{const transfer=new DataTransfer();transfer.items.add(file);$("imageUpload").files=transfer.files;stopTracks();$("imageUpload").dispatchEvent(new Event("change",{bubbles:true}));status("Frame captured. Camera is now off. Send your chat message to share this frame with the configured vision model.");}
+      catch(e){status("Frame captured, but this browser could not attach it to chat: "+(e.message||"unsupported file input"));}
+    },"image/jpeg",0.88);
+  };
   $("cameraStop").onclick=()=>{stopTracks();status("Camera and detection stopped; camera tracks released.");};
   $("visionPause").onclick=()=>{
     if(!stream)return;
