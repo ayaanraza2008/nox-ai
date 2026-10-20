@@ -316,7 +316,8 @@ def get_history(owner_id: str, device_id: str, limit: int = 100) -> dict:
     with _connect() as conn:
         _context(conn, owner_id)
         device = conn.execute(
-            """SELECT d.id, d.owner_id FROM nox_location_devices d
+            """SELECT d.id, d.owner_id, d.sharing_enabled, d.consent_expires_at
+               FROM nox_location_devices d
                WHERE d.id=%s AND d.revoked_at IS NULL AND (
                  d.owner_id=%s OR EXISTS (SELECT 1 FROM nox_location_shares s
                    WHERE s.owner_id=d.owner_id AND s.viewer_id=%s AND s.status='active' AND s.expires_at>now())
@@ -326,6 +327,8 @@ def get_history(owner_id: str, device_id: str, limit: int = 100) -> dict:
         if not device:
             raise HTTPException(status_code=404, detail="Device not found or sharing access is not active.")
         if device["owner_id"] != owner_id:
+            if not device["sharing_enabled"] or not device["consent_expires_at"] or device["consent_expires_at"] <= _now():
+                raise HTTPException(status_code=403, detail="The device owner has paused sharing or consent has expired.")
             share = conn.execute("SELECT 1 FROM nox_location_shares WHERE owner_id=%s AND viewer_id=%s AND status='active' AND expires_at>now()",
                                  (device["owner_id"], owner_id)).fetchone()
             if not share:
