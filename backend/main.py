@@ -1426,10 +1426,15 @@ def _account_error(fn, *args, **kwargs):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+def _request_is_secure(request: Request) -> bool:
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return request.url.scheme == "https" or forwarded == "https"
+
+
 def _set_account_cookie(response: Response, request: Request, token: str):
     response.set_cookie(
         key=ACCOUNT_COOKIE, value=token, max_age=60 * 60 * 24 * 30,
-        httponly=True, secure=request.url.scheme == "https",
+        httponly=True, secure=_request_is_secure(request),
         samesite="lax", path="/",
     )
 
@@ -1470,7 +1475,7 @@ async def account_logout(request: Request, response: Response):
     token = request.cookies.get(ACCOUNT_COOKIE, "")
     _account_error(accounts.logout, token)
     response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax",
-                           secure=request.url.scheme == "https")
+                           secure=_request_is_secure(request))
     return {"authenticated": False, "logged_out": True}
 
 
@@ -1479,7 +1484,7 @@ async def account_delete(payload: AccountDeleteRequest, request: Request, respon
     token = request.cookies.get(ACCOUNT_COOKIE, "")
     _account_error(accounts.delete_account, token, payload.password, payload.confirmation)
     response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax",
-                           secure=request.url.scheme == "https")
+                           secure=_request_is_secure(request))
     return {"deleted": True, "memories_deleted": True}
 
 
