@@ -120,14 +120,22 @@ class BrowserAgent:
         except Exception as exc:
             raise BrowserAgentError("The current page preview is temporarily unavailable.") from exc
 
+    def _safe_command_summary(self, command):
+        # Never put literal field values into task state or the audit log.
+        typed = re.match(r"(?is)^\\s*type\\s+(.+?)\\s+into\\s+(?:the\\s+)?(?:field|box|search|input)\\s*[\"']?(.+?)[\"']?\\s*$", command)
+        if typed:
+            return "Type [value redacted] into " + typed.group(2).strip().strip("\"' .")[:100]
+        return command[:180]
+
     async def run(self, owner, command, language="auto"):
         command = (command or "").strip()
         if not command or len(command) > 2000:
             raise BrowserAgentError("Enter a browser instruction (maximum 2,000 characters).")
         s = await self._session(owner)
         async with s["lock"]:
-            s["task"], s["status"] = command[:300], "running"
-            self._event(s, "Task started: " + command[:180])
+            summary = self._safe_command_summary(command)
+            s["task"], s["status"] = summary[:300], "running"
+            self._event(s, "Task started: " + summary)
             try:
                 result = await self._execute(s, command)
                 if s["status"] == "running":
@@ -138,8 +146,9 @@ class BrowserAgent:
                 self._event(s, str(exc), "error")
                 raise
             except Exception as exc:
-                s["status"] = "error"
-                self._event(s, "Browser action failed: " + type(exc).__name__, "error")
+                if s["status"] != "stopped":
+                    s["status"] = "error"
+                self._event(s, "Browser action interrupted." if s["status"] == "stopped" else "Browser action failed: " + type(exc).__name__, "attention" if s["status"] == "stopped" else "error")
                 raise BrowserAgentError("That browser action failed. I rechecked the page; try a more specific instruction.") from exc
             return {"result": result, "state": await self.state(owner)}
 
@@ -172,21 +181,29 @@ class BrowserAgent:
             label = click.group(1).strip().strip("\"' .")
             if not label:
                 raise BrowserAgentError("Which visible button or link should I click?")
-            if DANGEROUS.search(label):
-                s["pending"] = {"action": "click", "label": label}
-                s["status"] = "awaiting_confirmation"
-                return f"'{label}' may submit or change information. Confirm before I click it."
             loc = page.get_by_role("button", name=re.compile(re.escape(label), re.I)).or_(page.get_by_role("link", name=re.compile(re.escape(label), re.I)))
             if await loc.count() == 0:
                 loc = page.get_by_text(re.compile(re.escape(label), re.I), exact=False)
             if await loc.count() == 0:
                 raise BrowserAgentError(f"I couldn't find a visible control matching '{label}'. Inspect the page and retry.")
+            info = await loc.first.evaluate("""el => {
+                const form = el.closest('form');
+                return {type:(el.getAttribute('type')||'').toLowerCase(), action:form ? (form.getAttribute('action')||'') : '',
+                    context:form ? (form.innerText||'').slice(0,500) : ''};
+            }""")
+            sensitive_form = DANGEROUS.search(" ".join([label, info.get("action", ""), info.get("context", ""), page.url]))
+            if DANGEROUS.search(label) or (info.get("type") == "submit" and sensitive_form):
+                s["pending"] = {"action": "click", "label": label}
+                s["status"] = "awaiting_confirmation"
+                return f"'{label}' may submit or change information. Confirm before I click it."
             await loc.first.click()
             await page.wait_for_timeout(250)
             return f"Clicked '{label}'. Current page: {await page.title()} — {page.url}"
         type_match = re.search(r"\btype\s+(.+?)\s+into\s+(?:the\s+)?(?:field|box|search|input)\s*[\"']?(.+?)[\"']?$", command, re.I)
         if type_match:
             value, label = type_match.group(1).strip().strip("\"'"), type_match.group(2).strip().strip("\"' .")
+            if re.search(r"password|passcode|one.?time|\\botp\\b|verification code|security code|cvv|card number|social security|identity number|access token|secret", label, re.I):
+                raise BrowserAgentError("For safety, NOX will not type passwords, one-time codes, payment-card details, identity numbers, or secrets. Enter those directly through the legitimate website flow.")
             loc = page.get_by_label(re.compile(re.escape(label), re.I)).or_(page.get_by_placeholder(re.compile(re.escape(label), re.I))).or_(page.get_by_role("textbox", name=re.compile(re.escape(label), re.I)))
             if not value or not label or await loc.count() == 0:
                 raise BrowserAgentError(f"I couldn't find a field labelled '{label}'. Inspect the page and try its visible label.")
@@ -250,11 +267,13 @@ class BrowserAgent:
         s = self.sessions.get(owner)
         if not s or s["closed"]:
             return {"status": "idle"}
-        async with s["lock"]:
-            s["pending"] = None
-            s["status"] = "stopped"
-            self._event(s, "Browser session stopped by user.", "attention")
+        # Do not wait on the command lock: closing the context interrupts a stuck navigation/action.
+        s["pending"] = None
+        s["status"] = "stopped"
+        self._event(s, "Browser session stopped by user.", "attention")
+        try:
             await s["context"].close()
+        finally:
             s["closed"] = True
         return {"status": "stopped", "message": "Remote browser session closed."}
 
