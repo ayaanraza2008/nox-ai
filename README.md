@@ -337,3 +337,42 @@ All routes use the existing server-issued HttpOnly `nox_session` cookie as the d
 - Retrieval currently uses bounded keyword matching, not embeddings. The browser capability report is approximate and reflects browser-exposed metadata only; it is not a full hardware inventory.
 - Do not save sensitive personal information or secrets. Use the delete control to remove an entry. Disabling memory prevents retrieval and new writes; existing entries remain available for later re-enabling or deletion.
 - Automated regression tests live in `backend/tests/test_brain.py`. Run the backend suite with `python -m unittest discover -s backend/tests`.
+
+
+## Consent-based Location Intelligence (initial Android implementation)
+
+NOX now has an account-gated location-sharing API and dashboard panel. It is **not** a phone-number lookup service: a phone number alone cannot provide GPS coordinates.
+
+### Setup
+
+1. Deploy the latest repository version to Render and configure `SUPABASE_DB_URL` or `DATABASE_URL` using a persistent PostgreSQL database.
+2. Apply `supabase/migrations/202610200001_location_sharing.sql` to that database. The migration creates device, enrollment, invitation, share and short-retention history tables with RLS policies. Use a least-privileged runtime DB role without `BYPASSRLS` if you need PostgreSQL itself to enforce those policies; NOX also checks account ownership in its API.
+3. Set `NOX_PUBLIC_BASE_URL` to the HTTPS NOX website origin. Set `NOX_MAP_STYLE_URL` to a valid HTTPS MapLibre style URL from a tile provider you are allowed to use. Provider keys embedded in a style URL are visible to browsers; restrict public map keys by origin and usage.
+4. Sign in to NOX, open **Features → Location Intelligence**, and select **Generate device code**.
+5. Build/install the Android companion from the `android-companion` project. In the app, select **Location sharing options → Enroll this phone**, enter the one-time six-digit code, and grant Android's location permission. The code expires after five minutes and is single-use.
+6. Back in the NOX web dashboard, explicitly select **Start / resume** for the enrolled device and choose an expiry from 1 to 168 hours. The Android companion checks this consent state before requesting location updates and shows an ongoing foreground notification.
+7. To share with another person, create an invitation link. The recipient must sign in and accept it; their own device sharing is still OFF until they explicitly enable it. Either party can revoke their own access, and a device owner can pause or revoke the device.
+
+### Environment variables
+
+- `SUPABASE_DB_URL` or `DATABASE_URL` — persistent PostgreSQL connection; server-side only.
+- `NOX_PUBLIC_BASE_URL` — public NOX HTTPS origin used in invitation links.
+- `NOX_MAP_STYLE_URL` — HTTPS MapLibre style URL. Keep private database/API secrets out of this value; any browser map token must be a restricted public token.
+- `NOX_LOCATION_RETENTION_DAYS` — optional location history retention, 1–90 days (default 7).
+
+### Implemented now
+
+- Account-session-gated enrollment-code creation, single-use mobile enrollment, hashed device tokens and server-side coordinate validation.
+- Explicit, expiring start/pause consent; upload requests are rejected when sharing is paused, expired or revoked.
+- Interactive MapLibre dashboard when a style provider is configured; authorized-device list, last report time, accuracy, stale/offline labels, history listing, device revocation and share-access revocation.
+- Link-based consent invitations, PostgreSQL tables and RLS policies, basic per-process rate guards, five-second per-device upload throttling, bounded location history and tests for consent expiry, stale locations, validation and rate limiting.
+- Native Android foreground location service that polls consent before activating location listeners and shows a persistent notification.
+
+### Important limitations
+
+- **No unrestricted 24/7 guarantee.** Updates depend on Android permissions, battery optimization, GPS, network, the device being powered on, and the operating system allowing the foreground service to run. A stale point is not shown as a live map marker.
+- This repository currently uses NOX's existing account/session system, not Supabase Auth. The migration's RLS uses transaction-local NOX account context. Do not expose a database service-role credential; production should use a least-privileged runtime role and verify RLS behavior in the deployed database.
+- Phone-number verification/SMS delivery is not configured. Invitations currently use a one-time HTTPS link; a verified phone-number invitation flow requires an SMS/identity provider.
+- iOS/Core Location, a Flutter app, APNs/FCM notifications, geofence alerts, robust distributed rate limiting, and physical-device/app-store testing are **not implemented** in this increment.
+- Map rendering needs a real MapLibre-compatible style/tile provider. If no `NOX_MAP_STYLE_URL` is configured, the dashboard explains that setup is required instead of drawing fake map data.
+- Apply the migration before using the API. The repository change alone does not prove the migration was applied or that Render has deployed it.
