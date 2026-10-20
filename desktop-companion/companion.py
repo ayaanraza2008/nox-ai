@@ -350,6 +350,8 @@ def launch_android_device_app(payload: AndroidLaunchRequest, x_nox_token: str | 
     authorize(x_nox_token)
     try:
         return launch_android_app(payload.serial, payload.package_name, payload.confirmed)
+    except EmergencyStopActive as exc:
+        raise HTTPException(status_code=423, detail="Emergency Stop cancelled the managed ADB launch.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except PermissionError as exc:
