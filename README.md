@@ -349,3 +349,47 @@ A website cannot reliably retrieve Wi-Fi SSID, RSSI, radio channel, encryption/s
 - Run tests with python -m unittest backend.tests.test_connectivity.
 - Browser Bluetooth, geolocation, and WebGL checks must be manually verified on the actual target browser/device. CI does not prove that OS permissions or native device control work.
 
+
+
+## Optional RuView Wi-Fi CSI integration
+
+NOX can invoke the official published `@ruvnet/ruview` CLI through an opt-in local
+companion adapter. The current integration exposes fixed operations for local
+diagnostics, device inventory, and a bounded 45-second ESP32 CSI capture with a
+stop control. It does not accept shell commands or arbitrary executable arguments.
+
+### Local setup (Windows PowerShell)
+
+From the repository root:
+
+```powershell
+node --version
+npm --prefix .\ruview-companion install --ignore-scripts
+$env:NOX_RUVIEW_ENABLED = "1"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Then open http://127.0.0.1:8000. Keep the service bound to loopback. The adapter is
+disabled by default and requires a NOX session, a loopback client, a loopback URL,
+and a same-origin request for POST operations. Do not expose this local server to
+the public internet or through a tunnel/reverse proxy.
+
+### RuView capability boundaries
+
+- The official CLI package is pinned to version 0.9.2 in `ruview-companion/package.json`.
+  The package is MIT-licensed and requires Node.js 20 or newer.
+- The CLI diagnostics and device inventory are actual RuView commands. The capture
+  operation invokes RuView's ESP32 CSI pipeline; NOX displays bounded CLI output and
+  does not invent measurement values or infer validated vital signs from text.
+- Live CSI requires a supported, provisioned sensor/source and local network access.
+  The optional RuView kernel may be needed for additional analysis. Host Wi-Fi RSSI
+  is not CSI and cannot substantiate pose, breathing, heart-rate, or precise location.
+- The NOX web hologram remains a clearly labeled simulation when no real measurement
+  source is connected. RuView's own simulated mode is synthetic too.
+- The full RuView Rust workspace, firmware, pretrained models, and original native
+  UI are not copied into NOX. This is a CLI/process integration, not a claim that
+  every RuView feature is embedded. The companion package is optional and is not
+  required for hosted NOX deployment.
+- Hardware tests require the actual local sensor and are not established by hosted CI.
+
+Run adapter tests with `python -m unittest backend.tests.test_ruview_companion`.
