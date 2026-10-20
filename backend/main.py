@@ -31,11 +31,13 @@ from backend import public_research
 from backend import connectivity
 from backend import ruview_companion
 from backend import live_browser
+from backend import communications
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
 logger = logging.getLogger("nox.provider")
 app = FastAPI(title="NOX AI API", version="0.1.0")
+app.include_router(communications.router)
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
