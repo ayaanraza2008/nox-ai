@@ -190,14 +190,13 @@ class SwarmManager:
         return job
 
     async def cancel_all(self, owner_id: str) -> list[dict]:
-        jobs = self.list(owner_id, limit=50)
-        results = []
-        for job in jobs:
-            if job["status"] not in ("completed", "failed", "cancelled"):
-                cancelled = await self.cancel(job["id"], owner_id)
-                if cancelled:
-                    results.append(cancelled)
-        return results
+        jobs = [job for job in self.list(owner_id, limit=50)
+                if job["status"] not in ("completed", "failed", "cancelled")]
+        outcomes = await asyncio.gather(
+            *(self.cancel(job["id"], owner_id) for job in jobs),
+            return_exceptions=True,
+        )
+        return [item for item in outcomes if isinstance(item, dict)]
 
     async def _provider_call(self, messages: list[dict], timeout: int = TASK_TIMEOUT) -> str:
         key = os.getenv("OPENROUTER_API_KEY", "").strip()
