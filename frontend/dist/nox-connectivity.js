@@ -2,6 +2,8 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const token = $("connectivityToken"), wifiButton = $("connectivityWifi"), ruButton = $("connectivityRuView");
+  const devicesButton = $("connectivityDevices"), devicesState = $("connectivityDeviceState");
+  const devicesList = $("connectivityDeviceList"), androidPackage = $("connectivityAndroidPackage");
   const wifiState = $("connectivityWifiState"), wifiDetails = $("connectivityWifiDetails");
   const ruState = $("ruviewState"), ruDetails = $("ruviewDetails"), canvas = $("wifiSignalCanvas");
   if (!token || !wifiButton || !ruButton || !canvas) return;
@@ -42,6 +44,83 @@
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || ("Local companion HTTP " + response.status));
     return data;
+  }
+  async function companionPost(path, body) {
+    const response = await fetch(companion + path, {
+      method: "POST", mode: "cors", cache: "no-store",
+      headers: { "X-NOX-Token": getToken(), "Accept": "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || ("Local companion HTTP " + response.status));
+    return data;
+  }
+  if (devicesButton && devicesState && devicesList && androidPackage) {
+    devicesButton.addEventListener("click", async () => {
+      devicesButton.disabled = true;
+      devicesState.textContent = "DISCOVERING";
+      devicesList.textContent = "Checking the local Windows companion for ADB devices…";
+      try {
+        const data = await companionGet("/v1/devices");
+        devicesList.replaceChildren();
+        devicesState.textContent = String(data.status || "unknown").toUpperCase() + " · " + Number(data.count || 0);
+        if (!Array.isArray(data.devices) || !data.devices.length) {
+          const empty = document.createElement("div");
+          empty.className = "footnote";
+          empty.textContent = data.error || "No ADB devices detected. Install Android Platform-Tools, connect the phone, and approve its USB debugging prompt.";
+          devicesList.appendChild(empty);
+        } else {
+          data.devices.forEach(device => {
+            const card = document.createElement("div");
+            card.style.cssText = "padding:10px;border:1px solid var(--line);border-radius:10px;background:#07111d";
+            const heading = document.createElement("div");
+            heading.style.cssText = "font-size:12px;font-weight:700;color:var(--cyan);overflow-wrap:anywhere";
+            heading.textContent = String(device.name || "Android device") + " · " + String(device.state || "unknown").toUpperCase();
+            const meta = document.createElement("div");
+            meta.className = "footnote";
+            meta.style.overflowWrap = "anywhere";
+            meta.textContent = "ID: " + String(device.id || "") + " · Transport: " + String(device.connection || "ADB") +
+              " · App launch: " + (device.capabilities && device.capabilities.app_launch ? "available" : "unavailable");
+            card.append(heading, meta);
+            if (device.authorized) {
+              const launch = document.createElement("button");
+              launch.type = "button";
+              launch.className = "secondary";
+              launch.style.marginTop = "8px";
+              launch.textContent = "Launch app on this device";
+              launch.addEventListener("click", async () => {
+                const packageName = androidPackage.value.trim();
+                if (!packageName) { alert("Enter an Android package name first."); androidPackage.focus(); return; }
+                if (!window.confirm("Send an app-launch request to " + String(device.name || device.id) + " for package " + packageName + "?")) return;
+                launch.disabled = true;
+                try {
+                  const result = await companionPost("/v1/devices/android/launch", {
+                    serial: String(device.id), package_name: packageName, confirmed: true
+                  });
+                  const status = document.createElement("div");
+                  status.className = "footnote";
+                  status.textContent = String(result.status || "request returned") + ". " + String(result.message || "Check the phone to verify.");
+                  card.appendChild(status);
+                } catch (error) {
+                  alert(error.message || "Android launch request failed.");
+                } finally { launch.disabled = false; }
+              });
+              card.appendChild(launch);
+            } else {
+              const warning = document.createElement("div");
+              warning.className = "footnote";
+              warning.textContent = Array.isArray(device.limitations) ? device.limitations.join(" ") : "Authorize the device before controlling it.";
+              card.appendChild(warning);
+            }
+            devicesList.appendChild(card);
+          });
+        }
+        if (data.error) devicesState.textContent = "SETUP REQUIRED";
+      } catch (error) {
+        devicesState.textContent = "UNAVAILABLE";
+        devicesList.textContent = (error.message || "Device discovery failed.") + " Ensure the Windows companion is running at 127.0.0.1:8765 and that the token is correct.";
+      } finally { devicesButton.disabled = false; }
+    });
   }
   wifiButton.addEventListener("click", async () => {
     wifiButton.disabled = true; wifiState.textContent = "CHECKING"; wifiDetails.textContent = "Requesting current Windows interface status…";
