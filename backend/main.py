@@ -43,6 +43,18 @@ ROOT = Path(__file__).resolve().parent.parent
 HTTP_CLIENT: httpx.AsyncClient | None = None
 PERFORMANCE_SAMPLES = deque(maxlen=500)
 PROVIDER_SAMPLES = deque(maxlen=500)
+LOCATION_CLEANUP_TASK: asyncio.Task | None = None
+
+
+async def _location_history_cleanup_loop():
+    while True:
+        try:
+            deleted = await asyncio.to_thread(location_sharing.cleanup_history)
+            if deleted:
+                logger.info("Pruned %s expired NOX location history rows", deleted)
+        except Exception:
+            logger.warning("Location history retention cleanup failed; it will retry later", exc_info=True)
+        await asyncio.sleep(6 * 60 * 60)
 
 
 def _record_provider_sample(provider: str, duration_ms: float, first_token_ms: float | None, success: bool):
@@ -59,7 +71,9 @@ def _record_provider_sample(provider: str, duration_ms: float, first_token_ms: f
 
 @app.on_event("startup")
 async def _startup_http_client():
-    global HTTP_CLIENT
+    global HTTP_CLIENT, LOCATION_CLEANUP_TASK
+    if LOCATION_CLEANUP_TASK is None or LOCATION_CLEANUP_TASK.done():
+        LOCATION_CLEANUP_TASK = asyncio.create_task(_location_history_cleanup_loop())
     if HTTP_CLIENT is None or HTTP_CLIENT.is_closed:
         HTTP_CLIENT = httpx.AsyncClient(
             timeout=httpx.Timeout(45.0, connect=8.0),
@@ -70,7 +84,14 @@ async def _startup_http_client():
 
 @app.on_event("shutdown")
 async def _shutdown_http_client():
-    global HTTP_CLIENT
+    global HTTP_CLIENT, LOCATION_CLEANUP_TASK
+    if LOCATION_CLEANUP_TASK is not None:
+        LOCATION_CLEANUP_TASK.cancel()
+        try:
+            await LOCATION_CLEANUP_TASK
+        except asyncio.CancelledError:
+            pass
+        LOCATION_CLEANUP_TASK = None
     client, HTTP_CLIENT = HTTP_CLIENT, None
     if client is not None and not client.is_closed:
         await client.aclose()
