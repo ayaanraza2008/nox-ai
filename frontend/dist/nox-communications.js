@@ -21,7 +21,7 @@
       <div class="ptitle" style="margin-bottom:8px">GMAIL COMPOSE</div>
       <label class="brain-label" for="noxCommTo">To</label><input id="noxCommTo" class="field" type="email" autocomplete="email" placeholder="recipient@example.com">
       <label class="brain-label" for="noxCommCc">CC (optional)</label><input id="noxCommCc" class="field" type="email" placeholder="cc@example.com">
-      <label class="brain-label" for="noxCommSubject">Subject</label><input id="noxCommSubject" class="field" maxlength="998" placeholder="Email subject">
+      <label class="brain-label" for="noxCommBcc">BCC (optional)</label><input id="noxCommBcc" class="field" type="email" placeholder="bcc@example.com">\n      <label class="brain-label" for="noxCommSubject">Subject</label><input id="noxCommSubject" class="field" maxlength="998" placeholder="Email subject">
       <label class="brain-label" for="noxCommBody">Message</label><textarea id="noxCommBody" class="field" rows="5" maxlength="20000" placeholder="Write the message. Review before sending."></textarea>
       <div class="footnote" style="margin:8px 0">Send requires an explicit review/confirmation. A successful Gmail send request is not proof of delivery. Attachments are not yet supported in this release.</div>
       <div class="brain-form-row"><button class="secondary" id="noxCommDraft">Save draft</button><button class="primary" id="noxCommSend">Review &amp; send</button></div>
@@ -66,7 +66,7 @@
     try { await api("/api/connected/gmail/disconnect",{method:"POST",body:"{}"}); $("noxCommNotice").textContent="Gmail disconnected."; refresh(); }
     catch(e) { $("noxCommNotice").textContent=e.message; }
   }
-  function emailPayload() { return {to:$("noxCommTo").value.trim(),cc:$("noxCommCc").value.trim(),subject:$("noxCommSubject").value.trim(),body:$("noxCommBody").value}; }
+  function emailPayload() { return {to:$("noxCommTo").value.trim(),cc:$("noxCommCc").value.trim(),bcc:$("noxCommBcc").value.trim(),subject:$("noxCommSubject").value.trim(),body:$("noxCommBody").value}; }
   $("noxCommDraft").onclick = async () => {
     try {
       const d = await api("/api/connected/gmail/drafts",{method:"POST",body:JSON.stringify(emailPayload())});
