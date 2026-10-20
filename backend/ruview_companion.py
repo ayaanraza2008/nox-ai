@@ -20,6 +20,65 @@ INSPECTION_TIMEOUT_SECONDS = 18
 CAPTURE_SECONDS = 45
 
 
+def parse_capture_summary(output: str) -> dict[str, Any] | None:
+    """Extract only documented per-node CSI summary fields from RuView JSON output."""
+    raw = output.strip()
+    payload = None
+    for candidate in (raw, raw[raw.find("{"):] if "{" in raw else ""):
+        if not candidate:
+            continue
+        try:
+            parsed = __import__("json").loads(candidate)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(parsed, dict):
+            payload = parsed
+            break
+    if not isinstance(payload, dict):
+        return None
+    if isinstance(payload.get("result"), dict):
+        payload = payload["result"]
+    nodes = payload.get("nodes")
+    if not isinstance(nodes, list):
+        return None
+    summaries = []
+    for node in nodes[:32]:
+        if not isinstance(node, dict):
+            continue
+        packets = node.get("packets") if isinstance(node.get("packets"), dict) else {}
+        csi = node.get("csi") if isinstance(node.get("csi"), dict) else {}
+        frame_count = packets.get("csi", 0)
+        if isinstance(frame_count, bool) or not isinstance(frame_count, (int, float)):
+            frame_count = 0
+        rssi = node.get("rssiMean")
+        rate = node.get("csiRateHz")
+        loss = node.get("csiLossFraction")
+        def numeric(value):
+            return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        synthetic = csi.get("synthetic") if isinstance(csi.get("synthetic"), bool) else None
+        summaries.append({
+            "source": str(node.get("source", "unknown"))[:40],
+            "node_id": node.get("nodeId") if isinstance(node.get("nodeId"), int) else None,
+            "csi_frames": int(max(0, min(frame_count, 100000000))),
+            "rssi_mean_dbm": numeric(rssi),
+            "csi_rate_hz": numeric(rate),
+            "csi_loss_fraction": numeric(loss),
+            "synthetic": synthetic,
+            "quality": "synthetic" if synthetic is True else "observed" if synthetic is False and frame_count > 0 else "unknown",
+        })
+    return {
+        "source": "ruview_esp32_csi_capture",
+        "captured_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "nodes": summaries,
+        "quality": "observed" if any(n["quality"] == "observed" for n in summaries) else
+                   "synthetic" if summaries and all(n["quality"] == "synthetic" for n in summaries) else "unknown",
+        "limitations": [
+            "RSSI and CSI packet summaries are device-reported measurements, not validated pose or vital-sign estimates.",
+            "No body pose, breathing rate, heart rate, or exact location is inferred by this adapter.",
+        ],
+    }
+
+
 class RuViewUnavailable(RuntimeError):
     """RuView is disabled, not installed, or cannot be started."""
 
@@ -57,6 +116,7 @@ class RuViewRunner:
         self._collector: asyncio.Task | None = None
         self._last_output = ""
         self._last_exit_code: int | None = None
+        self._measurement_summary: dict[str, Any] | None = None
         self._operation = "idle"
 
     def snapshot(self) -> dict[str, Any]:
@@ -67,6 +127,7 @@ class RuViewRunner:
             "operation": self._operation if running else "idle",
             "last_output": self._last_output[-MAX_OUTPUT:],
             "last_exit_code": self._last_exit_code,
+            "measurement_summary": self._measurement_summary,
         }
 
     def _command(self, operation: str) -> list[str]:
@@ -130,6 +191,7 @@ class RuViewRunner:
             raise RuViewUnavailable("Node.js or the RuView CLI entry point could not be started.") from exc
         self._last_output = ""
         self._last_exit_code = None
+        self._measurement_summary = None
         self._operation = "capture"
         self._collector = asyncio.create_task(self._collect_output(self._process))
         return {
@@ -147,6 +209,7 @@ class RuViewRunner:
             output, _ = await proc.communicate()
             self._last_output = output.decode("utf-8", errors="replace")[-MAX_OUTPUT:]
             self._last_exit_code = proc.returncode
+            self._measurement_summary = parse_capture_summary(self._last_output)
         except Exception as exc:
             self._last_output = ("Could not collect RuView output: " + str(exc))[-MAX_OUTPUT:]
         finally:
