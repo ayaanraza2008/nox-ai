@@ -7,7 +7,7 @@ from backend.automation_registry import get_automation_capabilities
 class AutomationRegistryTests(unittest.TestCase):
     def test_registry_is_versioned_and_nonempty(self):
         registry = get_automation_capabilities()
-        self.assertEqual(registry["registry_version"], 1)
+        self.assertEqual(registry["registry_version"], 2)
         self.assertTrue(registry["adapters"])
 
     def test_every_adapter_declares_status_actions_and_limits(self):
