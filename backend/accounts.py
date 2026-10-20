@@ -12,6 +12,7 @@ import os
 import re
 import secrets
 import smtplib
+import ssl
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -257,14 +258,21 @@ def _send_email(destination: str, subject: str, body: str) -> bool:
     message.set_content(body)
     host = os.environ["SMTP_HOST"]
     port = int(os.getenv("SMTP_PORT", "587"))
-    with smtplib.SMTP(host, port, timeout=15) as server:
-        if os.getenv("SMTP_STARTTLS", "true").lower() in {"1", "true", "yes"}:
-            server.starttls()
-        user = os.getenv("SMTP_USER")
-        password = os.getenv("SMTP_PASSWORD")
-        if user and password:
-            server.login(user, password)
-        server.send_message(message)
+    user = os.getenv("SMTP_USER")
+    password = os.getenv("SMTP_PASSWORD")
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=15, context=ssl.create_default_context()) as server:
+            if user and password:
+                server.login(user, password)
+            server.send_message(message)
+    else:
+        if os.getenv("SMTP_STARTTLS", "true").lower() not in {"1", "true", "yes"}:
+            raise RuntimeError("SMTP_STARTTLS must be enabled for secure email delivery.")
+        with smtplib.SMTP(host, port, timeout=15) as server:
+            server.starttls(context=ssl.create_default_context())
+            if user and password:
+                server.login(user, password)
+            server.send_message(message)
     return True
 
 
