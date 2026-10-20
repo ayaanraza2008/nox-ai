@@ -22,6 +22,8 @@ jobs:
         run: pip install -r backend/requirements.txt
       - name: Validate Python syntax
         run: python -m compileall -q backend desktop-companion
+      - name: Build the Render backend Docker image
+        run: docker build --file deploy/nox-ai.Dockerfile --tag nox-ai-backend:ci .
       - name: Test backend storage regressions
         run: python -m unittest discover -s backend/tests -v
       - name: Test defensive security tools
