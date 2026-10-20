@@ -56,7 +56,7 @@
       const paths = [
         ["overview", "/api/brain/overview"],
         ["settings", "/api/brain/settings"],
-        ["memories", "/api/brain/memories?limit=100"],
+        ["memories", "/api/brain/memories?limit=1000"],
         ["devices", "/api/brain/devices"],
         ["skills", "/api/brain/skills"],
         ["proposals", "/api/brain/proposals"],
