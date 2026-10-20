@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-path = Path(__file__).resolve().parents[1].parent / "cybersecurity_worker.py"
+path = Path(__file__).resolve().parents[1] / "cybersecurity_worker.py"
 spec = importlib.util.spec_from_file_location("nox_cybersecurity_worker", path)
 worker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(worker)
