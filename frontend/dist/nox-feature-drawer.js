@@ -6,7 +6,8 @@
     { title: "AI WORKSPACE", subtitle: "Voice, tasks and creation", ids: ["voicePanel", "taskPanel", "researchPanel", "knowledgePanel", "codePanel", "cognitivePanel"] },
     { title: "VISION & RESEARCH", subtitle: "Camera intelligence and public-source research", ids: ["visionPanel", "publicResearchPanel", "analyticsPanel"] },
     { title: "SYSTEM & PREFERENCES", subtitle: "Memory, connected tools, privacy and diagnostics", ids: ["memoryPanel", "toolsPanel", "networkPanel", "systemPanel"] }
-  ,{ title: "AUTOMATION & DEVOPS", subtitle: "Agent execution, project changes and repository health", ids: [] }
+  ,{ title: "AUTOMATION & DEVOPS", subtitle: "Agent execution, project changes and repository health", ids: [] },
+    { title: "DEVICE SHARING", subtitle: "Authorized devices and consent controls", ids: ["locationPanel"] }
   ];
   const layer = document.createElement("div");
   layer.id = "noxFeatureLayer";
@@ -24,6 +25,7 @@
         <button type="button" data-group-target="noxGroup1">Vision & Research</button>
         <button type="button" data-group-target="noxGroup2">System</button>
         <button type="button" data-group-target="noxGroup3">Automation & DevOps</button>
+        <button type="button" data-group-target="noxGroup4">Device Sharing</button>
       </nav>
       <div class="nox-feature-content"></div>
       <footer class="nox-feature-foot">Modules open only when selected. Camera access still requires your explicit permission.</footer>
