@@ -226,6 +226,18 @@ class AccountSecurityTests(unittest.TestCase):
         self.assertTrue(any("UPDATE nox_account_sessions SET revoked=1" in query for query, _ in connection.calls))
         self.assertTrue(connection.committed)
 
+    def test_suspended_account_cannot_change_profile_or_email(self):
+        row = account_row(status="suspended")
+        connection = FakeConnection(account=row)
+        with patch.object(accounts, "_connect", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "suspended"):
+                accounts.update_profile("session-token", "Example Person", "example_person", "+91",
+                                        "9876543210", "correct horse battery staple")
+        connection = FakeConnection(account=row)
+        with patch.object(accounts, "_connect", return_value=connection):
+            with self.assertRaisesRegex(ValueError, "suspended"):
+                accounts.update_email("session-token", "new@example.com", "correct horse battery staple")
+
     def test_logout_revokes_session_without_deleting_account(self):
         connection = FakeConnection(account=account_row())
         with patch.object(accounts, "_connect", return_value=connection):
