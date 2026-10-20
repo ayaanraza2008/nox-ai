@@ -322,6 +322,19 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
 })();
 </script>
 
+<div id="accountGateOverlay" role="dialog" aria-modal="true" aria-labelledby="accountGateTitle" style="position:fixed;inset:0;z-index:90;background:radial-gradient(ellipse at 50% 30%,#102a3aee,#02060bf5 70%);backdrop-filter:blur(14px);display:flex;align-items:center;justify-content:center;padding:22px">
+ <section class="panel" style="width:min(520px,100%);border-color:#75eaff55;box-shadow:0 25px 90px #000b">
+  <div class="panelbody" style="display:grid;gap:12px;text-align:center;padding:28px 22px">
+   <div style="font-size:12px;letter-spacing:.24em;color:#75eaff">NOX AI · ACCOUNT SECURITY</div>
+   <div id="accountGateTitle" class="ptitle" style="font-size:22px">Sign in to continue</div>
+   <p id="accountGateMessage" class="footnote">Create a NOX account and verify both your email and mobile number to unlock the AI workspace.</p>
+   <div id="accountGateStatus" class="footnote">Account verification is required for protected features.</div>
+   <button id="accountGateOpen" class="primary" type="button">Sign in / create account</button>
+   <p class="footnote">Your account stays saved after logout. Verification codes are sent only when the server's email/SMS provider is configured.</p>
+  </div>
+ </section>
+</div>
+
 <div id="accountModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="accountTitle" style="position:fixed;inset:0;z-index:100;background:#02060bdc;backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:16px">
  <section class="panel" style="width:min(440px,100%);max-height:90vh;overflow:auto;border-color:#75eaff55;box-shadow:0 25px 90px #000b">
   <div class="panelhead"><div><div class="ptitle" id="accountTitle">NOX ACCOUNT</div><div class="pmeta" id="accountSubtitle">Your memories, linked to your account</div></div><button class="iconbtn" id="accountClose" type="button" aria-label="Close account dialog">✕</button></div>
