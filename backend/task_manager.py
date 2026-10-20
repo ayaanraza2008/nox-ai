@@ -319,11 +319,8 @@ class TaskManager:
                 item["error"] = "Emergency Stop requested; no automatic retry will occur."
                 self._event(item, "Global Emergency Stop requested task cancellation.", "warning")
                 self._save(item)
-            if runners:
-                try:
-                    await asyncio.wait_for(asyncio.gather(*runners, return_exceptions=True), timeout=3.0)
-                except asyncio.TimeoutError:
-                    pass
+            # Return promptly after latching and signalling cancellation. Status polling
+            # keeps showing STOPPING while any worker's cleanup is still pending.
             pending = [item["id"] for item in self.list(limit=50, owner_id=owner_id) if item["status"] == "cancelling"]
             details = {"pending_task_cleanup": pending, "cancelled_task_count": len(rows)}
             with self._connect() as db:
