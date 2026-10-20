@@ -121,8 +121,10 @@ CREATE POLICY nox_location_history_scope ON nox_location_history
   USING (
     owner_id = current_setting('app.nox_user_id', true)
     OR EXISTS (
-      SELECT 1 FROM nox_location_shares s
-      WHERE s.owner_id = nox_location_history.owner_id
+      SELECT 1 FROM nox_location_devices d
+      JOIN nox_location_shares s ON s.owner_id = d.owner_id
+      WHERE d.id = nox_location_history.device_id
+        AND d.sharing_enabled = true AND d.consent_expires_at > now()
         AND s.viewer_id = current_setting('app.nox_user_id', true)
         AND s.status = 'active' AND s.expires_at > now()
     )
