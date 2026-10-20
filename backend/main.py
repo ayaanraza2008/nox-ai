@@ -1597,7 +1597,8 @@ async def account_verification_resend(payload: AccountResendRequest, request: Re
 @app.post("/api/account/recovery/request")
 async def account_recovery_request(payload: AccountRecoveryRequest, request: Request):
     _check_same_origin(request)
-    return {"message": _account_error(accounts.request_recovery, payload.identifier, payload.channel, payload.country_code, _account_client_key(request))}
+    message = _account_error(accounts.request_recovery, payload.identifier, payload.channel, payload.country_code, _account_client_key(request))
+    return {"message": message, "provider_status": "configured" if accounts.provider_configured(payload.channel) else "setup_required"}
 
 
 @app.post("/api/account/recovery/reset")
