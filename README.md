@@ -523,7 +523,7 @@ Credentials are encrypted at rest with Fernet. OAuth state is random, short-live
 
 The existing task manager stores task records and event history in PostgreSQL when `DATABASE_URL` / `SUPABASE_DB_URL` is configured, and otherwise uses SQLite. Cloud research tasks can continue after the dashboard tab closes while the backend process is running. They are not a guarantee of continuous execution on a sleeping/free host. For durable production jobs, configure PostgreSQL and persistent hosting appropriate to the expected workload.
 
-The task dashboard uses a session-scoped Server-Sent Events endpoint (`GET /api/tasks/{task_id}/events`) for live status updates, with existing polling as a fallback. `POST /api/tasks/pause-all` and `POST /api/tasks/stop-all` apply only to tasks belonging to the current browser session. Individual task pause/resume/cancel remains available.
+The task dashboard uses a session-scoped Server-Sent Events endpoint (`GET /api/tasks/{task_id}/events`) for live status updates, with existing polling as a fallback. `POST /api/tasks/pause-all` and `POST /api/tasks/stop-all` apply only to tasks belonging to the current browser session. Individual task pause/resume/cancel remains available. Task creation accepts an `Idempotency-Key` header and stores the owner-scoped key in the task database, so retries of the same request do not enqueue duplicate work.
 
 - **Web/cloud:** bounded public-web research and planning run on the backend; this does not control the user's PC after the tab closes.
 - **Windows:** the optional local desktop companion supports only the explicitly allow-listed actions documented in `desktop-companion/README.md`; it is not general remote desktop control.
