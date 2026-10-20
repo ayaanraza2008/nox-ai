@@ -107,6 +107,21 @@ def enroll_mobile_device(code: str, label: str, platform: str) -> dict:
             "message": "Device enrolled. The owner must explicitly enable sharing in NOX."}
 
 
+def status_fields(item: dict, now: datetime | None = None) -> dict:
+    """Derive honest online/stale state without treating old coordinates as live."""
+    now = now or _now()
+    seen = item.get("last_seen_at")
+    location_at = item.get("last_location_at")
+    consent_end = item.get("consent_expires_at")
+    item["online"] = bool(seen and now - seen <= timedelta(minutes=2))
+    item["location_stale"] = not location_at or now - location_at > timedelta(minutes=2)
+    item["sharing_active"] = bool(item.get("sharing_enabled") and consent_end and consent_end > now)
+    if not item["sharing_active"] and not item.get("is_owner"):
+        item["latitude"] = item["longitude"] = item["accuracy_m"] = None
+        item["location_stale"] = True
+    return item
+
+
 def list_devices(owner_id: str) -> dict:
     with _connect() as conn:
         _context(conn, owner_id)
@@ -137,13 +152,7 @@ def list_devices(owner_id: str) -> dict:
         item["last_location_at"] = _iso(location_at)
         item["consent_expires_at"] = _iso(consent_end)
         item["created_at"] = _iso(item.get("created_at"))
-        item["online"] = bool(seen and now - seen <= timedelta(minutes=2))
-        item["location_stale"] = not location_at or now - location_at > timedelta(minutes=2)
-        item["sharing_active"] = bool(item["sharing_enabled"] and consent_end and consent_end > now)
-        if not item["sharing_active"] and not item["is_owner"]:
-            item["latitude"] = item["longitude"] = item["accuracy_m"] = None
-            item["location_stale"] = True
-        devices.append(item)
+        devices.append(status_fields(item, now))
     return {"devices": devices, "retention_days": _RETENTION_DAYS,
             "freshness_threshold_seconds": 120}
 
