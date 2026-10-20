@@ -1758,6 +1758,7 @@ async def health_details():
         "ai_setup_message": None if ai_configured else "No AI provider key is configured. Add a valid provider key in the hosting environment to enable real AI replies.",
         "storage_backend": "postgresql" if database_configured else "sqlite",
         "task_storage_backend": "postgresql" if task_manager.use_postgres else "sqlite",
+        "task_storage_degraded": bool(task_manager.emergency_storage_degraded),
         "durable_storage_configured": database_configured and task_manager.use_postgres,
         "database_connected": database_connected,
         "task_database_connected": task_database_connected,
