@@ -302,8 +302,6 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") modal.classList.add("hidden");
   });
-  $("accountLoginMode").addEventListener("click", () => setMode("login"));
-  $("accountRegisterMode").addEventListener("click", () => setMode("register"));
 
   $("accountAuthForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -353,6 +351,7 @@
     finally { submit.disabled = false; }
   });
 
+
   $("accountLoginMode").addEventListener("click", () => setMode("login"));
   $("accountRegisterMode").addEventListener("click", () => setMode("register"));
 
@@ -401,6 +400,7 @@
     }
   });
 
+  ensureBackupButton();
   setMode("login");
   refreshAccount();
 })();
