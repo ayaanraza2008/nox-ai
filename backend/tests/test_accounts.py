@@ -28,6 +28,15 @@ class FakeConnection:
 
     def execute(self, query, params=()):
         self.calls.append((query, params))
+        if "INSERT INTO nox_accounts" in query and len(params) >= 9:
+            self.account = {
+                "id": params[0], "email": params[1], "password_hash": params[2],
+                "created_at": params[3], "full_name": params[4], "username": params[5],
+                "country_code": params[6], "phone_number": params[7],
+                "email_verified": False, "phone_verified": False, "status": "pending_verification",
+                "password_scheme": "argon2id", "password_salt": "",
+            }
+            return Cursor(None, rowcount=1)
         if "SELECT window_start,count FROM nox_account_rate_limits" in query:
             return Cursor(None)
         if "SELECT id FROM nox_accounts WHERE email=%s OR username=%s" in query:
