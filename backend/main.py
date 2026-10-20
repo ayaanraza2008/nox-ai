@@ -30,6 +30,7 @@ from backend import github_bridge
 from backend import public_research
 from backend import connectivity
 from backend import ruview_companion
+from backend import live_browser
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
@@ -117,6 +118,24 @@ class ConnectivityAnalyzeRequest(BaseModel):
 
 class RuViewInspectRequest(BaseModel):
     operation: Literal["doctor", "devices"]
+
+
+class BrowserTaskRequest(BaseModel):
+    instruction: str = Field(min_length=1, max_length=2000)
+
+
+class BrowserActionRequest(BaseModel):
+    action: Literal["navigate", "inspect", "click", "fill", "select", "scroll", "back", "forward", "reload"]
+    value: str = Field(default="", max_length=2000)
+    text: str = Field(default="", max_length=2000)
+
+
+class BrowserAnswerRequest(BaseModel):
+    answer: str = Field(min_length=1, max_length=1000)
+
+
+class BrowserConfirmRequest(BaseModel):
+    approved: bool
 
 
 class AccountCredentials(BaseModel):
@@ -720,6 +739,7 @@ async def start_task_worker():
 @app.on_event("shutdown")
 async def stop_task_worker():
     await task_manager.stop()
+    await live_browser.manager.close_all()
 
 
 @app.get("/api/session")
@@ -1765,6 +1785,135 @@ async def public_information_research(payload: PublicResearchRequest, request: R
     return result
 
 
+def _require_local_browser_request(request: Request) -> None:
+    """Browser automation is available only to a same-origin loopback NOX instance."""
+    if os.getenv("NOX_BROWSER_ENABLED", "").strip() != "1":
+        raise HTTPException(status_code=503, detail="Local browser automation is disabled. Set NOX_BROWSER_ENABLED=1 on the local NOX process.")
+    client_host = request.client.host if request.client else ""
+    try:
+        client_is_loopback = ipaddress.ip_address(client_host).is_loopback
+    except ValueError:
+        client_is_loopback = client_host.lower() == "localhost"
+    request_host = (request.url.hostname or "").lower()
+    try:
+        request_is_loopback = ipaddress.ip_address(request_host).is_loopback
+    except ValueError:
+        request_is_loopback = request_host == "localhost"
+    if not client_is_loopback or not request_is_loopback:
+        raise HTTPException(status_code=403, detail="Live Browser is available only from a loopback-local NOX instance.")
+    if request.method != "GET":
+        origin = request.headers.get("origin")
+        host_header = request.headers.get("host", "").lower()
+        parsed = urlparse(origin or "")
+        if not origin or parsed.netloc.lower() != host_header or parsed.scheme not in {"http", "https"}:
+            raise HTTPException(status_code=403, detail="A same-origin browser request is required for Live Browser operations.")
+
+
+@app.get("/api/browser/status")
+async def browser_status(request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    session = live_browser.manager.get(owner)
+    status = session.snapshot()
+    if session.page is not None and not session.page.is_closed():
+        try:
+            status["page_title"] = (await session.page.title())[:300]
+        except Exception:
+            pass
+    return status
+
+
+@app.post("/api/browser/task", status_code=202)
+async def browser_start_task(payload: BrowserTaskRequest, request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    session = live_browser.manager.get(owner)
+    try:
+        plan = live_browser.plan_instruction(payload.instruction)
+        if any(step["action"] != "clarify" for step in plan):
+            await session.launch()
+        return await session.start_task(payload.instruction)
+    except live_browser.BrowserUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/browser/action")
+async def browser_action(payload: BrowserActionRequest, request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    session = live_browser.manager.get(owner)
+    try:
+        result = await session.run_action(payload.action, payload.value, payload.text)
+        if session.page is not None and not session.page.is_closed():
+            result["page_title"] = (await session.page.title())[:300]
+        return result
+    except live_browser.BrowserUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("Live Browser action failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="The browser action failed. Inspect the current page and retry.") from exc
+
+
+@app.post("/api/browser/pause")
+async def browser_pause(request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    return await live_browser.manager.get(owner).pause()
+
+
+@app.post("/api/browser/resume")
+async def browser_resume(request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    return await live_browser.manager.get(owner).resume()
+
+
+@app.post("/api/browser/stop")
+async def browser_stop(request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    return await live_browser.manager.get(owner).stop()
+
+
+@app.post("/api/browser/answer")
+async def browser_answer(payload: BrowserAnswerRequest, request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    try:
+        return await live_browser.manager.get(owner).answer(payload.answer)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/browser/confirm")
+async def browser_confirm(payload: BrowserConfirmRequest, request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    try:
+        return await live_browser.manager.get(owner).confirm(payload.approved)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/browser/screenshot")
+async def browser_screenshot(request: Request):
+    owner = session_owner(request)
+    _require_local_browser_request(request)
+    try:
+        data = await live_browser.manager.get(owner).screenshot()
+    except live_browser.BrowserUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content=data, media_type="image/png", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+
 @app.post("/api/connectivity/analyze")
 async def connectivity_analyze(payload: ConnectivityAnalyzeRequest, request: Request):
     """Classify only browser-visible observations after an explicit user request."""
@@ -1853,7 +2002,7 @@ async def capabilities():
         {"id": "creative", "name": "Image & Video Studio", "status": "setup_required", "detail": "Generation/editing providers and media-processing workflows are not connected yet."},
         {"id": "vision", "name": "Vision & Object Detection", "status": "limited", "detail": "Browser-local COCO-SSD object detection for supported COCO categories, bounding boxes, short-term visual tracking, and still-image inference. Model assets load from a CDN on demand. No calibrated depth sensor or reliable absolute-distance estimate is included. Image descriptions through chat still require a configured vision-capable provider."},
         {"id": "public_research", "name": "Public Information Research", "status": "limited", "detail": "Session-protected email syntax/domain DNS checks, international phone-number metadata, and public web search for user-supplied email/phone/public-profile or OCR text. Results may be incomplete; no private account access, breach dumps, face matching, or hidden image metadata extraction."},
-        {"id": "browser", "name": "Browser Navigation", "status": "limited", "detail": "Clear commands open recognized websites in a new tab without redundant confirmation; this does not automate clicks or forms. High-impact actions still require confirmation."},
+        {"id": "browser", "name": "Live Browser Automation", "status": "ready" if os.getenv("NOX_BROWSER_ENABLED", "").strip() == "1" else "setup_required", "detail": "Optional local Playwright browser with real navigation, accessible DOM inspection, named click/fill/select actions, screenshot preview, pause/resume/stop, user clarification, and explicit confirmation for consequential clicks. Requires local opt-in and Playwright Chromium; public hosted deployments are blocked from browser control. Website compatibility is not universal."},
         {"id": "desktop", "name": "Paired Device Actions", "status": "limited", "detail": "Authenticated paired companions report live heartbeats and real command outcomes. Windows can launch Start Menu apps and run an explicit allowlist of diagnostics; optional Home Assistant integration can control supported configured lights, switches, media players, climate, covers and vacuums. Launch requests are labelled as unverified unless the companion reports actual success. Devices must be powered, online, paired and running a compatible companion; arbitrary desktop control and universal power-on/off are not available."},
         {"id": "security", "name": "Cybersecurity Lab", "status": "setup_required", "detail": "Security checks must be implemented and scoped to authorized targets before use."},
         {"id": "files", "name": "Files & Knowledge Base", "status": "setup_required", "detail": "A persistent indexed file store is not configured yet."},
