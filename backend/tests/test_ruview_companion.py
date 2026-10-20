@@ -42,6 +42,22 @@ class RuViewCompanionTests(unittest.TestCase):
         self.assertFalse(snapshot["running"])
         self.assertIn("ordinary browser Wi-Fi readings are not CSI", snapshot["hardware_note"])
 
+    def test_parses_only_bounded_documented_csi_fields(self):
+        summary = ruview.parse_capture_summary(
+            '{"nodes":[{"source":"esp32","nodeId":2,"packets":{"csi":25},'
+            '"rssiMean":-54.5,"csiRateHz":5.0,"csiLossFraction":0.02,'
+            '"csi":{"frames":25,"synthetic":false},"lastVitals":{"heartBpm":70}}]}'
+        )
+        self.assertEqual(summary["source"], "ruview_esp32_csi_capture")
+        self.assertEqual(summary["nodes"][0]["csi_frames"], 25)
+        self.assertEqual(summary["nodes"][0]["rssi_mean_dbm"], -54.5)
+        self.assertEqual(summary["quality"], "observed")
+        self.assertNotIn("lastVitals", summary["nodes"][0])
+
+    def test_malformed_or_non_csi_output_does_not_create_measurements(self):
+        self.assertIsNone(ruview.parse_capture_summary("not JSON"))
+        self.assertIsNone(ruview.parse_capture_summary('{"ok":true,"message":"no frames"}'))
+
     def _request(self, client_host="127.0.0.1", host="127.0.0.1:8000", origin=None, method="GET"):
         headers = [(b"host", host.encode())]
         if origin is not None:
