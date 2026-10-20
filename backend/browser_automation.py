@@ -324,6 +324,14 @@ class BrowserAgent:
         if synthesis:
             report.extend([synthesis.strip(), "",
                 "> AI-generated analysis grounded in the captured excerpts. Citations such as [E1] map to the source evidence listed below; verify important claims against the original pages.", ""])
+            try:
+                from backend.research_synthesis import audit_synthesis_citations
+                citation_notes = audit_synthesis_citations(synthesis, len(sources))
+            except Exception:
+                citation_notes = ["Citation audit unavailable; check evidence labels manually."]
+            report.extend(["### Citation audit", ""])
+            report.extend([f"- {note}" for note in citation_notes])
+            report.extend(["", "This audit checks citation-label format only; it cannot establish whether a source truly supports a claim.", ""])
         else:
             report.extend(["Not generated: no configured AI provider returned a usable synthesis. The extractive takeaways above and the original source text below are still available.", ""])
         for index, source in enumerate(sources, start=1):
