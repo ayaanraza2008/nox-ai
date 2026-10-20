@@ -186,7 +186,8 @@ class AccountSecurityTests(unittest.TestCase):
         }
         connection = FakeConnection(account=row, challenge=challenge)
         with patch.object(accounts, "_connect", return_value=connection), \
-             patch.object(accounts, "_raw_connect", return_value=connection):
+             patch.object(accounts, "_raw_connect", return_value=connection), \
+             patch.object(accounts, "_email_configured", return_value=True):
             with self.assertRaisesRegex(ValueError, "wait before requesting another code"):
                 accounts.resend_verification("session-token", "email", "127.0.0.1")
 
