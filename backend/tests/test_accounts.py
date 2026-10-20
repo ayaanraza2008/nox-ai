@@ -185,6 +185,46 @@ class AccountSecurityTests(unittest.TestCase):
         self.assertEqual(missing, existing)
         self.assertIn("If a matching account exists", missing)
 
+    def test_successful_mobile_verification_updates_phone_flag(self):
+        row = account_row()
+        challenge = {
+            "id": "challenge-phone", "account_id": "account-1", "purpose": "phone_verify",
+            "code_hash": "expected-hash", "attempts": 0,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+        }
+        connection = FakeConnection(account=row, challenge=challenge)
+        with patch.object(accounts, "_connect", return_value=connection), \
+             patch.object(accounts, "_code_hash", side_effect=lambda code: "expected-hash" if code == "654321" else "wrong"):
+            result = accounts.verify_code("session-token", "phone_verify", "sms", "654321")
+        self.assertTrue(result["phone_verified"])
+        self.assertEqual(result["status"], "phone_verified")
+        self.assertTrue(any("phone_verified=TRUE" in query for query, _ in connection.calls))
+
+    def test_password_recovery_reset_hashes_new_password_and_revokes_sessions(self):
+        row = account_row()
+        challenge = {
+            "id": "challenge-reset", "account_id": "account-1", "purpose": "password_reset_email",
+            "code_hash": "expected-hash", "attempts": 0,
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+        }
+        connection = FakeConnection(account=row, challenge=challenge)
+        with patch.object(accounts, "_connect", return_value=connection), \
+             patch.object(accounts, "_code_hash", return_value="expected-hash"):
+            result = accounts.reset_password("person@example.com", "email", "+91", "123456",
+                                             "a new sufficiently long password", "127.0.0.1")
+        self.assertTrue(result)
+        self.assertTrue(any("password_scheme='argon2id'" in query for query, _ in connection.calls))
+        self.assertTrue(any("UPDATE nox_account_sessions SET revoked=1" in query for query, _ in connection.calls))
+        self.assertTrue(connection.committed)
+
+    def test_logout_revokes_session_without_deleting_account(self):
+        connection = FakeConnection(account=account_row())
+        with patch.object(accounts, "_connect", return_value=connection):
+            accounts.logout("session-token")
+        self.assertTrue(any("UPDATE nox_account_sessions SET revoked=1" in query for query, _ in connection.calls))
+        self.assertFalse(any("DELETE FROM nox_accounts" in query for query, _ in connection.calls))
+        self.assertTrue(connection.committed)
+
     def test_remember_me_session_duration_is_bounded(self):
         connection = FakeConnection()
         with patch.object(accounts, "_now", return_value=datetime(2026, 1, 1, tzinfo=timezone.utc)):
