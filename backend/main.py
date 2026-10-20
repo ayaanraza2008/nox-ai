@@ -1850,6 +1850,80 @@ async def automation_capabilities():
     return get_automation_capabilities()
 
 
+@app.get("/api/ops/overview")
+async def ops_overview(request: Request):
+    """Session-scoped operational snapshot; reports configuration, not invented live checks."""
+    health = await health_details()
+    owner_id = session_owner(request)
+    try:
+        tasks = task_manager.list(limit=100, owner_id=owner_id)
+    except Exception:
+        tasks = []
+    statuses = [str(item.get("status", "unknown")) for item in tasks if isinstance(item, dict)]
+    active = sum(status in {"queued", "running", "paused"} for status in statuses)
+    capabilities_data = await capabilities()
+    modules = capabilities_data.get("modules", [])
+    ready = sum(item.get("status") == "ready" for item in modules)
+    limited = sum(item.get("status") == "limited" for item in modules)
+    setup_required = sum(item.get("status") == "setup_required" for item in modules)
+
+    checks = [
+        {
+            "id": "api",
+            "label": "NOX API",
+            "status": "ready",
+            "detail": "The diagnostics endpoint responded successfully.",
+        },
+        {
+            "id": "ai",
+            "label": "AI providers",
+            "status": "ready" if health.get("ai_configured") else "setup_required",
+            "detail": "At least one provider key is configured; actual model availability is not probed." if health.get("ai_configured") else "No supported AI provider key is configured.",
+        },
+        {
+            "id": "storage",
+            "label": "Storage",
+            "status": "ready" if health.get("database_connected") and health.get("task_database_connected") else "degraded",
+            "detail": "Application and task storage answered a database ping." if health.get("database_connected") and health.get("task_database_connected") else "One or more storage adapters could not complete a database ping.",
+        },
+        {
+            "id": "godseye",
+            "label": "God's Eye View",
+            "status": "configured" if _gods_eye_view_config().get("configured") else "setup_required",
+            "detail": "Launch URL configured; upstream service health has not been verified." if _gods_eye_view_config().get("configured") else "Set up the separate service and configure GODS_EYE_VIEW_URL.",
+        },
+    ]
+    core_ok = bool(health.get("ai_configured") and health.get("database_connected") and health.get("task_database_connected"))
+    return {
+        "service": "NOX AI",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "overall_status": "operational" if core_ok else "attention_required",
+        "checks": checks,
+        "tasks": {
+            "visible_recent": len(tasks),
+            "active": active,
+            "queued": statuses.count("queued"),
+            "running": statuses.count("running"),
+            "paused": statuses.count("paused"),
+            "failed_recent": statuses.count("failed"),
+        },
+        "capabilities": {
+            "total": len(modules),
+            "ready": ready,
+            "limited": limited,
+            "setup_required": setup_required,
+        },
+        "storage": {
+            "application_connected": bool(health.get("database_connected")),
+            "task_connected": bool(health.get("task_database_connected")),
+            "durable_storage_configured": bool(health.get("durable_storage_configured")),
+            "application_backend": health.get("storage_backend"),
+            "task_backend": health.get("task_storage_backend"),
+        },
+        "privacy": "Task counts include only the current browser session. Provider keys and connection strings are never returned.",
+    }
+
+
 @app.get("/api/integrations/gods-eye-view")
 async def gods_eye_view_integration():
     """Expose only validated launch metadata for the upstream workspace."""
