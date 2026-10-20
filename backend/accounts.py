@@ -102,6 +102,9 @@ def _connect():
             WHEN email_verified THEN 'email_verified'
             WHEN phone_verified THEN 'phone_verified'
             ELSE 'pending_verification' END""")
+        challenge_cutoff = _iso(datetime.now(timezone.utc) - timedelta(days=30))
+        conn.execute("DELETE FROM nox_account_challenges WHERE created_at < %s", (challenge_cutoff,))
+        conn.execute("DELETE FROM nox_account_rate_limits WHERE window_start < %s", (challenge_cutoff,))
         conn.commit()
         return conn
     except Exception:
