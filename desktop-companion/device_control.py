@@ -147,8 +147,8 @@ def launch_android_app(
                 shell=False, capture_output=True, text=True, timeout=15, check=False,
                 stdin=subprocess.DEVNULL,
             )
-    except EmergencyStopActive as exc:
-        raise RuntimeError("Emergency Stop cancelled the managed ADB launch.") from exc
+    except EmergencyStopActive:
+        raise
     except subprocess.TimeoutExpired as exc:
         raise TimeoutError("Android app launch timed out; check the phone before retrying.") from exc
     except OSError as exc:
