@@ -60,7 +60,7 @@
     const frameState = (e) => {
       const v = e?.detail || {};
       targetEnergy = Math.max(0,Math.min(1,Number(v.energy)||0));
-      mode = String(v.kind || v.mode || "ambient");
+      mode = String(v.kind && v.kind !== "ambient" ? v.kind : (v.mode || v.kind || "ambient"));
       phase = Number(v.phase) || phase;
     };
     window.addEventListener("nox:core-frame", frameState);
@@ -105,7 +105,7 @@
         p.y=cy+Math.sin(p.angle+phase*.018)*radius*.73*perspective + Math.sin(now*.00055+p.seed)*min*.014;
       }
       ctx.lineCap="round";
-      const maxDist=min*(mobile()?.12:.105);
+      const maxDist=min*(mobile() ? 0.12 : 0.105);
       for(let i=0;i<particles.length;i++){
         const a=particles[i];
         for(let j=i+1;j<particles.length;j++){
