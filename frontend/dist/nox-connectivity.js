@@ -398,6 +398,26 @@
       $("ruviewStart").disabled = !available || Boolean(snapshot && snapshot.running);
       if (snapshot && snapshot.message) output.textContent = snapshot.message;
       if (snapshot && snapshot.last_output) output.textContent = snapshot.last_output;
+      const measurementView = $("connectivityHoloMeasurements");
+      const summary = snapshot && snapshot.measurement_summary;
+      if (measurementView && summary && Array.isArray(summary.nodes)) {
+        if (!summary.nodes.length) {
+          measurementView.textContent = "RuView capture completed, but no CSI nodes/frames were decoded. The hologram remains simulated. Check the configured sensor, firmware, and local UDP port.";
+        } else {
+          const quality = String(summary.quality || "unknown").toUpperCase();
+          const lines = summary.nodes.slice(0, 8).map(node => {
+            const id = node.node_id == null ? "?" : node.node_id;
+            const rssi = Number.isFinite(node.rssi_mean_dbm) ? node.rssi_mean_dbm + " dBm mean RSSI" : "RSSI unavailable";
+            const rate = Number.isFinite(node.csi_rate_hz) ? node.csi_rate_hz + " CSI frames/s" : "CSI rate unavailable";
+            const frames = Number.isFinite(node.csi_frames) ? node.csi_frames + " CSI frames" : "frame count unavailable";
+            const loss = Number.isFinite(node.csi_loss_fraction) ? " · " + (node.csi_loss_fraction * 100).toFixed(1) + "% packet loss estimate" : "";
+            return "Node " + id + " (" + String(node.source || "unknown") + "): " + frames + " · " + rate + " · " + rssi + loss;
+          });
+          measurementView.textContent = "RuView CSI summary · " + quality + " · " + String(summary.captured_at || "capture time unavailable") +
+            "\n" + lines.join("\n") +
+            "\nThese are packet-level CSI/RSSI summaries, not validated pose, breathing, heart-rate, or exact-location measurements. The room and wavefront hologram remains simulated.";
+        }
+      }
       if (!available && !snapshot?.running) {
         output.textContent = (snapshot && snapshot.message ? snapshot.message + "\n\n" : "") +
           "Hosted websites cannot access this device's USB ports or Wi-Fi CSI stream. Run NOX locally on 127.0.0.1, install the optional companion, and set NOX_RUVIEW_ENABLED=1.";
