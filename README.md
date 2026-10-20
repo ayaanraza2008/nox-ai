@@ -492,6 +492,7 @@ NOX now includes a provider-adapter registry and a Connected Apps workspace. Gma
    - `GOOGLE_CLIENT_SECRET`
    - `GOOGLE_REDIRECT_URI` (must exactly match the Google Console redirect URI)
    - `NOX_TOKEN_ENCRYPTION_KEY` (Fernet key used to encrypt refresh/access tokens at rest)
+   - `NOX_PUBLIC_BASE_URL` (public HTTPS NOX origin, e.g. `https://YOUR-NOX-HOST`, used after OAuth returns)
    - `NOX_CONNECTED_APPS_DB` (SQLite file path on persistent storage for production)
 4. Generate an encryption key locally with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and store the output as a secret. Keep the same key across restarts and backups; changing it makes stored credentials unreadable.
 5. Open NOX, choose **CONNECTED APPS → Connect Gmail**, sign in directly with Google, and approve the requested Gmail scopes. NOX never asks the user to paste a Google password or token into chat.
