@@ -198,9 +198,12 @@ class BrowserSession:
             self.page.set_default_navigation_timeout(NAVIGATION_TIMEOUT_MS)
             self.page.set_default_timeout(ACTION_TIMEOUT_MS)
             await self.page.route("**/*", self._guard_route)
-        except Exception:
+        except Exception as exc:
             await self.close()
-            raise
+            raise BrowserUnavailable(
+                "Chromium could not start. Install it with python -m playwright install chromium "
+                "and, on Linux, ensure Playwright system dependencies are installed."
+            ) from exc
 
     async def _guard_route(self, route) -> None:
         try:
@@ -276,16 +279,6 @@ class BrowserSession:
             self.result = await self._page_summary()
             return self.result[:4000]
         if action == "click":
-            if RISKY_ACTION.search(value):
-                self.pending_confirmation = {"action": "click", "target": value, "page": self.page.url[:1500]}
-                self.state = "awaiting_confirmation"
-                self.pending_question = f"Confirm before clicking “{value}” on {self.page.url}. This may submit or change information."
-                self.decision = asyncio.get_running_loop().create_future()
-                approved = await self.decision
-                self.pending_confirmation = None
-                self.pending_question = None
-                if not approved:
-                    raise PermissionError("User declined the consequential action.")
             matches = []
             for locator in (
                 self.page.get_by_role("button", name=value, exact=True),
@@ -306,6 +299,21 @@ class BrowserSession:
                 self.pending_question = f"I found {count} matching elements named “{value}”. Please use a more specific button or link label."
                 self.state = "awaiting_input"
                 raise LookupError(self.pending_question)
+            element_info = await chosen.first.evaluate(
+                "(el) => ({tag: el.tagName.toLowerCase(), type: (el.getAttribute('type') || '').toLowerCase(), href: el.href || '', form: !!el.form})"
+            )
+            action_evidence = " ".join((value, element_info.get("type", ""), element_info.get("href", "")))
+            consequential = bool(RISKY_ACTION.search(action_evidence)) or element_info.get("type") == "submit"
+            if consequential:
+                self.pending_confirmation = {"action": "click", "target": value, "page": self.page.url[:1500]}
+                self.state = "awaiting_confirmation"
+                self.pending_question = f"Confirm before clicking “{value}” on {self.page.url}. This control may submit or change information."
+                self.decision = asyncio.get_running_loop().create_future()
+                approved = await self.decision
+                self.pending_confirmation = None
+                self.pending_question = None
+                if not approved:
+                    raise PermissionError("User declined the consequential action.")
             await chosen.first.click()
             await self.page.wait_for_timeout(350)
             if await self._needs_auth():
