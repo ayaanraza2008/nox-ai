@@ -72,20 +72,35 @@ def _public_http_url(url: str) -> str:
 
 async def _get_public(url: str) -> tuple[str, str, str]:
     current = _public_http_url(url)
-    async with httpx.AsyncClient(timeout=12, follow_redirects=False, headers={"User-Agent": USER_AGENT}) as client:
+    # Stream responses instead of buffering arbitrary page bodies in memory.
+    # Redirect targets are revalidated before any subsequent request.
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(12.0, connect=5.0),
+        follow_redirects=False,
+        headers={"User-Agent": USER_AGENT},
+    ) as client:
         for _ in range(4):
-            response = await client.get(current)
-            if response.status_code in (301, 302, 303, 307, 308):
-                location = response.headers.get("location")
-                if not location:
-                    break
-                current = _public_http_url(urljoin(current, location))
-                continue
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "")
-            if "text/html" not in content_type and "text/plain" not in content_type:
-                raise ValueError("Only public HTML and plain-text pages can be read.")
-            return current, content_type, response.text[:500000]
+            async with client.stream("GET", current) as response:
+                if response.status_code in (301, 302, 303, 307, 308):
+                    location = response.headers.get("location")
+                    if not location:
+                        break
+                    current = _public_http_url(urljoin(current, location))
+                    continue
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").lower()
+                if "text/html" not in content_type and "text/plain" not in content_type:
+                    raise ValueError("Only public HTML and plain-text pages can be read.")
+                declared_size = response.headers.get("content-length")
+                if declared_size and declared_size.isdigit() and int(declared_size) > 500000:
+                    raise ValueError("Public page is larger than the 500 KB research limit.")
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > 500000:
+                        raise ValueError("Public page is larger than the 500 KB research limit.")
+                encoding = response.encoding or "utf-8"
+                return current, content_type, bytes(body).decode(encoding, errors="replace")
     raise ValueError("Too many redirects.")
 
 
