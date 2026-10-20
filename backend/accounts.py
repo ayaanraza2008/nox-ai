@@ -204,18 +204,21 @@ def _new_session(conn, account_id: str, remember_me: bool = True) -> tuple[str, 
 
 
 def _rate_limit(conn, action: str, key: str, max_count: int, window_seconds: int) -> None:
+    """Atomically count attempts in PostgreSQL so concurrent requests cannot race the limit."""
     key_hash = hashlib.sha256((action + ":" + (key or "unknown").casefold()).encode()).hexdigest()
     now = _now()
-    row = conn.execute("SELECT window_start,count FROM nox_account_rate_limits WHERE action=%s AND key_hash=%s",
-                       (action, key_hash)).fetchone()
-    if not row or datetime.fromisoformat(row["window_start"]) <= now - timedelta(seconds=window_seconds):
-        conn.execute("""INSERT INTO nox_account_rate_limits(action,key_hash,window_start,count)
-            VALUES(%s,%s,%s,1) ON CONFLICT(action,key_hash) DO UPDATE SET window_start=EXCLUDED.window_start,count=1""",
-            (action, key_hash, _iso(now)))
-        return
-    if int(row["count"]) >= max_count:
+    cutoff = _iso(now - timedelta(seconds=window_seconds))
+    row = conn.execute("""INSERT INTO nox_account_rate_limits(action,key_hash,window_start,count)
+        VALUES(%s,%s,%s,1)
+        ON CONFLICT(action,key_hash) DO UPDATE SET
+          window_start=CASE WHEN nox_account_rate_limits.window_start <= %s
+                            THEN EXCLUDED.window_start ELSE nox_account_rate_limits.window_start END,
+          count=CASE WHEN nox_account_rate_limits.window_start <= %s
+                     THEN 1 ELSE nox_account_rate_limits.count+1 END
+        RETURNING count""",
+        (action, key_hash, _iso(now), cutoff, cutoff)).fetchone()
+    if row and int(row["count"]) > max_count:
         raise ValueError("Too many attempts. Please wait before trying again.")
-    conn.execute("UPDATE nox_account_rate_limits SET count=count+1 WHERE action=%s AND key_hash=%s", (action, key_hash))
 
 
 def _verification_secret() -> str:
@@ -291,6 +294,8 @@ def _send_challenge(conn, account, purpose: str, channel: str, client_key: str =
         raise ValueError("Unsupported verification channel.")
 
     _rate_limit(conn, "send_" + purpose, (account["id"] + ":" + channel + ":" + client_key), 5, 3600)
+    # Serialize sends for this account so concurrent requests cannot bypass cooldown.
+    conn.execute("SELECT id FROM nox_accounts WHERE id=%s FOR UPDATE", (account["id"],))
     recent = conn.execute("""SELECT created_at FROM nox_account_challenges
         WHERE account_id=%s AND purpose=%s ORDER BY created_at DESC LIMIT 1""",
         (account["id"], purpose)).fetchone()
@@ -421,7 +426,7 @@ def verify_code(token: str, purpose: str, channel: str, code: str) -> dict:
             raise ValueError("Please sign in again.")
         expected_purpose = ("email_verify" if channel == "email" else "phone_verify") if purpose.endswith("_verify") else purpose
         challenge = conn.execute("""SELECT * FROM nox_account_challenges
-            WHERE account_id=%s AND purpose=%s AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1""",
+            WHERE account_id=%s AND purpose=%s AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1 FOR UPDATE""",
             (session["id"], expected_purpose)).fetchone()
         if not challenge:
             raise ValueError("No active code found. Request a new code.")
@@ -530,7 +535,7 @@ def reset_password(identifier: str, channel: str, country_code: str, code: str, 
         if not row:
             raise ValueError("The code or account details are invalid or expired. Request a new code.")
         challenge = conn.execute("""SELECT * FROM nox_account_challenges WHERE account_id=%s AND purpose=%s
-            AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1""", (row["id"], purpose)).fetchone()
+            AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1 FOR UPDATE""", (row["id"], purpose)).fetchone()
         if not challenge or datetime.fromisoformat(challenge["expires_at"]) <= _now() or int(challenge["attempts"]) >= OTP_MAX_ATTEMPTS:
             raise ValueError("The code or account details are invalid or expired. Request a new code.")
         if not hmac.compare_digest(challenge["code_hash"], _code_hash(code)):
