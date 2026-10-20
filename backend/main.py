@@ -26,6 +26,7 @@ from backend import brain
 from backend import accounts
 from backend import github_bridge
 from backend import public_research
+from backend import connectivity
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
@@ -105,6 +106,10 @@ class BrainProposalRequest(BaseModel):
 
 class BrainBackupRestoreRequest(BaseModel):
     backup: dict
+
+
+class ConnectivityAnalyzeRequest(BaseModel):
+    observations: dict = Field(default_factory=dict)
 
 
 class AccountCredentials(BaseModel):
@@ -1751,6 +1756,19 @@ async def public_information_research(payload: PublicResearchRequest, request: R
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result["disclosure"] = "Public-source research only. Results may be incomplete; review source links. No private accounts, inboxes, restricted APIs, or breach dumps were accessed."
     return result
+
+
+@app.post("/api/connectivity/analyze")
+async def connectivity_analyze(payload: ConnectivityAnalyzeRequest, request: Request):
+    """Classify only browser-visible observations after an explicit user request."""
+    session_owner(request)
+    try:
+        report = connectivity.analyze_browser_observations(payload.observations)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    report["scope"] = "user_requested_browser_observations"
+    report["control_available"] = False
+    return report
 
 
 @app.get("/api/capabilities")
