@@ -78,6 +78,10 @@ class ResearchSynthesisPromptTests(unittest.TestCase):
         self.assertIn("[E2]", prompt)
         self.assertIn("disagree", prompt.lower())
         self.assertIn("Do not invent", prompt)
+        self.assertIn("Claim-by-claim evidence comparison", prompt)
+        self.assertIn("genuine contradiction", prompt)
+        self.assertIn("insufficient evidence", prompt)
+        self.assertIn("different dates, definitions, populations, methods, or scopes", prompt)
 
 
 class ResearchCitationAuditTests(unittest.TestCase):
