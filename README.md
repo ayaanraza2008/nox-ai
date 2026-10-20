@@ -225,3 +225,18 @@ The Agent Swarm workspace subscribes to `GET /api/swarm/jobs/{job_id}/events`, a
 NOX includes a browser-session-scoped Project Workspace for reviewing user-supplied source snapshots. Create a project, paste/save relative-path files (maximum 100 files per project, 50,000 characters per file), draft replacement content, inspect the generated unified diff, and explicitly approve or reject the proposal. Approval updates only the saved SQLite workspace snapshot and increments its version; it never writes to the user's computer, a Git repository, or a deployed service. A patch is rejected as stale if the underlying file changed since the diff was created. Workspace project and patch APIs require the existing HttpOnly `nox_session` cookie and enforce per-session ownership.
 
 The built-in validation endpoint parses Python syntax or standard JSON only; it does not execute code or claim runtime tests passed. Other file extensions are stored as text without an implied validator. Path traversal, absolute paths, hidden paths, oversized input, and excessive project/file counts are rejected. By default the workspace database is `/tmp/nox_workspace.sqlite3`; configure `NOX_WORKSPACE_DB` to a path on a mounted persistent disk if history must survive host restarts. This feature is a controlled snapshot/review workflow, not a live filesystem, repository connector, shell, sandbox, or deployment agent.
+
+
+## GitHub Bridge (approval-gated draft PRs)
+
+The **GITHUB BRIDGE** panel can browse visible repository files, load UTF-8 text, preview a unified diff, and—only after an explicit confirmation—create a new proposal branch and draft pull request. It rechecks each file's SHA before preview and again before publishing to detect stale edits. It never commits directly to the base branch, merges a pull request, or deploys the service.
+
+### Server configuration
+
+Set these in the hosting provider's **server-side environment/secrets**, never in frontend code or committed files:
+
+- `GITHUB_TOKEN`: a fine-grained GitHub token restricted to this repository. Grant **Contents: Read and write** and **Pull requests: Read and write** only if you want draft PR publishing; keep the token private and rotate it if exposed.
+- `NOX_GITHUB_REPOSITORY`: repository in `owner/repository` format, for example `ayaanraza2008/nox-ai`.
+- `NOX_GITHUB_BASE_BRANCH`: optional base branch name; defaults to `main`.
+
+If secrets are absent, NOX can still start; the panel reports setup required. The first version proposes one file per PR, limits each file to 50,000 characters and the overall request to 150,000 characters, filters hidden/sensitive paths, and opens a **draft** PR. GitHub permissions, branch rules, rate limits, and repository policies still apply. A multi-file operation can leave a proposal branch with partial commits if GitHub rejects a later file; inspect the branch and close it if needed. Review the PR on GitHub before merging. Creating a PR does not mean tests passed or the live Render site was updated.
