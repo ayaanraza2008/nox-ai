@@ -326,3 +326,72 @@ All routes use the existing server-issued HttpOnly `nox_session` cookie as the d
 - Retrieval currently uses bounded keyword matching, not embeddings. The browser capability report is approximate and reflects browser-exposed metadata only; it is not a full hardware inventory.
 - Do not save sensitive personal information or secrets. Use the delete control to remove an entry. Disabling memory prevents retrieval and new writes; existing entries remain available for later re-enabling or deletion.
 - Automated regression tests live in `backend/tests/test_brain.py`. Run the backend suite with `python -m unittest discover -s backend/tests`.
+
+## Consent-based connectivity intelligence and Wi-Fi signal hologram
+
+The connectivity workspace is available from the left-side **Connectivity Intelligence** panel. It is deliberately user-initiated: no connectivity inspection runs until the user presses a control.
+
+### Website capabilities available now
+
+- **Inspect connection:** sends only browser-visible observations (navigator.onLine and, where implemented by the browser, coarse navigator.connection estimates) to the connectivity analysis API. The API validates and classifies these observations. The online flag does not prove that the internet or a specific destination is reachable.
+- **One-time issue notices:** issue fingerprints and notification/acknowledgement state are stored in this browser's local storage. An unresolved issue is not repeatedly notified; after it disappears from a later inspection and then reappears, it may be reported again. Browser notifications require an explicit permission grant. Because websites cannot read the SSID in this implementation, deduplication is per observable issue type in this browser—not per verified Wi-Fi network. Clearing browser storage resets this local history.
+- **Bluetooth chooser:** on supported HTTPS browsers, a user click opens the browser's native Web Bluetooth chooser. NOX only sees the device the user selects. This is not a complete nearby-device scan, pairing, or remote-device access.
+- **Device location:** only after the user clicks the location control does the browser request its own geolocation permission. Coordinates, reported accuracy, and timestamp are displayed in the page only; this panel does not upload or persist them. This is device geolocation, not Wi-Fi-based positioning.
+- **3D signal hologram:** Three.js renders an interactive illustrative room, access-point marker, and animated wavefronts. The geometry, waves, reflection-like effects, and room presets are explicitly simulated. Optional coarse browser connection estimates are shown separately; they are not Wi-Fi signal strength or radio measurements. Drag to rotate, use the wheel to zoom, and select a scene preset.
+
+### Website limitations and native companion requirements
+
+A website cannot reliably retrieve Wi-Fi SSID, RSSI, radio channel, encryption/security mode, gateway, DNS configuration, hotspot client lists, or complete network history. It cannot turn Wi-Fi/hotspots on or off, force network connections/disconnections, pair/forget Bluetooth devices, or perform a router security audit. The current feature intentionally does not scan networks, probe other devices, collect credentials, activate a camera, or execute shell commands. These operations require a separately installed, permissioned native companion for the target OS; that companion is **not included by this web-only implementation**. iOS and Android permissions and available APIs vary by OS version and application entitlement.
+
+### API and testing
+
+- POST /api/connectivity/analyze requires the NOX browser session and accepts bounded browser observation fields only. It returns evidence-labelled findings plus limitations; it cannot perform device control.
+- Run tests with python -m unittest backend.tests.test_connectivity.
+- Browser Bluetooth, geolocation, and WebGL checks must be manually verified on the actual target browser/device. CI does not prove that OS permissions or native device control work.
+
+
+
+## Optional RuView Wi-Fi CSI integration
+
+NOX can invoke the official published `@ruvnet/ruview` CLI through an opt-in local
+companion adapter. The current integration exposes fixed operations for local
+diagnostics, device inventory, and a bounded 45-second ESP32 CSI capture with a
+stop control. It does not accept shell commands or arbitrary executable arguments.
+
+### Local setup (Windows PowerShell)
+
+From the repository root:
+
+```powershell
+node --version
+npm --prefix .\ruview-companion install --ignore-scripts
+$env:NOX_RUVIEW_ENABLED = "1"
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Then open http://127.0.0.1:8000. Keep the service bound to loopback. The adapter is
+disabled by default and requires a NOX session, a loopback client, a loopback URL,
+and a same-origin request for POST operations. Do not expose this local server to
+the public internet or through a tunnel/reverse proxy.
+
+### RuView capability boundaries
+
+- The official CLI package is pinned to version 0.9.2 in `ruview-companion/package.json`.
+  The package is MIT-licensed and requires Node.js 20 or newer.
+- The CLI diagnostics and device inventory are actual RuView commands. The capture
+  operation invokes RuView's ESP32 CSI pipeline; NOX displays bounded CLI output and
+  parses only structured per-node CSI frame counts, mean RSSI, frame rate, and packet-loss
+  estimates into the hologram's provenance panel. It does not invent measurements or
+  present device vitals/pose as validated outputs.
+- Live CSI requires a supported, provisioned sensor/source and local network access.
+  The optional RuView kernel may be needed for additional analysis. Host Wi-Fi RSSI
+  is not CSI and cannot substantiate pose, breathing, heart-rate, or precise location.
+- The NOX web hologram remains a clearly labeled simulation when no real measurement
+  source is connected. RuView's own simulated mode is synthetic too.
+- The full RuView Rust workspace, firmware, pretrained models, and original native
+  UI are not copied into NOX. This is a CLI/process integration, not a claim that
+  every RuView feature is embedded. The companion package is optional and is not
+  required for hosted NOX deployment.
+- Hardware tests require the actual local sensor and are not established by hosted CI.
+
+Run adapter tests with `python -m unittest backend.tests.test_ruview_companion`.

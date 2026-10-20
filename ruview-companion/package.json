@@ -1,0 +1,9 @@
+{
+  "name": "nox-ruview-companion",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Optional local-only RuView CLI integration for NOX AI",
+  "license": "MIT",
+  "engines": { "node": ">=20.0.0" },
+  "dependencies": { "@ruvnet/ruview": "0.9.2" }
+}
