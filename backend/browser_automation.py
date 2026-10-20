@@ -7,7 +7,10 @@ try:
 except ImportError:
     async_playwright = None
 
-MAX_SESSIONS = max(1, min(int(os.getenv("NOX_BROWSER_MAX_SESSIONS", "3")), 12))
+# Chromium can consume hundreds of MB per context. Keep the default to one
+# shared browser session on small Render instances; operators can explicitly
+# raise the cap with NOX_BROWSER_MAX_SESSIONS on memory-sized deployments.
+MAX_SESSIONS = max(1, min(int(os.getenv("NOX_BROWSER_MAX_SESSIONS", "1")), 12))
 TIMEOUT_MS = max(3000, min(int(os.getenv("NOX_BROWSER_ACTION_TIMEOUT_MS", "12000")), 30000))
 NAV_TIMEOUT_MS = max(5000, min(int(os.getenv("NOX_BROWSER_NAVIGATION_TIMEOUT_MS", "20000")), 45000))
 DANGEROUS = re.compile(r"\b(submit|send|publish|post|purchase|buy|pay|checkout|book|confirm|delete|remove|cancel subscription|transfer|place order|apply now)\b", re.I)
@@ -106,7 +109,7 @@ class BrowserAgent:
         if self.playwright is None:
             self.playwright = await async_playwright().start()
         try:
-            self.browser = await self.playwright.chromium.launch(headless=True, args=["--no-sandbox"])
+            self.browser = await self.playwright.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
         except Exception as exc:
             raise BrowserAgentError("Chromium is unavailable. Install it on the server with playwright install chromium, then redeploy.") from exc
 
