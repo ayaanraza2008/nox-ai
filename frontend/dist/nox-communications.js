@@ -102,7 +102,7 @@
     catch(e){$("noxCommAuditResults").textContent=e.message;}
   };
   const mailIntent = /\b(?:send|draft|write|compose|reply|forward|search|find|read|check|open|email|e-mail|gmail|inbox)\b.{0,100}\b(?:email|gmail|inbox|mail|message|recipient|attachment|file|report|summary|manager|team|customer|supplier|to|rahul)\b/i;
-  const unsupportedIntent = /\b(?:whatsapp|linkedin|outlook|sms|text message|phone call|call this contact|calendar invite|call)\b.{0,100}\b(?:send|message|call|invite|schedule|text|contact|reply|open)\b/i;
+  const unsupportedIntent = /\b(?:whatsapp|linkedin|outlook|sms|text message|phone call|call this contact|calendar invite)\b.{0,100}\b(?:send|message|call|invite|schedule|text|contact|reply|open)\b|\b(?:call|phone)\s+(?:this\s+)?(?:contact|person|customer|[a-z]+)/i;
   window.NOXCommunications = {
     shouldHandle(text) { return mailIntent.test(String(text||"")) || unsupportedIntent.test(String(text||"")); },
     async handleCommand(text) {
