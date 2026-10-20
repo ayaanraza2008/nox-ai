@@ -11,6 +11,8 @@ import shutil
 import subprocess
 from typing import Callable, Any
 
+from emergency_state import EmergencyStopActive, run_managed_process
+
 _SERIAL_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$")
 
@@ -20,6 +22,10 @@ def _adb_executable(adb_path: str | None = None) -> str | None:
     if candidate:
         return candidate
     return shutil.which("adb")
+
+
+def _managed_adb_runner(args, **kwargs):
+    return run_managed_process(args, timeout=int(kwargs.get("timeout", 15)))
 
 
 def discover_adb_devices(
@@ -105,7 +111,7 @@ def launch_android_app(
     package_name: str,
     confirmed: bool,
     adb_path: str | None = None,
-    runner: Callable[..., Any] = subprocess.run,
+    runner: Callable[..., Any] | None = None,
 ) -> dict:
     """Launch an installed Android app via an authorized ADB connection."""
     if not confirmed:
@@ -117,7 +123,9 @@ def launch_android_app(
     adb = _adb_executable(adb_path)
     if not adb:
         raise RuntimeError("ADB was not found. Install Android Platform Tools or set NOX_ADB_PATH.")
-    discovery = discover_adb_devices(adb, runner=runner)
+    # Keep the read-only discovery probe separate; only the mutating launch
+    # process is registered for Emergency Stop cancellation by default.
+    discovery = discover_adb_devices(adb, runner=runner or subprocess.run)
     device = next((item for item in discovery.get("devices", []) if item["id"] == serial), None)
     if device is None:
         raise RuntimeError("The selected Android device is not connected. Refresh device discovery.")
@@ -126,12 +134,21 @@ def launch_android_app(
     if device["state"] != "device" or not device["authorized"]:
         raise RuntimeError(f"Android device is not ready (ADB state: {device['state']}). Reconnect it and retry.")
     try:
-        result = runner(
-            [adb, "-s", serial, "shell", "monkey", "-p", package_name,
-             "-c", "android.intent.category.LAUNCHER", "1"],
-            shell=False, capture_output=True, text=True, timeout=15, check=False,
-            stdin=subprocess.DEVNULL,
-        )
+        launch_runner = runner or _managed_adb_runner
+        if runner is None:
+            result = launch_runner(
+                [adb, "-s", serial, "shell", "monkey", "-p", package_name,
+                 "-c", "android.intent.category.LAUNCHER", "1"], timeout=15,
+            )
+        else:
+            result = launch_runner(
+                [adb, "-s", serial, "shell", "monkey", "-p", package_name,
+                 "-c", "android.intent.category.LAUNCHER", "1"],
+                shell=False, capture_output=True, text=True, timeout=15, check=False,
+                stdin=subprocess.DEVNULL,
+            )
+    except EmergencyStopActive as exc:
+        raise RuntimeError("Emergency Stop cancelled the managed ADB launch.") from exc
     except subprocess.TimeoutExpired as exc:
         raise TimeoutError("Android app launch timed out; check the phone before retrying.") from exc
     except OSError as exc:
