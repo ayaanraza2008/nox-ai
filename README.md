@@ -477,3 +477,42 @@ node --check frontend/dist/nox-live-browser.js
 The CI workflow installs Playwright Chromium and runs a real browser integration test
 against an isolated local test page. That test does not visit a third-party website or
 use a real user account.
+
+
+## Connected Apps and Communication Engine (initial Gmail adapter)
+
+NOX now includes a provider-adapter registry and a Connected Apps workspace. Gmail is the first implemented official API adapter; other provider cards explicitly show that their integrations are not configured rather than claiming unsupported capabilities.
+
+### Gmail OAuth setup
+
+1. In Google Cloud Console, create/select a project, enable the Gmail API, and configure the OAuth consent screen.
+2. Create an OAuth Client ID for a Web application. Add the exact redirect URI `https://YOUR-NOX-HOST/api/connected/gmail/callback` to Authorized redirect URIs. For local development, `http://127.0.0.1:8000/api/connected/gmail/callback` is accepted.
+3. Set these backend environment variables (never in frontend code):
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_REDIRECT_URI` (must exactly match the Google Console redirect URI)
+   - `NOX_TOKEN_ENCRYPTION_KEY` (Fernet key used to encrypt refresh/access tokens at rest)
+   - `NOX_CONNECTED_APPS_DB` (SQLite file path on persistent storage for production)
+4. Generate an encryption key locally with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and store the output as a secret. Keep the same key across restarts and backups; changing it makes stored credentials unreadable.
+5. Open NOX, choose **CONNECTED APPS → Connect Gmail**, sign in directly with Google, and approve the requested Gmail scopes. NOX never asks the user to paste a Google password or token into chat.
+6. Confirm the connected account identity. Use Gmail Compose to save a real provider draft, search inbox metadata, or review and explicitly confirm sending.
+
+### Communication API and honest status
+
+- `GET /api/connected/status` — connected-provider status and implemented capabilities.
+- `GET /api/connected/gmail/connect` — creates a short-lived, session-bound Google OAuth authorization URL.
+- `GET /api/connected/gmail/callback` — validates state and stores encrypted tokens.
+- `POST /api/connected/gmail/drafts` — create a Gmail draft.
+- `POST /api/connected/gmail/send` — sends only with `confirmed: true`; result means Gmail accepted the request, not that the recipient received it.
+- `POST /api/connected/gmail/search` — searches authorized Gmail and returns message metadata/snippets.
+- `POST /api/connected/gmail/disconnect` — remove NOX's stored connection.
+- `GET/DELETE /api/connected/audit` — review or clear metadata-only communication events.
+
+Credentials are encrypted at rest with Fernet. OAuth state is random, short-lived, single-use, and bound to the current NOX session/account. Audit records exclude message bodies and tokens. Do not log secrets. Use HTTPS in production. The default SQLite path under `/tmp` is not durable; configure a persistent path/disk for production. OAuth consent screen publishing/testing requirements are controlled by Google.
+
+### Current limitations
+
+- Gmail draft creation, inbox search metadata, and send-request acceptance use the real Gmail API and require OAuth credentials plus user consent; they have not been tested against this project's real Google account in CI.
+- Attachments, full thread reply/forward, Outlook/Microsoft Graph, WhatsApp messaging, SMS, telephone calls, LinkedIn messages, calendar invitations, and generic desktop app control are not implemented by this release.
+- The frontend voice/text router can open the communications workspace and fill explicit email fields, but does not autonomously invent recipient/body details or send without the review action.
+- The communication audit database is separate from the NOX account database. Use persistent storage and backups appropriate to the deployment. OAuth access depends on the Google app's consent configuration and granted scopes.
