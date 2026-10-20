@@ -91,7 +91,7 @@ def discover_adb_devices(
         "capabilities": {
             "adb_usb_discovery": True,
             "android_app_launch": any(d["authorized"] for d in devices),
-            "file_transfer": False,
+            "file_transfer": any(device["authorized"] for device in devices),
             "screen_capture": False,
             "bluetooth_discovery": False,
             "ios_control": False,
