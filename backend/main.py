@@ -507,7 +507,7 @@ def build_chat_messages(message: str, language: str, history: list[dict], images
                 metadata.append("id=" + source_id)
             if isinstance(chunk_index, int):
                 metadata.append("chunk=" + str(chunk_index))
-            evidence.append(f"[E{evidence_id}] {' | '.join(metadata)}\\nPassage (untrusted): {excerpt}")
+            evidence.append(f"[E{evidence_id}] {' | '.join(metadata)}\nPassage (untrusted): {excerpt}")
             if len(evidence) >= 6:
                 break
         if evidence:
