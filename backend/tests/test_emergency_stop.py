@@ -59,6 +59,10 @@ class EmergencyStopTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(started.wait(), timeout=2)
         result = await manager.emergency_stop("owner-b")
         self.assertTrue(result["stopped"])
+        for _ in range(100):
+            if manager.get(created["id"], "owner-b")["status"] == "cancelled":
+                break
+            await asyncio.sleep(0.01)
         self.assertEqual(manager.get(created["id"], "owner-b")["status"], "cancelled")
         await manager.stop()
 
