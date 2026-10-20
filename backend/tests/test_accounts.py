@@ -36,6 +36,12 @@ class FakeConnection:
             return Cursor(self.account)
         if "SELECT * FROM nox_account_challenges" in query:
             return Cursor(self.challenge)
+        if "UPDATE nox_accounts SET email_verified=TRUE" in query and self.account:
+            self.account["email_verified"] = True
+        if "UPDATE nox_accounts SET phone_verified=TRUE" in query and self.account:
+            self.account["phone_verified"] = True
+        if "UPDATE nox_accounts SET status=CASE" in query and self.account:
+            self.account["status"] = "active" if self.account.get("email_verified") and self.account.get("phone_verified") else ("email_verified" if self.account.get("email_verified") else ("phone_verified" if self.account.get("phone_verified") else "pending_verification"))
         if "SELECT * FROM nox_accounts WHERE email=%s" in query:
             return Cursor(self.account)
         if "SELECT * FROM nox_accounts WHERE username=%s" in query:
@@ -152,7 +158,7 @@ class AccountSecurityTests(unittest.TestCase):
         self.assertTrue(connection.committed)
 
     def test_successful_email_verification_updates_status_only_after_valid_code(self):
-        row = account_row(email_verified=True, status="email_verified")
+        row = account_row()
         challenge = {
             "id": "challenge-1", "account_id": "account-1", "purpose": "email_verify",
             "code_hash": "unused", "attempts": 0,
