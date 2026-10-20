@@ -518,11 +518,11 @@ def reset_password(identifier: str, channel: str, country_code: str, code: str, 
                                (country_code, value)).fetchone()
             purpose = "password_reset_phone"
         if not row:
-            raise ValueError("The code or account details are invalid.")
+            raise ValueError("The code or account details are invalid or expired. Request a new code.")
         challenge = conn.execute("""SELECT * FROM nox_account_challenges WHERE account_id=%s AND purpose=%s
             AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1""", (row["id"], purpose)).fetchone()
         if not challenge or datetime.fromisoformat(challenge["expires_at"]) <= _now() or int(challenge["attempts"]) >= OTP_MAX_ATTEMPTS:
-            raise ValueError("The code has expired or is no longer valid. Request a new one.")
+            raise ValueError("The code or account details are invalid or expired. Request a new code.")
         if not hmac.compare_digest(challenge["code_hash"], _code_hash(code)):
             conn.execute("UPDATE nox_account_challenges SET attempts=attempts+1 WHERE id=%s", (challenge["id"],))
             conn.commit()
