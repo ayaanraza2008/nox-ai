@@ -1,8 +1,27 @@
+import asyncio
 import os
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
 from backend import live_browser
+
+
+class _BrowserTestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b"""<!doctype html><html><head><title>NOX Browser Test</title></head><body>
+        <label for="q">Search</label><input id="q">
+        <button onclick="document.getElementById('status').textContent='clicked'">More</button>
+        <div id="status">ready</div></body></html>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_args):
+        pass
 
 
 class BrowserPlannerTests(unittest.TestCase):
@@ -47,6 +66,34 @@ class BrowserPlannerTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             session = live_browser.BrowserSession("test-owner")
             self.assertFalse(session.snapshot()["enabled"])
+
+
+class LiveBrowserIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_real_chromium_navigation_fill_click_inspect_and_screenshot(self):
+        try:
+            import playwright.async_api  # noqa: F401
+        except ImportError:
+            self.skipTest("Optional Playwright dependency is not installed.")
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _BrowserTestHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        session = live_browser.BrowserSession("isolated-test-owner")
+        try:
+            with patch.dict(os.environ, {"NOX_BROWSER_ALLOW_LOCAL_TESTS": "1", "NOX_BROWSER_HEADLESS": "1"}):
+                url = f"http://127.0.0.1:{server.server_port}/"
+                await session.run_action("navigate", value=url)
+                await session.run_action("fill", value="Search", text="NOX test")
+                await session.run_action("click", value="More")
+                report = await session.run_action("inspect")
+                self.assertEqual(report["page_title"], "NOX Browser Test")
+                self.assertIn("clicked", report["result"])
+                screenshot = await session.screenshot()
+                self.assertTrue(screenshot.startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+        finally:
+            await session.close()
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
 
 
 if __name__ == "__main__":
