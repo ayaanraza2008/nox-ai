@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from backend.task_manager import TaskManager
@@ -30,6 +30,7 @@ from backend import github_bridge
 from backend import public_research
 from backend import cognitive
 from backend.autonomous_agent import run_autonomous_task
+from backend.browser_automation import BrowserAgentError, browser_agent
 import edge_tts
 
 logger = logging.getLogger("nox.provider")
@@ -230,6 +231,15 @@ def normalize_hinglish_for_tts(text: str) -> str:
 class TaskCreateRequest(BaseModel):
     goal: str = Field(min_length=3, max_length=6000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
+
+class BrowserCommandRequest(BaseModel):
+    command: str = Field(min_length=1, max_length=2000)
+    language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
+
+class BrowserConfirmRequest(BaseModel):
+    approved: bool
 
 
 class SwarmCreateRequest(BaseModel):
@@ -798,6 +808,7 @@ async def start_task_worker():
 @app.on_event("shutdown")
 async def stop_task_worker():
     await task_manager.stop()
+    await browser_agent.close()
 
 
 @app.get("/api/session")
@@ -2123,7 +2134,7 @@ async def capabilities():
         {"id": "creative", "name": "Image & Video Studio", "status": "setup_required", "detail": "Generation/editing providers and media-processing workflows are not connected yet."},
         {"id": "vision", "name": "Vision & Object Detection", "status": "limited", "detail": "Browser-local COCO-SSD object detection for supported COCO categories, bounding boxes, short-term visual tracking, and still-image inference. Model assets load from a CDN on demand. No calibrated depth sensor or reliable absolute-distance estimate is included. Image descriptions through chat still require a configured vision-capable provider."},
         {"id": "public_research", "name": "Public Information Research", "status": "limited", "detail": "Session-protected email syntax/domain DNS checks, international phone-number metadata, and public web search for user-supplied email/phone/public-profile or OCR text. Results may be incomplete; no private account access, breach dumps, face matching, or hidden image metadata extraction."},
-        {"id": "browser", "name": "Browser Navigation", "status": "limited", "detail": "Clear commands open recognized websites in a new tab without redundant confirmation; this does not automate clicks or forms. High-impact actions still require confirmation."},
+        {"id": "browser", "name": "Live Browser", "status": "ready" if browser_agent.available else "setup_required", "detail": "Session-scoped remote Playwright Chromium supports public URL navigation, web search, page inspection, accessible clicks, labelled-field filling, scrolling, navigation, screenshot preview, and explicit approval for detected consequential controls. Requires Playwright and Chromium on the server; remote preview is not direct interactive login."},
         {"id": "desktop", "name": "Paired Device Actions", "status": "limited", "detail": "Authenticated paired companions report live heartbeats and real command outcomes. Windows can launch Start Menu apps and run an explicit allowlist of diagnostics; optional Home Assistant integration can control supported configured lights, switches, media players, climate, covers and vacuums. Launch requests are labelled as unverified unless the companion reports actual success. Devices must be powered, online, paired and running a compatible companion; arbitrary desktop control and universal power-on/off are not available."},
         {"id": "security", "name": "Cybersecurity Lab", "status": "setup_required", "detail": "Security checks must be implemented and scoped to authorized targets before use."},
         {"id": "files", "name": "Files & Knowledge Base", "status": "setup_required", "detail": "A persistent indexed file store is not configured yet."},
@@ -2132,6 +2143,65 @@ async def capabilities():
         {"id": "analytics", "name": "Accounts & Analytics", "status": "setup_required", "detail": "Authentication, database-backed usage metrics, and admin analytics are not configured."},
     ]
     return {"service": "NOX AI", "version": app.version, "ai_configured": ai_configured, "modules": modules}
+
+
+@app.get("/api/browser/state")
+async def browser_state(request: Request):
+    """Return state for the current private browser session only."""
+    owner_id = session_owner(request)
+    return await browser_agent.state(owner_id)
+
+
+@app.post("/api/browser/command")
+async def browser_command(payload: BrowserCommandRequest, request: Request):
+    """Execute one bounded browser instruction in the user's remote browser session."""
+    owner_id = session_owner(request)
+    try:
+        return await browser_agent.run(owner_id, payload.command, payload.language)
+    except BrowserAgentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/browser/confirm")
+async def browser_confirm(payload: BrowserConfirmRequest, request: Request):
+    """Approve or decline the single pending consequential browser action."""
+    owner_id = session_owner(request)
+    try:
+        return await browser_agent.confirm(owner_id, payload.approved)
+    except BrowserAgentError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/browser/stop")
+async def browser_stop(request: Request):
+    owner_id = session_owner(request)
+    return await browser_agent.stop(owner_id)
+
+
+@app.get("/api/browser/screenshot")
+async def browser_screenshot(request: Request):
+    owner_id = session_owner(request)
+    try:
+        image = await browser_agent.screenshot(owner_id)
+    except BrowserAgentError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(content=image, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/browser/download/{download_index}")
+async def browser_download(download_index: int, request: Request):
+    """Serve only a file explicitly downloaded by this session's browser."""
+    owner_id = session_owner(request)
+    session = browser_agent.sessions.get(owner_id)
+    if not session or session["closed"] or download_index < 0 or download_index >= len(session["downloads"]):
+        raise HTTPException(status_code=404, detail="Download not found for this browser session.")
+    item = session["downloads"][download_index]
+    path = item.get("path")
+    allowed_dir = os.path.realpath(os.getenv("NOX_BROWSER_DOWNLOAD_DIR", "/tmp/nox-browser-downloads"))
+    resolved = os.path.realpath(path or "")
+    if not item.get("saved") or not resolved.startswith(allowed_dir + os.sep) or not os.path.isfile(resolved):
+        raise HTTPException(status_code=404, detail="The downloaded file is no longer available on this server.")
+    return FileResponse(resolved, filename=os.path.basename(resolved), headers={"Cache-Control": "no-store"})
 
 
 app.include_router(github_bridge.router)
