@@ -132,3 +132,23 @@ From the repository root, run `python -m unittest discover -s desktop-companion/
 ### Authorized lab workflow
 
 For hands-on learning, use an intentionally vulnerable local training app or a lab you control. Keep the target inventory, permission, test window, and allowed test types written down; isolate the lab from production and real user data; take a backup; and stop if the target differs from the approved scope. NOX's current feature set does not automatically exploit targets or perform active penetration tests.
+
+
+### Authorized Android USB device control (prototype)
+
+The Windows companion now exposes authenticated ADB device discovery and a confirmation-gated installed-app launch endpoint. It does not unlock phones, approve debugging prompts, or bypass Android permissions.
+
+1. Install **Android SDK Platform-Tools** from the official Android developer site and ensure `adb` is on Windows `PATH`. If needed, set `NOX_ADB_PATH` to the full path of `adb.exe`.
+2. On your own Android phone, enable Developer options and USB debugging, connect the USB cable, unlock the phone, and explicitly approve the RSA debugging prompt for this computer. On Windows, install the phone manufacturer's USB driver if ADB does not list it.
+3. Start this companion with a private `NOX_COMPANION_TOKEN` configured. Keep the service bound to `127.0.0.1`; do not expose it to the public internet.
+4. Send the token in the `X-NOX-Token` header:
+   - `GET http://127.0.0.1:8765/v1/devices` — enumerates ADB devices and clearly reports `device`, `unauthorized`, and `offline` states.
+   - `GET http://127.0.0.1:8765/v1/devices/capabilities` — returns the truthful local adapter capability matrix.
+   - `POST http://127.0.0.1:8765/v1/devices/android/launch` with JSON `{"serial":"YOUR_ADB_SERIAL","package_name":"com.example.app","confirmed":true}` — requests launch of an installed package on the selected authorized device. Replace both example values with values from your own device/app.
+5. A launch response is explicitly marked `launch_requested_not_verified`; verify the app on the phone. A successful ADB process exit alone does not prove the app reached the foreground.
+
+If ADB is missing, install Platform-Tools or set `NOX_ADB_PATH`. If the device is `unauthorized`, approve the on-device prompt; if `offline`, reconnect the cable and check the driver. The companion never runs request text through a shell and validates serial/package identifiers before invoking ADB.
+
+**Implemented now:** Windows-side ADB enumeration, authorization-state reporting, and confirmation-gated app launch; read-only Windows Wi-Fi interface status.
+
+**Not implemented yet:** USB file push/pull endpoints, screen capture, generic screen tap/type automation, Bluetooth Classic/BLE scanning or GATT, automatic LAN discovery, one-tap ADB-over-Wi-Fi pairing, iOS control, and a dedicated NOX dashboard UI for these new local endpoints. The hosted Render backend cannot directly see a USB device attached to your PC; the local Windows companion must be installed and running.
