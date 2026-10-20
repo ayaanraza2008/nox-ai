@@ -21,7 +21,9 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            with patch.object(main, "stream_provider_reply", fake_stream):
+            client.cookies.set("nox_account_session", "verified-session")
+            with patch.object(main.accounts, "resolve_session", return_value={"id": "account-1", "status": "active"}), \
+                 patch.object(main, "stream_provider_reply", fake_stream):
                 response = await client.post("/api/chat/stream", json={
                     "message": "Continue this", "language": "hinglish",
                     "history": [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}],
@@ -44,7 +46,9 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            with patch.object(main, "stream_provider_reply", broken_stream):
+            client.cookies.set("nox_account_session", "verified-session")
+            with patch.object(main.accounts, "resolve_session", return_value={"id": "account-1", "status": "active"}), \
+                 patch.object(main, "stream_provider_reply", broken_stream):
                 response = await client.post("/api/chat/stream", json={"message": "Hello", "images": []})
 
         packets = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
@@ -55,9 +59,11 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
     async def test_stream_endpoint_rejects_invalid_image_before_streaming(self):
         transport = httpx.ASGITransport(app=main.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            response = await client.post("/api/chat/stream", json={
-                "message": "Analyze this", "images": ["https://example.com/image.png"],
-            })
+            client.cookies.set("nox_account_session", "verified-session")
+            with patch.object(main.accounts, "resolve_session", return_value={"id": "account-1", "status": "active"}):
+                response = await client.post("/api/chat/stream", json={
+                    "message": "Analyze this", "images": ["https://example.com/image.png"],
+                })
         self.assertEqual(response.status_code, 400)
 
     def test_streaming_retries_transient_provider_errors_once(self):
