@@ -33,6 +33,25 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class _Connection:
+    """SQLite context wrapper that always closes the connection after each unit of work."""
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self.connection
+
+    def __exit__(self, exc_type, exc, traceback):
+        try:
+            if exc_type is None:
+                self.connection.commit()
+            else:
+                self.connection.rollback()
+        finally:
+            self.connection.close()
+        return False
+
+
 def _connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=15)
@@ -83,7 +102,7 @@ def _connect():
       item_type TEXT NOT NULL, item_id TEXT, detail_json TEXT NOT NULL, created_at TEXT NOT NULL
     );
     """)
-    return conn
+    return _Connection(conn)
 
 
 def _ensure_settings(conn, owner_id: str):
