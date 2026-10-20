@@ -94,6 +94,48 @@
       }
       ctx.restore();
 
+      // Soft volumetric plasma filaments: layered curves respond to the live core energy.
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      const filamentCount = mobile() ? 4 : 7;
+      for (let k = 0; k < filamentCount; k++) {
+        const a0 = now * (0.00016 + k * 0.000012) * (k % 2 ? -1 : 1) + phase * 0.012 + k * Math.PI * 2 / filamentCount;
+        const spread = min * (0.12 + (k % 3) * 0.045 + energy * 0.055);
+        const bend = min * (0.055 + energy * 0.07);
+        const x1 = cx + Math.cos(a0) * spread;
+        const y1 = cy + Math.sin(a0 * 1.18) * spread * 0.72;
+        const x2 = cx + Math.cos(a0 + 1.7) * (spread + bend);
+        const y2 = cy + Math.sin(a0 + 1.7) * (spread + bend) * 0.72;
+        const x3 = cx + Math.cos(a0 + 3.1) * (spread * 0.7);
+        const y3 = cy + Math.sin(a0 + 3.1) * spread * 0.52;
+        const x4 = cx + Math.cos(a0 + 4.4) * (spread + bend * 0.45);
+        const y4 = cy + Math.sin(a0 + 4.4) * (spread + bend * 0.45) * 0.7;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.bezierCurveTo(x2, y2, x3, y3, x4, y4);
+        const alpha = 0.055 + energy * 0.18;
+        const grad = ctx.createLinearGradient(x1, y1, x4, y4);
+        grad.addColorStop(0, "rgba(91,229,255,0)");
+        grad.addColorStop(0.35, "rgba(100,220,255," + alpha + ")");
+        grad.addColorStop(0.7, "rgba(167,139,255," + (alpha * 0.9) + ")");
+        grad.addColorStop(1, "rgba(105,230,255,0)");
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 0.7 + energy * 1.3;
+        ctx.shadowBlur = 5 + energy * 14;
+        ctx.shadowColor = k % 2 ? "#8c82ff" : "#62e8ff";
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      // Central bloom stays subtle while idle and expands during speech/listening.
+      const bloomRadius = min * (0.11 + energy * 0.12);
+      const bloom = ctx.createRadialGradient(cx, cy, min * 0.012, cx, cy, bloomRadius);
+      bloom.addColorStop(0, "rgba(111,222,255," + (0.045 + energy * 0.16) + ")");
+      bloom.addColorStop(0.48, "rgba(133,112,255," + (0.025 + energy * 0.07) + ")");
+      bloom.addColorStop(1, "rgba(55,140,255,0)");
+      ctx.fillStyle = bloom;
+      ctx.fillRect(cx - bloomRadius, cy - bloomRadius, bloomRadius * 2, bloomRadius * 2);
+      ctx.restore();
+
       for(const p of particles){
         p.px=p.x;p.py=p.y;
         p.angle += p.speed*dt*(1+energy*2.8);
