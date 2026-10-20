@@ -44,6 +44,7 @@ class TaskManager:
         self.processor = processor
         self.database_url = (os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or "").strip()
         self.use_postgres = self.database_url.startswith(("postgres://", "postgresql://"))
+        self.emergency_storage_degraded = False
         self.db_path = Path(os.getenv("NOX_TASK_DB", "/tmp/nox_tasks.sqlite3"))
         if not self.use_postgres:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,6 +68,7 @@ class TaskManager:
                 type(exc).__name__,
             )
             self.use_postgres = False
+            self.emergency_storage_degraded = True
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._init_db()
 
@@ -168,6 +170,7 @@ class TaskManager:
                 type(exc).__name__,
             )
             self.use_postgres = False
+            self.emergency_storage_degraded = True
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._init_db()
             with self._connect() as db:
@@ -259,6 +262,10 @@ class TaskManager:
         return item
 
     def emergency_status(self, owner_id: str) -> dict[str, Any]:
+        if self.emergency_storage_degraded:
+            return {"stopped": True, "stopped_at": None, "updated_at": utcnow(),
+                    "details": {"reason": "emergency_storage_unavailable_fail_closed"},
+                    "state_persistent": False}
         if not owner_id:
             return {"stopped": False, "stopped_at": None, "details": {}, "state_persistent": True}
         with self._connect() as db:
@@ -275,6 +282,8 @@ class TaskManager:
                 "state_persistent": True}
 
     def is_stopped(self, owner_id: str) -> bool:
+        if self.emergency_storage_degraded:
+            return True
         if not owner_id:
             return False
         with self._connect() as db:
@@ -324,6 +333,8 @@ class TaskManager:
                     "cancelled_task_count": len(rows)}
 
     async def resume_emergency_stop(self, owner_id: str) -> dict[str, Any]:
+        if self.emergency_storage_degraded:
+            raise RuntimeError("Emergency Stop remains fail-closed because the configured task database is unavailable. Restore the durable database before resuming.")
         if not owner_id:
             raise ValueError("A browser session is required to resume NOX.")
         async with self.emergency_lock:
