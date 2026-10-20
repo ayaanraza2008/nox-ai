@@ -216,7 +216,11 @@ class BrowserSession:
                 pass
             if await self._needs_auth():
                 self.state = "awaiting_auth"
-                self.pending_question = "This page appears to require sign-in or an additional security check. Complete it in the browser window, then press Resume. NOX will not bypass it."
+                self.pending_question = (
+                    "This page appears to require sign-in or an additional security check. Complete it in the visible browser window, then press Resume. NOX will not bypass it."
+                    if os.getenv("NOX_BROWSER_HEADLESS", "1").strip().lower() in {"0", "false", "no"}
+                    else "This page requires sign-in or a security check, but the browser is headless. Stop NOX, set NOX_BROWSER_HEADLESS=0, restart locally, and retry so you can complete the legitimate website flow."
+                )
                 self.pause_event.clear()
                 return "Paused for user authentication."
             return f"Opened {self.page.url}"
@@ -258,7 +262,11 @@ class BrowserSession:
             await self.page.wait_for_timeout(350)
             if await self._needs_auth():
                 self.state = "awaiting_auth"
-                self.pending_question = "A login or security check is required. Complete it in the browser window and press Resume."
+                self.pending_question = (
+                    "A login or security check is required. Complete it in the visible browser window and press Resume."
+                    if os.getenv("NOX_BROWSER_HEADLESS", "1").strip().lower() in {"0", "false", "no"}
+                    else "A login or security check is required, but the browser is headless. Restart locally with NOX_BROWSER_HEADLESS=0 to complete the legitimate website flow."
+                )
                 self.pause_event.clear()
             return f"Clicked “{value}”"
         if action == "fill":
@@ -378,6 +386,8 @@ class BrowserSession:
             raise ValueError("A task is active. Stop or pause it before manual browser control.")
         if action not in {"navigate", "inspect", "click", "fill", "select", "scroll", "back", "forward", "reload"}:
             raise ValueError("Unsupported browser action.")
+        if action == "click" and RISKY_ACTION.search(value):
+            return await self.start_task("click " + value)
         if self.page is None or self.page.is_closed():
             if action != "navigate":
                 raise BrowserUnavailable("Open a website first.")
@@ -395,8 +405,17 @@ class BrowserSession:
         if self.state != "awaiting_input" or not self.pending_question:
             raise ValueError("NOX is not waiting for a clarification.")
         original = self.instruction
-        self.pending_question = None
         combined = f"{original}. User clarification: {answer[:1000]}"
+        if self.task and not self.task.done():
+            self.stop_event.set()
+            self.pause_event.set()
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
+        self.pending_question = None
+        self.state = "idle"
         return await self.start_task(combined)
 
     async def confirm(self, approved: bool) -> dict[str, Any]:
