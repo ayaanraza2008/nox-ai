@@ -69,7 +69,6 @@
       raf = 0;
       if (document.hidden || reduce?.matches || document.body.classList.contains("reduced")) {
         ctx.clearRect(0,0,w,h);
-        if (!document.hidden && !disposed) raf = requestAnimationFrame(draw);
         return;
       }
       const dt = Math.min(.04, Math.max(0,(now-(last||now))/1000)); last = now;
@@ -134,14 +133,17 @@
       if(!document.hidden && !disposed) raf=requestAnimationFrame(draw);
     };
     const visibility = () => {
-      if(document.hidden){if(raf)cancelAnimationFrame(raf);raf=0;last=0;}
+      if(document.hidden || reduce?.matches || document.body.classList.contains("reduced")){if(raf)cancelAnimationFrame(raf);raf=0;last=0;}
       else if(!raf && !disposed) raf=requestAnimationFrame(draw);
     };
+    const motionObserver = new MutationObserver(visibility);
+    motionObserver.observe(document.body,{attributes:true,attributeFilter:["class"]});
+    reduce?.addEventListener?.("change",visibility);
     document.addEventListener("visibilitychange",visibility);
     window.addEventListener("resize",resize,{passive:true});
-    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);document.removeEventListener("visibilitychange",visibility);},{once:true});
+    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);document.removeEventListener("visibilitychange",visibility);reduce?.removeEventListener?.("change",visibility);motionObserver.disconnect();},{once:true});
     resize();
-    if(!reduce?.matches) raf=requestAnimationFrame(draw);
+    if(!reduce?.matches && !document.body.classList.contains("reduced")) raf=requestAnimationFrame(draw);
   };
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
 })();
