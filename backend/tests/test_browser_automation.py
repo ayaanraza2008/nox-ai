@@ -1,6 +1,6 @@
 """Regression tests for remote browser destination safety."""
 import unittest
-from backend.browser_automation import BrowserAgent, BrowserAgentError, page_state_changed
+from backend.browser_automation import BrowserAgent, BrowserAgentError, page_state_changed, unwrap_search_result_url
 
 class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_non_http_scheme(self):
@@ -25,6 +25,18 @@ class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(page_state_changed(before, dict(before)))
         self.assertTrue(page_state_changed(before, {**before, "url": "https://example.com/next"}))
         self.assertTrue(page_state_changed(before, {**before, "body_sha256": "changed"}))
+
+
+    async def test_unwraps_duckduckgo_redirect_to_public_url(self):
+        url = unwrap_search_result_url("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdocs")
+        self.assertEqual(url, "https://example.com/docs")
+
+    async def test_search_result_rejects_non_http_urls(self):
+        self.assertIsNone(unwrap_search_result_url("javascript:alert(1)"))
+        self.assertIsNone(unwrap_search_result_url("https://duckduckgo.com/"))
+
+    async def test_search_result_strips_fragment(self):
+        self.assertEqual(unwrap_search_result_url("https://example.com/page#section"), "https://example.com/page")
 
     async def test_idle_state(self):
         result = await BrowserAgent().state("test-owner")
