@@ -279,3 +279,38 @@ Results distinguish confirmed technical metadata, possible matches, warnings, an
 `POST /api/research/public` accepts `{"kind":"email|phone|social|image","value":"..."}` and requires the existing `nox_session` cookie. Public search uses the existing bounded DuckDuckGo HTML search helper. Phone metadata adds `phonenumbers` to `backend/requirements.txt`. Automated tests cover validation, allowed social hosts, source-link filtering, and separation of facts from possible matches.
 
 **Not implemented in this phase:** calibrated distance measurement, depth/stereo-camera support, person/action/gesture models, OCR for all languages (the local OCR worker currently uses English), reverse-image matching inside NOX, official platform OAuth/API connectors, a supported native Windows camera integration, and live end-to-end camera tests on physical mobile/desktop hardware. Browser camera APIs may work in a supported Windows browser, but that is not a native Windows companion integration.
+
+
+## NOX Operational Brain & Selective Memory
+
+The Brain & Memory workspace adds a session-scoped operational memory service to the existing FastAPI application. It is a real software subsystem, but it does **not** retrain model weights or autonomously rewrite production code.
+
+### Implemented
+- **Separate SQLite store:** configure `NOX_BRAIN_DB` to select the database path. The default is `nox_brain.sqlite3` at the repository root.
+- **Explicit memory admission:** the user must save a memory from the Brain & Memory panel. The system does not automatically persist raw conversations. Duplicate text is merged; likely credentials, private-key headers, and payment-card-like numbers are rejected.
+- **Categories and provenance:** operational, experience, preference, project, and temporary memories include source, confidence, verification state, creation/validation timestamps, and expiry. Temporary memories are capped at seven days. Expired entries are removed during memory listing/overview.
+- **Retrieval in chat:** relevant, non-stale, non-unverified memories from the current `nox_session` are included as untrusted context alongside the existing Knowledge Index. The model is instructed not to treat retrieved source text as instructions.
+- **Settings and deletion:** memory enable/disable, retention, category settings, searchable entries, and per-entry deletion are available in the Brain & Memory panel.
+- **Device awareness:** the browser can explicitly submit an allowlisted capability summary (platform/browser hints, viewport, WebGL, online state, approximate hardware hints, and API availability). NOX does not request camera/microphone access for discovery and does not collect files, contacts, location, camera frames, or recordings.
+- **Outcome evaluation:** users can record requested outcome, actual result, status, and optional test evidence. Outcomes with evidence are not automatically promoted to verified memories.
+- **Skill registry and improvement proposals:** built-in validated workflow descriptions are listed; custom skills are versioned as proposals and require review. Improvement proposals can be approved/rejected for tracking, but approval does not execute code or change permissions.
+- **Audit records:** important memory, device, skill, proposal, and settings changes are recorded without storing raw chat transcripts.
+
+### API endpoints
+- `GET /api/brain/overview`
+- `GET|PUT /api/brain/settings`
+- `GET|POST /api/brain/memories`, `DELETE /api/brain/memories/{memory_id}`
+- `POST /api/brain/device-context`, `GET /api/brain/devices`
+- `POST /api/brain/outcomes`
+- `GET|POST /api/brain/skills`, `POST /api/brain/skills/{skill_id}/review`
+- `GET|POST /api/brain/proposals`, `POST /api/brain/proposals/{proposal_id}/review`
+- `GET /api/brain/audit`
+
+All routes use the existing server-issued HttpOnly `nox_session` cookie as the data scope; client-supplied owner IDs are not accepted. The current identity model is browser-session scoped, not a cross-device account system.
+
+### Deployment, storage, and limitations
+- On Render's default ephemeral filesystem, `nox_brain.sqlite3` may be lost on redeploy/restart. Set `NOX_BRAIN_DB` to a path on a persistent mounted disk if the hosting plan supports one; otherwise treat it as non-durable.
+- The `approved_sync` setting is a saved preference only. Cross-device sync, device pairing integration, end-to-end encryption, semantic/vector retrieval, background outcome extraction from every task, automated benchmark-driven skill selection, model-weight training, and production-code self-modification are **not implemented**.
+- Retrieval currently uses bounded keyword matching, not embeddings. The browser capability report is approximate and reflects browser-exposed metadata only; it is not a full hardware inventory.
+- Do not save sensitive personal information or secrets. Use the delete control to remove an entry. Disabling memory prevents retrieval and new writes; existing entries remain available for later re-enabling or deletion.
+- Automated regression tests live in `backend/tests/test_brain.py`. Run the backend suite with `python -m unittest discover -s backend/tests`.
