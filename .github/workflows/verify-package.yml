@@ -62,6 +62,8 @@ jobs:
           node --check /tmp/nox-inline.js
       - name: Validate 3D lab JavaScript syntax
         run: node --check frontend/dist/nox-3d-lab.js
+      - name: Validate connectivity intelligence JavaScript syntax
+        run: node --check frontend/dist/nox-connectivity.js
       - name: Validate agent swarm JavaScript syntax
         run: node --check frontend/dist/nox-agent-swarm.js
       - name: Validate project workspace JavaScript syntax
