@@ -96,9 +96,10 @@ class TaskManager:
                 status TEXT NOT NULL, progress INTEGER NOT NULL, result TEXT,
                 error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
                 events TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-                owner_id TEXT NOT NULL DEFAULT ''
+                owner_id TEXT NOT NULL DEFAULT '',
+                idempotency_key TEXT
             )""")
-            # Migrate databases created before per-browser task ownership existed.
+            # Migrate databases created before per-browser ownership/idempotency.
             if db.postgres:
                 columns = {row["column_name"] for row in db.execute(
                     "SELECT column_name FROM information_schema.columns "
@@ -108,6 +109,13 @@ class TaskManager:
                 columns = {row["name"] for row in db.execute("PRAGMA table_info(tasks)").fetchall()}
             if "owner_id" not in columns:
                 db.execute("ALTER TABLE tasks ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''")
+            if "idempotency_key" not in columns:
+                db.execute("ALTER TABLE tasks ADD COLUMN idempotency_key TEXT")
+            # A client retry with the same key must not enqueue duplicate work.
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_owner_idempotency "
+                "ON tasks(owner_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+            )
 
     def _row(self, row):
         if not row:
@@ -128,12 +136,13 @@ class TaskManager:
     def _save(self, item: dict[str, Any]):
         with self._connect() as db:
             db.execute("""INSERT INTO tasks
-              (id,goal,language,status,progress,result,error,created_at,updated_at,events,attempts,owner_id)
-              VALUES (:id,:goal,:language,:status,:progress,:result,:error,:created_at,:updated_at,:events,:attempts,:owner_id)
+              (id,goal,language,status,progress,result,error,created_at,updated_at,events,attempts,owner_id,idempotency_key)
+              VALUES (:id,:goal,:language,:status,:progress,:result,:error,:created_at,:updated_at,:events,:attempts,:owner_id,:idempotency_key)
               ON CONFLICT(id) DO UPDATE SET
               status=excluded.status,progress=excluded.progress,result=excluded.result,
               error=excluded.error,updated_at=excluded.updated_at,events=excluded.events,
-              attempts=excluded.attempts,owner_id=excluded.owner_id""", {**item, "events": json.dumps(item["events"])})
+              attempts=excluded.attempts,owner_id=excluded.owner_id,
+              idempotency_key=excluded.idempotency_key""", {**item, "events": json.dumps(item["events"])})
 
     async def start(self):
         # A process restart cannot safely resume an in-flight network request.
@@ -179,13 +188,46 @@ class TaskManager:
             runner.cancel()
         self.runners.clear()
 
-    async def create(self, goal: str, language: str, owner_id: str = "") -> dict[str, Any]:
+    async def create(
+        self, goal: str, language: str, owner_id: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        # Repeated client submissions return the original task, not duplicate work.
+        if idempotency_key:
+            with self._connect() as db:
+                row = db.execute(
+                    "SELECT * FROM tasks WHERE owner_id=? AND idempotency_key=?",
+                    (owner_id, idempotency_key),
+                ).fetchone()
+            existing = self._row(row)
+            if existing:
+                if existing["goal"] != goal or existing["language"] != language:
+                    raise ValueError("Idempotency-Key was already used for a different task.")
+                return existing
+
         task_id = uuid.uuid4().hex
         item = {"id": task_id, "goal": goal, "language": language, "owner_id": owner_id,
+                "idempotency_key": idempotency_key or None,
                 "status": "queued", "progress": 0, "result": None, "error": None,
                 "created_at": utcnow(), "updated_at": utcnow(), "events": [], "attempts": 0}
         self._event(item, "Task accepted and added to the queue.")
-        self._save(item)
+        try:
+            self._save(item)
+        except Exception:
+            # Concurrent retries race on the unique index; return its winner.
+            if not idempotency_key:
+                raise
+            with self._connect() as db:
+                row = db.execute(
+                    "SELECT * FROM tasks WHERE owner_id=? AND idempotency_key=?",
+                    (owner_id, idempotency_key),
+                ).fetchone()
+            existing = self._row(row)
+            if not existing:
+                raise
+            if existing["goal"] != goal or existing["language"] != language:
+                raise ValueError("Idempotency-Key was already used for a different task.")
+            return existing
         await self.queue.put(task_id)
         return item
 
