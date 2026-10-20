@@ -870,11 +870,13 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
     providers = _prioritize_providers(providers)
 
     if not providers:
-        demo = ("NOX is online in demo mode. Add a valid OPENROUTER_API_KEY, GROQ_API_KEY, or "
-                "GEMINI_API_KEY in the hosting environment to enable real AI responses. "
-                "I received your message: " + message)
-        yield {"type": "delta", "text": demo}
-        yield {"type": "done", "mode": "demo"}
+        yield {
+            "type": "error",
+            "message": (
+                "No AI provider API key is configured. Add OPENROUTER_API_KEY, GROQ_API_KEY, "
+                "or GEMINI_API_KEY in Render Environment variables, then redeploy."
+            ),
+        }
         return
 
     failures = []
@@ -2292,6 +2294,16 @@ async def chat(payload: ChatRequest, request: Request = None):
         allowed_prefixes = ("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")
         if any(not image.startswith(allowed_prefixes) or len(image) > 7_000_000 for image in payload.images):
             raise HTTPException(status_code=400, detail="Attach one PNG, JPEG, or WebP image smaller than 5 MB.")
+    if not any(os.getenv(name, "").strip() for name in (
+        "OPENROUTER_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"
+    )):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "No AI provider API key is configured. Add OPENROUTER_API_KEY, GROQ_API_KEY, "
+                "or GEMINI_API_KEY in Render Environment variables, then redeploy."
+            ),
+        )
     try:
         retrieved = _retrieved_context(request, message)
         if retrieved:
@@ -2316,12 +2328,9 @@ async def chat(payload: ChatRequest, request: Request = None):
         return ChatResponse(reply=answer, mode="ai")
     if payload.images:
         raise HTTPException(status_code=503, detail="Image analysis requires a configured provider and a vision-capable model. Configure OPENROUTER_VISION_MODEL or GEMINI_VISION_MODEL.")
-    return ChatResponse(
-        reply=(
-            "NOX is online in demo mode. To enable real AI responses, add an OPENROUTER_API_KEY "
-            "environment variable in your hosting dashboard. I received your message: " + message
-        ),
-        mode="demo",
+    raise HTTPException(
+        status_code=503,
+        detail="No configured AI provider returned a response. Check provider configuration, quota, and service logs.",
     )
 
 
