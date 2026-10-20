@@ -75,7 +75,7 @@
     $("noxLbResume").disabled = !["paused","awaiting_auth"].includes(data.state);
     if (data.available && panel.classList.contains("open")) refreshScreenshot().catch(() => {});
   }
-  async function status() { try { render(await api("/api/browser/status")); } catch (e) { $("noxLbResult").textContent = e.message + "\nStart NOX locally with the optional Playwright setup."; } }
+  async function status() { try { await api("/api/session"); render(await api("/api/browser/status")); } catch (e) { $("noxLbResult").textContent = e.message + "\nStart NOX locally with the optional Playwright setup."; } }
   async function refreshScreenshot() {
     const response = await fetch("/api/browser/screenshot?ts=" + Date.now(), {credentials:"same-origin", cache:"no-store"});
     if (!response.ok) { $("noxLbScreenshot").hidden = true; $("noxLbEmpty").hidden = false; return; }
