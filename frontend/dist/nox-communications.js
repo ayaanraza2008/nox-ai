@@ -89,7 +89,7 @@
     try {
       const d=await api("/api/connected/gmail/search",{method:"POST",body:JSON.stringify({query:q,limit:10})});
       $("noxCommResults").innerHTML=d.messages.map(m=>`<div class="taskrow"><div class="taskrowhead"><strong>${esc(m.subject)}</strong><span class="tiny">${esc(m.date)}</span></div><p>From: ${esc(m.from)}<br>To: ${esc(m.to)}</p><div class="footnote">${esc(m.snippet)}</div><button class="secondary" data-use-sender="${esc(m.from)}" data-subject="${esc(/^re:/i.test(m.subject)?"":"Re: ")+esc(m.subject)}">Use sender</button></div>`).join("") || "No messages matched.";
-      root.querySelectorAll("[data-use-sender]").forEach(b=>b.onclick=()=>{$("noxCommTo").value=(b.dataset.useSender.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i)||[])[0]||"";$("noxCommSubject").value=b.dataset.subject;$("noxCommBody").value="";$("noxCommNotice").textContent="A new email draft is being prepared; this is not a reply in the original thread. Add the message and save/send after review.";});
+      root.querySelectorAll("[data-use-sender]").forEach(b=>b.onclick=()=>{$("noxCommTo").value=(b.dataset.useSender.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)||[])[0]||"";$("noxCommSubject").value=b.dataset.subject;$("noxCommBody").value="";$("noxCommNotice").textContent="A new email draft is being prepared; this is not a reply in the original thread. Add the message and save/send after review.";});
     } catch(e) {$("noxCommResults").textContent=e.message;}
   };
   $("noxCommAudit").onclick = async () => {
@@ -101,7 +101,8 @@
     try {await api("/api/connected/audit",{method:"DELETE"});$("noxCommAuditResults").textContent="Audit history deleted."; }
     catch(e){$("noxCommAuditResults").textContent=e.message;}
   };
-  const mailIntent = /\b(?:email|e-mail|gmail|inbox|send an email|draft an email|mail this|email this|reply to the email)\b/i;
+  const mailIntent = /\b(?:send|draft|write|compose|reply|forward|search|find|read|check|open|email|e-mail|gmail|inbox)\b.{0,100}\b(?:email|gmail|inbox|mail|message|recipient|attachment|file|report|to|rahul)\b/i;
+  const unsupportedIntent = /\b(?:whatsapp|linkedin|outlook|sms|text message|phone call|call this contact|calendar invite)\b.{0,100}\b(?:send|message|call|invite|schedule|text|contact|reply|open)\b/i;
   window.NOXCommunications = {
     shouldHandle(text) { return mailIntent.test(String(text||"")) || unsupportedIntent.test(String(text||"")); },
     async handleCommand(text) {
