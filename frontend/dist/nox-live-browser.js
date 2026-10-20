@@ -38,6 +38,7 @@
     <div class="nox-lb-preview"><img id="noxLbScreenshot" alt="Screenshot of the actual locally controlled browser page" hidden><span id="noxLbEmpty" class="nox-lb-sub">A real browser screenshot appears here after opening a page.</span></div>
     <div class="nox-lb-status" id="noxLbResult">Ready. Browser control requires local setup and explicit opt-in.</div>
     <div class="nox-lb-steps" id="noxLbSteps"></div>
+    <div class="nox-lb-sub">RECENT LOCAL TASKS</div><div class="nox-lb-steps" id="noxLbHistory"></div>
     <div class="nox-lb-question" id="noxLbQuestion" hidden></div>
     <div class="nox-lb-row" id="noxLbAnswerRow" hidden><input id="noxLbAnswer" maxlength="1000" placeholder="Answer NOX's question"><button class="primary" id="noxLbAnswerSend">Send answer</button></div>
     <div class="nox-lb-row" id="noxLbConfirmRow" hidden><button class="primary" id="noxLbConfirm">Confirm this action</button><button class="danger" id="noxLbDecline">Decline</button></div>
@@ -68,6 +69,11 @@
     $("noxLbSteps").replaceChildren(...(data.steps || []).map(step => {
       const row = document.createElement("div");
       row.textContent = (step.status === "completed" ? "✓ " : step.status === "failed" ? "× " : step.status === "running" ? "◌ " : "· ") + step.index + ". " + step.label + (step.error ? " — " + step.error : "");
+      return row;
+    }));
+    $("noxLbHistory").replaceChildren(...(data.history || []).slice().reverse().map(task => {
+      const row = document.createElement("div");
+      row.textContent = new Date(task.created_at || Date.now()).toLocaleTimeString() + " · " + task.status + " · " + (task.step_count || 0) + " steps" + (task.url ? " · " + task.url : "") + (task.error ? " · " + task.error : "");
       return row;
     }));
     const question = $("noxLbQuestion");
