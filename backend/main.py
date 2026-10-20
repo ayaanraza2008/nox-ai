@@ -22,6 +22,7 @@ from backend.agent_swarm import SwarmManager
 from backend.safe_tools import SafeToolError, run_tool
 from backend import project_workspace as workspace
 from backend import knowledge
+from backend import brain
 from backend import github_bridge
 from backend import public_research
 from backend.autonomous_agent import run_autonomous_task
@@ -52,6 +53,50 @@ class KnowledgeURLRequest(BaseModel):
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     limit: int = Field(default=6, ge=1, le=10)
+
+class BrainMemoryCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+    category: Literal["operational", "experience", "preference", "project", "temporary"] = "preference"
+    source_ref: str | None = Field(default=None, max_length=300)
+    retention_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class BrainSettingsUpdate(BaseModel):
+    enabled: bool | None = None
+    sync_mode: Literal["local_only", "approved_sync"] | None = None
+    retention_days: int | None = Field(default=None, ge=1, le=3650)
+    categories: list[str] | None = Field(default=None, max_length=5)
+
+
+class BrainDeviceRequest(BaseModel):
+    label: str = Field(default="This browser", min_length=1, max_length=80)
+    capabilities: dict = Field(default_factory=dict)
+
+
+class BrainOutcomeRequest(BaseModel):
+    task_type: str = Field(min_length=1, max_length=1500)
+    requested_outcome: str = Field(min_length=1, max_length=1500)
+    result_summary: str = Field(min_length=1, max_length=1500)
+    status: Literal["succeeded", "failed", "partial"]
+    evidence: str | None = Field(default=None, max_length=2000)
+
+
+class BrainSkillRequest(BaseModel):
+    name: str = Field(min_length=3, max_length=60)
+    purpose: str = Field(min_length=1, max_length=500)
+    definition: dict = Field(default_factory=dict)
+
+
+class BrainReviewRequest(BaseModel):
+    decision: Literal["approved", "rejected"]
+
+
+class BrainProposalRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    summary: str = Field(min_length=1, max_length=1500)
+    proposal: dict = Field(default_factory=dict)
+
+
 
 class TTSRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2500)
@@ -1319,18 +1364,127 @@ async def synthesize_speech(payload: TTSRequest, request: Request):
         raise HTTPException(status_code=503, detail="Neural speech is temporarily unavailable.")
 
 def _retrieved_context(request: Request | None, message: str) -> list[dict]:
-    """Retrieve only this browser session's indexed evidence; chat still works without a session."""
+    """Retrieve session-scoped indexed evidence and explicitly saved brain memories."""
     if request is None:
         return []
     try:
         owner_id = session_owner(request)
-        result = knowledge.search_knowledge(owner_id, message, limit=4)
-        return result.get("results", [])
     except HTTPException:
         return []
+    context = []
+    try:
+        context.extend(knowledge.search_knowledge(owner_id, message, limit=4).get("results", []))
     except Exception as exc:
         logger.warning("Knowledge retrieval unavailable (%s)", type(exc).__name__)
-        return []
+    try:
+        context.extend(brain.retrieve_memories(owner_id, message, limit=4))
+    except Exception as exc:
+        logger.warning("Brain memory retrieval unavailable (%s)", type(exc).__name__)
+    return context[:8]
+
+
+def _brain_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/brain/overview")
+async def brain_overview(request: Request):
+    return brain.overview(session_owner(request))
+
+
+@app.get("/api/brain/settings")
+async def brain_settings_get(request: Request):
+    return brain.get_settings(session_owner(request))
+
+
+@app.put("/api/brain/settings")
+async def brain_settings_put(payload: BrainSettingsUpdate, request: Request):
+    values = payload.model_dump(exclude_unset=True, exclude_none=True)
+    return _brain_call(brain.update_settings, session_owner(request), values)
+
+
+@app.get("/api/brain/memories")
+async def brain_memories_get(request: Request, query: str = "", category: str | None = None, limit: int = 100):
+    if len(query) > 500:
+        raise HTTPException(status_code=400, detail="Memory search query is too long.")
+    return _brain_call(brain.list_memories, session_owner(request), query, category, limit)
+
+
+@app.post("/api/brain/memories", status_code=201)
+async def brain_memories_post(payload: BrainMemoryCreate, request: Request):
+    # API callers can only create explicit user-approved memories, never label a guess as verified.
+    return _brain_call(brain.remember, session_owner(request), content=payload.content,
+                       category=payload.category, source="user_explicit", source_ref=payload.source_ref,
+                       confidence=0.8, verification="user_confirmed", retention_days=payload.retention_days)
+
+
+@app.delete("/api/brain/memories/{memory_id}")
+async def brain_memories_delete(memory_id: str, request: Request):
+    if not re.fullmatch(r"[a-f0-9]{32}", memory_id):
+        raise HTTPException(status_code=400, detail="Invalid memory ID.")
+    if not brain.delete_memory(session_owner(request), memory_id):
+        raise HTTPException(status_code=404, detail="Memory not found.")
+    return {"deleted": True, "memory_id": memory_id}
+
+
+@app.post("/api/brain/device-context")
+async def brain_device_context(payload: BrainDeviceRequest, request: Request):
+    return _brain_call(brain.record_device, session_owner(request), payload.label, payload.capabilities)
+
+
+@app.get("/api/brain/devices")
+async def brain_devices_get(request: Request):
+    return {"devices": brain.list_devices(session_owner(request))}
+
+
+@app.post("/api/brain/outcomes", status_code=201)
+async def brain_outcomes_post(payload: BrainOutcomeRequest, request: Request):
+    return _brain_call(brain.record_outcome, session_owner(request), payload.task_type, payload.requested_outcome,
+                       payload.result_summary, payload.status, payload.evidence)
+
+
+@app.get("/api/brain/skills")
+async def brain_skills_get(request: Request):
+    return brain.list_skills(session_owner(request))
+
+
+@app.post("/api/brain/skills", status_code=201)
+async def brain_skills_post(payload: BrainSkillRequest, request: Request):
+    return _brain_call(brain.propose_skill, session_owner(request), payload.name, payload.purpose, payload.definition)
+
+
+@app.post("/api/brain/skills/{skill_id}/review")
+async def brain_skills_review(skill_id: str, payload: BrainReviewRequest, request: Request):
+    result = brain.review_skill(session_owner(request), skill_id, payload.decision)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Skill not found.")
+    return result
+
+
+@app.get("/api/brain/proposals")
+async def brain_proposals_get(request: Request):
+    return {"proposals": brain.list_proposals(session_owner(request))}
+
+
+@app.post("/api/brain/proposals", status_code=201)
+async def brain_proposals_post(payload: BrainProposalRequest, request: Request):
+    return _brain_call(brain.create_proposal, session_owner(request), payload.title, payload.summary, payload.proposal)
+
+
+@app.post("/api/brain/proposals/{proposal_id}/review")
+async def brain_proposals_review(proposal_id: str, payload: BrainReviewRequest, request: Request):
+    result = brain.review_proposal(session_owner(request), proposal_id, payload.decision)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Improvement proposal not found.")
+    return result
+
+
+@app.get("/api/brain/audit")
+async def brain_audit_get(request: Request, limit: int = 50):
+    return {"events": brain.audit_log(session_owner(request), limit)}
 
 
 @app.get("/api/knowledge")
