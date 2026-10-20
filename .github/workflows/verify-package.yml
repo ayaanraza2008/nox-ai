@@ -20,6 +20,10 @@ jobs:
           python-version: "3.12"
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
+      - name: Install optional Playwright browser dependency
+        run: |
+          pip install -r backend/requirements-browser.txt
+          python -m playwright install --with-deps chromium
       - name: Validate Python syntax
         run: python -m compileall -q backend desktop-companion
       - name: Test backend storage regressions
@@ -33,6 +37,8 @@ jobs:
         run: npm install --prefix ruview-companion --ignore-scripts --no-package-lock --no-audit --no-fund
       - name: Verify official RuView CLI entry point
         run: node ruview-companion/node_modules/@ruvnet/ruview/bin/cli.js --help
+      - name: Validate NOX Live Browser JavaScript syntax
+        run: node --check frontend/dist/nox-live-browser.js
       - name: Validate deployed frontend
         run: test -s frontend/dist/index.html
       - name: Validate inline frontend JavaScript syntax
@@ -98,12 +104,12 @@ jobs:
         run: gradle -p android-companion assembleDebug
       - name: Package project source
         run: |
-          zip -r nox-ai-hologram.zip . \
+          zip -r nox-ai-live-browser.zip . \
             -x '.git/*' 'frontend/node_modules/*' \
                '**/__pycache__/*' '**/*.pyc' 'android-companion/**/build/*' '.env' '**/.env'
       - uses: actions/upload-artifact@v4
         with:
-          name: nox-ai-hologram-project
+          name: nox-ai-live-browser-project
           path: nox-ai-hologram.zip
           retention-days: 7
       - uses: actions/upload-artifact@v4
