@@ -14,6 +14,7 @@ class _BrowserTestHandler(BaseHTTPRequestHandler):
         body = b"""<!doctype html><html><head><title>NOX Browser Test</title></head><body>
         <label for="q">Search</label><input id="q">
         <button onclick="document.getElementById('status').textContent='clicked'">More</button>
+        <form onsubmit="event.preventDefault();document.getElementById('status').textContent='submitted'"><button type="submit">Continue</button></form>
         <div id="status">ready</div></body></html>"""
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -137,6 +138,17 @@ class LiveBrowserIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("clicked", report["result"])
                 screenshot = await session.screenshot()
                 self.assertTrue(screenshot.startswith(b"\x89PNG\r\n\x1a\n"))
+                await session.start_task("click Continue")
+                for _ in range(100):
+                    if session.state == "awaiting_confirmation":
+                        break
+                    await asyncio.sleep(0.02)
+                self.assertEqual(session.state, "awaiting_confirmation")
+                await session.confirm(False)
+                if session.task:
+                    await session.task
+                self.assertEqual(session.state, "cancelled")
+                self.assertNotIn("submitted", await session.page.locator("body").inner_text())
         finally:
             await session.close()
             server.shutdown()
