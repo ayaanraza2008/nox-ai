@@ -20,6 +20,14 @@ class VoiceSpeechTests(unittest.TestCase):
         original = "मेरा लैपटॉप धीमा चल रहा है।"
         self.assertEqual(normalize_hinglish_for_tts(original), original)
 
+    def test_shared_chat_prompt_supports_empathy_without_claiming_voice_emotion_analysis(self):
+        from backend.main import build_nox_system_prompt
+
+        prompt = build_nox_system_prompt("auto")
+        self.assertIn("possible emotional context", prompt)
+        self.assertIn("never claim to know a person's feelings", prompt)
+        self.assertIn("vocal cues that were not provided", prompt)
+
     def test_configured_voice_options_are_accepted(self):
         self.assertEqual(TTSRequest(text="नमस्ते", language="hi-IN").language, "hi-IN")
         self.assertEqual(
