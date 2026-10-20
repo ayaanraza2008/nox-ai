@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const groups = [
     { title: "AI WORKSPACE", subtitle: "Voice, tasks and creation", ids: ["voicePanel", "taskPanel", "researchPanel", "knowledgePanel", "codePanel", "cognitivePanel"] },
-    { title: "VISION & RESEARCH", subtitle: "Camera intelligence and public-source research", ids: ["visionPanel", "publicResearchPanel", "analyticsPanel"] },
+    { title: "VISION & RESEARCH", subtitle: "Camera intelligence, visual workflows and public-source research", ids: ["visionPanel", "visualIntelligencePanel", "godsEyeViewPanel", "publicResearchPanel", "analyticsPanel"] },
     { title: "SYSTEM & PREFERENCES", subtitle: "Memory, connected tools, privacy and diagnostics", ids: ["memoryPanel", "toolsPanel", "networkPanel", "systemPanel"] }
   ,{ title: "AUTOMATION & DEVOPS", subtitle: "Agent execution, project changes and repository health", ids: [] },
     { title: "DEVICE SHARING", subtitle: "Authorized devices and consent controls", ids: ["locationPanel"] }
