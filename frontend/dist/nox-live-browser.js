@@ -75,11 +75,15 @@
     question.textContent = data.pending_question || "";
     if (speakQuestionsForTask && data.pending_question && data.pending_question !== spokenQuestion && "speechSynthesis" in window) {
       spokenQuestion = data.pending_question;
-      const language = document.getElementById("language")?.value || "auto";
-      const utterance = new SpeechSynthesisUtterance(data.pending_question);
-      utterance.lang = language === "hi" || language === "hinglish" ? "hi-IN" : language === "ur" ? "ur-PK" : "en-US";
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
+      if (typeof window.NOXSpeakBrowserQuestion === "function") {
+        window.NOXSpeakBrowserQuestion(data.pending_question);
+      } else {
+        const language = document.getElementById("language")?.value || "auto";
+        const utterance = new SpeechSynthesisUtterance(data.pending_question);
+        utterance.lang = language === "hi" || language === "hinglish" ? "hi-IN" : language === "ur" ? "ur-PK" : "en-US";
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      }
     }
     $("noxLbAnswerRow").hidden = data.state !== "awaiting_input";
     $("noxLbConfirmRow").hidden = data.state !== "awaiting_confirmation";
