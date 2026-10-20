@@ -254,7 +254,7 @@ class LocationEnrollmentCodeRequest(BaseModel):
 
 
 class LocationMobileEnrollRequest(BaseModel):
-    code: str = Field(min_length=6, max_length=6, pattern=r"^\\d{6}$")
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
     label: str = Field(default="NOX mobile device", min_length=1, max_length=80)
     platform: Literal["android", "ios"]
 
