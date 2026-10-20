@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from device_control import discover_adb_devices, launch_android_app
-from emergency_state import get_state as get_emergency_state, set_stopped as set_emergency_stopped
+from emergency_state import EmergencyStopActive, get_state as get_emergency_state, run_managed_process, set_stopped as set_emergency_stopped
 
 try:
     from home_assistant import execute_home_assistant_command
@@ -187,11 +187,11 @@ def read_windows_wifi_status():
     if os.name != "nt":
         raise HTTPException(status_code=501, detail="Wi-Fi inspection is currently supported on Windows only.")
     try:
-        result = subprocess.run(
-            ["netsh", "wlan", "show", "interfaces"],
-            shell=False, capture_output=True, text=True, timeout=8,
-            check=False, stdin=subprocess.DEVNULL,
+        result = run_managed_process(
+            ["netsh", "wlan", "show", "interfaces"], timeout=8,
         )
+    except EmergencyStopActive as exc:
+        raise HTTPException(status_code=423, detail="Emergency Stop cancelled the Wi-Fi query.") from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=501, detail="Windows netsh is unavailable.") from exc
     except subprocess.TimeoutExpired as exc:
@@ -504,10 +504,9 @@ def execute_safe_terminal_command(raw: str):
     if os.name != "nt":
         return {"status": "unsupported", "message": "Local terminal commands are supported only on Windows in this companion."}
     try:
-        completed = subprocess.run(
-            args, cwd=cwd, shell=False, capture_output=True, text=True,
-            timeout=180, check=False, stdin=subprocess.DEVNULL,
-        )
+        completed = run_managed_process(args, cwd=cwd, timeout=180)
+        if get_emergency_state()["stopped"]:
+            return {"status": "cancelled", "message": "Emergency Stop cancelled the managed terminal process."}
         output = (completed.stdout or "") + (completed.stderr or "")
         return {
             "status": "success" if completed.returncode == 0 else "error",
@@ -515,6 +514,8 @@ def execute_safe_terminal_command(raw: str):
             "returncode": completed.returncode,
             "output": output[-5000:] or "(no output)",
         }
+    except EmergencyStopActive:
+        return {"status": "cancelled", "message": "Emergency Stop cancelled the managed terminal process."}
     except FileNotFoundError:
         return {"status": "not_found", "message": "Required program is not installed or is not available on PATH: " + args[0]}
     except subprocess.TimeoutExpired:
@@ -547,18 +548,21 @@ def install_known_software(raw: str):
         return {"status": "unsupported", "message": "Automatic software installation is currently supported on Windows only."}
     package_id, display_name = package
     try:
-        completed = subprocess.run(
+        completed = run_managed_process(
             ["winget", "install", "--id", package_id, "--exact", "--source", "winget",
              "--accept-source-agreements", "--accept-package-agreements"],
-            shell=False, capture_output=True, text=True, timeout=900, check=False,
-            stdin=subprocess.DEVNULL,
+            timeout=900,
         )
+        if get_emergency_state()["stopped"]:
+            return {"status": "cancelled", "message": "Emergency Stop cancelled the managed installer process."}
         output = ((completed.stdout or "") + (completed.stderr or ""))[-5000:]
         return {
             "status": "success" if completed.returncode == 0 else "error",
             "software": display_name, "package_id": package_id,
             "returncode": completed.returncode, "output": output or "(no output)",
         }
+    except EmergencyStopActive:
+        return {"status": "cancelled", "message": "Emergency Stop cancelled the managed installer process."}
     except FileNotFoundError:
         return {"status": "setup_required", "message": "WinGet is not installed or unavailable. Install/update Microsoft's App Installer from Microsoft Store, then retry."}
     except subprocess.TimeoutExpired:
