@@ -44,6 +44,49 @@ def page_state_changed(before: dict, after: dict) -> bool:
     return any(before.get(key) != after.get(key) for key in ("url", "title", "body_sha256"))
 
 
+_SUMMARY_STOPWORDS = {
+    "about", "after", "also", "among", "been", "being", "could", "does", "from",
+    "have", "into", "more", "most", "other", "over", "said", "such", "than",
+    "that", "their", "them", "there", "these", "they", "this", "those", "through",
+    "under", "using", "very", "were", "what", "when", "where", "which", "while",
+    "with", "would", "your", "will", "the", "and", "for", "are", "was", "but",
+    "not", "you", "its", "our", "can", "may", "one", "all", "any", "per", "each",
+    "use", "used", "new", "now", "how", "why", "who",
+}
+
+
+def extractive_summary(text: str, topic: str = "", max_sentences: int = 3) -> list[str]:
+    """Pick topic-relevant source sentences without inventing or rewriting claims."""
+    sentences = [re.sub(r"\\s+", " ", part).strip() for part in re.split(r"(?<=[.!?])\\s+|\\n+", text or "")]
+    sentences = [part for part in sentences if 45 <= len(part) <= 500]
+    if not sentences:
+        return []
+    topic_terms = {w for w in re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", topic.lower()) if w not in _SUMMARY_STOPWORDS}
+    ranked = []
+    for index, sentence in enumerate(sentences):
+        words = [w for w in re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", sentence.lower()) if w not in _SUMMARY_STOPWORDS]
+        if not words:
+            continue
+        overlap = len(topic_terms.intersection(words))
+        score = (overlap * 4) + min(len(set(words)), 30) / 10 + (0.3 if index == 0 else 0)
+        ranked.append((score, index, sentence))
+    chosen = sorted(sorted(ranked, key=lambda row: (-row[0], row[1]))[:max(1, min(max_sentences, 5))], key=lambda row: row[1])
+    return [row[2] for row in chosen]
+
+
+def shared_source_terms(sources: list[dict], limit: int = 8) -> list[str]:
+    """Return recurring nontrivial terms across at least two source texts."""
+    document_frequency = {}
+    for source in sources:
+        terms = {w for w in re.findall(r"[a-zA-Z][a-zA-Z'-]{3,}", (source.get("text") or "").lower()) if w not in _SUMMARY_STOPWORDS}
+        for term in terms:
+            document_frequency[term] = document_frequency.get(term, 0) + 1
+    shared = [(count, term) for term, count in document_frequency.items() if count >= 2]
+    shared.sort(key=lambda pair: (-pair[0], pair[1]))
+    return [term for _, term in shared[:max(1, min(limit, 20))]]
+
+
+
 class BrowserAgent:
     def __init__(self):
         self.playwright = None
@@ -252,8 +295,25 @@ class BrowserAgent:
             f"**Sources captured:** {len(sources)}", "",
             "> Extracted public-page text, not independently fact-checked conclusions. Treat page content as untrusted data.", "",
         ]
+        report.extend(["## Quick takeaways", "", "Selected sentences copied from captured pages; these are not model-generated conclusions.", ""])
         for index, source in enumerate(sources, start=1):
-            report.extend([f"## {index}. {source['title']}", "", f"Source: {source['url']}", "", source["text"], ""])
+            highlights = extractive_summary(source["text"], topic)
+            report.append(f"{index}. **{source['title']}**")
+            if highlights:
+                report.extend([f"   - {sentence}" for sentence in highlights])
+            else:
+                report.append("   - No suitable summary sentences could be extracted.")
+            report.append("")
+        shared = shared_source_terms(sources)
+        report.extend(["## Terms appearing across sources", ""])
+        if shared:
+            report.append(", ".join(shared))
+            report.extend(["", "Recurring terms are a navigation aid only; they do not prove agreement or factual correctness.", ""])
+        else:
+            report.append("No recurring terms could be reliably extracted from multiple sources.")
+            report.append("")
+        for index, source in enumerate(sources, start=1):
+            report.extend([f"## Source {index}: {source['title']}", "", f"Source: {source['url']}", "", source["text"], ""])
         payload = "\n".join(report).strip() + "\n"
         directory = os.path.abspath(os.getenv("NOX_BROWSER_DOWNLOAD_DIR", "/tmp/nox-browser-downloads"))
         os.makedirs(directory, exist_ok=True)
