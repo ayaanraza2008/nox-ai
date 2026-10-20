@@ -1908,13 +1908,64 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
     retrieved = _retrieved_context(request, message)
 
     async def events():
+        produced = False
         try:
             if retrieved:
                 stream = stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved)
             else:
                 stream = stream_provider_reply(message, payload.language, payload.history, payload.images)
             async for item in stream:
+                if item.get("type") == "delta" and isinstance(item.get("text"), str) and item["text"]:
+                    produced = True
+                if item.get("type") == "error" and not produced:
+                    # Some providers accept streaming requests but return no usable tokens.
+                    # Retry through the non-streaming provider path before returning an error.
+                    logger.warning("Chat stream produced no reply; trying non-streaming fallback")
+                    try:
+                        fallback = await provider_reply(
+                            message, payload.language, payload.history, payload.images,
+                            retrieved if retrieved else None,
+                        )
+                    except HTTPException as exc:
+                        event = {"type": "error", "message": str(exc.detail)}
+                        yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                        return
+                    except Exception as exc:
+                        logger.exception("Non-streaming chat fallback failed (%s)", type(exc).__name__)
+                        event = {"type": "error", "message": "NOX could not get a reply from the configured AI providers. Please retry."}
+                        yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                        return
+                    if fallback and fallback.strip():
+                        yield "data: " + json.dumps({"type": "delta", "text": fallback}, ensure_ascii=False) + "\n\n"
+                        yield "data: " + json.dumps({"type": "done", "mode": "ai-fallback"}, ensure_ascii=False) + "\n\n"
+                        return
+                    event = {"type": "error", "message": "The AI provider returned an empty response. Please retry."}
+                    yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                    return
                 yield "data: " + json.dumps(item, ensure_ascii=False) + "\n\n"
+            if not produced:
+                # Also recover from a provider that closes an HTTP 200 stream without tokens.
+                logger.warning("Chat stream ended without reply tokens; trying non-streaming fallback")
+                try:
+                    fallback = await provider_reply(
+                        message, payload.language, payload.history, payload.images,
+                        retrieved if retrieved else None,
+                    )
+                except HTTPException as exc:
+                    event = {"type": "error", "message": str(exc.detail)}
+                    yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                    return
+                except Exception as exc:
+                    logger.exception("Non-streaming chat fallback failed (%s)", type(exc).__name__)
+                    event = {"type": "error", "message": "NOX could not get a reply from the configured AI providers. Please retry."}
+                    yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                    return
+                if fallback and fallback.strip():
+                    yield "data: " + json.dumps({"type": "delta", "text": fallback}, ensure_ascii=False) + "\n\n"
+                    yield "data: " + json.dumps({"type": "done", "mode": "ai-fallback"}, ensure_ascii=False) + "\n\n"
+                else:
+                    event = {"type": "error", "message": "The AI provider returned an empty response. Please retry."}
+                    yield "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
         except asyncio.CancelledError:
             # Client disconnected; let the server cancel the work cleanly.
             raise
