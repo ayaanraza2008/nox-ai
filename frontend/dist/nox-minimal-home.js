@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const style = document.createElement("style");
   style.id = "nox-minimal-home-style";
-  style.textContent = \`
+  style.textContent = `
     html,body{width:100%;height:100%;min-height:0!important;overflow:hidden!important;overscroll-behavior:none}
     body{position:relative}
     .topbar{height:62px!important;min-height:62px!important;padding:0 18px!important;position:relative!important;z-index:30}
@@ -55,7 +55,7 @@
       #noxChatSheet{width:100vw;border-left:0}
     }
     @media(prefers-reduced-motion:reduce){.nox-home-control,#noxChatSheet{transition:none!important}}
-  \`;
+  `;
   document.head.appendChild(style);
 
   const dashboard = $("dashboard");
@@ -72,12 +72,12 @@
   const chatLayer = document.createElement("div");
   chatLayer.id = "noxChatLayer";
   chatLayer.setAttribute("aria-hidden", "true");
-  chatLayer.innerHTML = \`
+  chatLayer.innerHTML = `
     <button id="noxChatBackdrop" type="button" aria-label="Close text chat"></button>
     <section id="noxChatSheet" role="dialog" aria-modal="true" aria-label="NOX Text Chat">
       <button id="noxChatClose" type="button" aria-label="Close text chat" style="position:absolute;right:12px;top:10px;z-index:3">×</button>
       <div class="nox-chat-slot"></div>
-    </section>\`;
+    </section>`;
   document.body.appendChild(chatLayer);
   chatLayer.querySelector(".nox-chat-slot").appendChild(chat);
   chat.hidden = false;
