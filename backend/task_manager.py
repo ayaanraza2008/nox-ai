@@ -20,6 +20,9 @@ from backend import brain
 
 Processor = Callable[[str, str, list[dict[str, str]]], Awaitable[str | None]]
 
+# Bound provider hangs so one background task cannot block the entire queue forever.
+TASK_PROCESSOR_TIMEOUT_SECONDS = max(5, min(int(os.getenv("NOX_TASK_PROCESSOR_TIMEOUT_SECONDS", "90")), 180))
+
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -173,6 +176,9 @@ class TaskManager:
                 self._save(item)
             if item["status"] == "paused":
                 continue
+            # Events are process-local, so reopen only tasks eligible for recovery.
+            # Persisted paused tasks remain paused after restart.
+            self.pause_events.setdefault(item["id"], asyncio.Event()).set()
             await self.queue.put(item["id"])
         self.worker = asyncio.create_task(self._work_loop())
 
@@ -228,6 +234,7 @@ class TaskManager:
             if existing["goal"] != goal or existing["language"] != language:
                 raise ValueError("Idempotency-Key was already used for a different task.")
             return existing
+        self.pause_events.setdefault(task_id, asyncio.Event()).set()
         await self.queue.put(task_id)
         return item
 
@@ -321,18 +328,25 @@ class TaskManager:
 
     async def _run(self, task_id: str):
         item = self._get(task_id)
-        if not item or item["status"] != "queued":
+        if not item or item["status"] not in ("queued", "paused"):
             return
         cancel_event = self.cancel_events.setdefault(task_id, asyncio.Event())
         pause_event = self.pause_events.setdefault(task_id, asyncio.Event())
-        pause_event.set()
+        # A pause can race queue dispatch; wait for the persisted user decision.
+        await pause_event.wait()
+        item = self._get(task_id)
+        if not item or item["status"] == "cancelled" or cancel_event.is_set():
+            return
+        if item["status"] != "queued":
+            return
         item["status"] = "running"
         item["progress"] = 10
         self._event(item, "Worker started.")
         self._save(item)
         try:
             await pause_event.wait()
-            if cancel_event.is_set():
+            item = self._get(task_id)
+            if not item or item["status"] == "cancelled" or cancel_event.is_set():
                 return
             # A hosted worker cannot launch apps on the user's personal device.
             # Fail desktop-action requests clearly instead of reporting fake success.
@@ -367,7 +381,8 @@ class TaskManager:
             # Pause/cancel is checked before provider work; an in-flight provider
             # request is not interruptible, but its result will not overwrite cancel.
             await pause_event.wait()
-            if cancel_event.is_set():
+            item = self._get(task_id)
+            if not item or item["status"] == "cancelled" or cancel_event.is_set():
                 return
             item["attempts"] += 1
             self._event(item, "Sending task to configured AI provider.")
@@ -387,19 +402,26 @@ class TaskManager:
             except Exception as exc:
                 logging.getLogger("nox.tasks").warning("Brain retrieval skipped (%s)", type(exc).__name__)
             try:
-                answer = await self.processor(item["goal"], item["language"], task_context)
+                answer = await asyncio.wait_for(
+                    self.processor(item["goal"], item["language"], task_context),
+                    timeout=TASK_PROCESSOR_TIMEOUT_SECONDS,
+                )
             except Exception:
                 if item["attempts"] < 2 and not cancel_event.is_set():
                     item["attempts"] += 1
                     self._event(item, "Provider attempt failed; retrying once.", "warning")
                     self._save(item)
-                    answer = await self.processor(item["goal"], item["language"], task_context)
+                    answer = await asyncio.wait_for(
+                        self.processor(item["goal"], item["language"], task_context),
+                        timeout=TASK_PROCESSOR_TIMEOUT_SECONDS,
+                    )
                 else:
                     raise
             # A pause cannot interrupt the provider request, but it must stop
             # result finalization until the user resumes the task.
             await pause_event.wait()
-            if cancel_event.is_set():
+            item = self._get(task_id)
+            if not item or item["status"] == "cancelled" or cancel_event.is_set():
                 return
             if not answer:
                 raise RuntimeError("AI provider is not configured. Add OPENROUTER_API_KEY to run AI tasks.")
