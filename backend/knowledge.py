@@ -306,7 +306,7 @@ def list_sources(owner_id: str) -> dict:
         byte_count = conn.execute("SELECT COALESCE(SUM(byte_size),0) FROM knowledge_sources WHERE owner_id=?", (owner_id,)).fetchone()[0]
         return {"sources": [_source_payload(row) for row in rows], "source_count": len(rows),
                 "chunk_count": chunk_count, "storage_bytes": byte_count,
-                "search_engine": "SQLite FTS5 lexical search", "semantic_embeddings": "not_configured"}
+                "search_engine": "SQLite FTS5 lexical search", "semantic_embeddings": "configured" if embedding_is_configured() else "not_configured"}
     finally:
         conn.close()
 
