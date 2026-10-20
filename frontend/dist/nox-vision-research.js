@@ -122,16 +122,21 @@
     cameraFacing=cameraFacing==="environment"?"user":"environment";
     await startCamera();
   };
-  $("imageUpload").addEventListener("change",async()=>{
-    if(!image.src||image.classList.contains("hidden"))return;
+  let imageDetectVersion=0;
+  image.addEventListener("load",async()=>{
+    const version=++imageDetectVersion;
+    if(image.classList.contains("hidden")||!image.naturalWidth)return;
     if(stream)stopTracks();
-    image.onload=async()=>{
-      try{await loadDetector();await detectOnce(image);status("Still image detected locally in this browser. No image was uploaded for object detection.");}
-      catch(e){status("Still-image detection unavailable: "+(e.message||"model error"));}
-    };
-    if(image.complete&&image.naturalWidth)image.onload();
+    try{
+      await loadDetector();
+      if(version!==imageDetectVersion||image.classList.contains("hidden"))return;
+      await detectOnce(image);
+      if(version===imageDetectVersion)status("Still image detected locally in this browser. No image was uploaded for object detection.");
+    }catch(e){
+      if(version===imageDetectVersion)status("Still-image detection unavailable: "+(e.message||"model error"));
+    }
   });
-  $("clearMedia").addEventListener("click",()=>{stopTracks();clearBoxes();image.classList.add("hidden");if(image.src.startsWith("blob:"))URL.revokeObjectURL(image.src);image.removeAttribute("src");});
+  $("clearMedia").addEventListener("click",()=>{imageDetectVersion++;stopTracks();clearBoxes();image.classList.add("hidden");if(image.src.startsWith("blob:"))URL.revokeObjectURL(image.src);image.removeAttribute("src");});
   document.addEventListener("visibilitychange",()=>{if(document.hidden&&raf){cancelAnimationFrame(raf);raf=0;}else if(detectOn&&!paused&&!raf)raf=requestAnimationFrame(loop);});
   window.addEventListener("beforeunload",()=>{stopTracks();if(image.src.startsWith("blob:"))URL.revokeObjectURL(image.src);if(researchFileUrl)URL.revokeObjectURL(researchFileUrl);if(ocrWorker)ocrWorker.terminate().catch(()=>{});});
 
