@@ -41,6 +41,19 @@ ROOT = Path(__file__).resolve().parent.parent
 # Reuse outbound connections across chat requests to avoid repeated TLS handshakes.
 HTTP_CLIENT: httpx.AsyncClient | None = None
 PERFORMANCE_SAMPLES = deque(maxlen=500)
+PROVIDER_SAMPLES = deque(maxlen=500)
+
+
+def _record_provider_sample(provider: str, duration_ms: float, first_token_ms: float | None, success: bool):
+    """Keep bounded, content-free timings for diagnosing real provider latency."""
+    PROVIDER_SAMPLES.append({
+        "provider": provider,
+        "duration_ms": max(0.0, float(duration_ms)),
+        "first_token_ms": None if first_token_ms is None else max(0.0, float(first_token_ms)),
+        "success": bool(success),
+    })
+
+
 
 
 @app.on_event("startup")
@@ -800,6 +813,9 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
         while pending:
             provider = pending.pop(0)
             produced = False
+            provider_started = time.perf_counter()
+            first_token_ms = None
+            sample_recorded = False
             try:
                 async with client.stream(
                     "POST", provider["url"],
@@ -807,6 +823,8 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
                     json={"model": provider["model"], "messages": messages, "temperature": 0.7, "stream": True},
                 ) as response:
                     if response.status_code >= 400:
+                        _record_provider_sample(provider["name"], (time.perf_counter() - provider_started) * 1000, None, False)
+                        sample_recorded = True
                         body = (await response.aread()).decode("utf-8", errors="replace")[:400]
                         logger.warning("%s streaming HTTP %s: %s", provider["name"], response.status_code, body)
                         failures.append(f"{provider['name']}: HTTP {response.status_code}")
@@ -831,17 +849,26 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
                         if isinstance(delta, list):
                             delta = "".join(part.get("text", "") for part in delta if isinstance(part, dict))
                         if isinstance(delta, str) and delta:
+                            if first_token_ms is None:
+                                first_token_ms = (time.perf_counter() - provider_started) * 1000
                             produced = True
                             yield {"type": "delta", "text": delta}
                     if produced:
+                        _record_provider_sample(provider["name"], (time.perf_counter() - provider_started) * 1000, first_token_ms, True)
+                        sample_recorded = True
                         logger.info("Streaming chat served by %s", provider["name"])
                         yield {"type": "done", "mode": "ai"}
                         return
                     failures.append(f"{provider['name']}: empty stream")
+                    _record_provider_sample(provider["name"], (time.perf_counter() - provider_started) * 1000, None, False)
+                    sample_recorded = True
                 retry_provider = _stream_retry_provider(provider, connection_failure=True)
                 if retry_provider:
                     pending.append(retry_provider)
             except (httpx.TimeoutException, httpx.RequestError) as exc:
+                if not sample_recorded:
+                    _record_provider_sample(provider["name"], (time.perf_counter() - provider_started) * 1000, first_token_ms, False)
+                    sample_recorded = True
                 logger.warning("%s streaming request failed (%s)", provider["name"], type(exc).__name__)
                 failures.append(f"{provider['name']}: connection/timeout")
                 if produced:
@@ -851,6 +878,9 @@ async def stream_provider_reply(message: str, language: str, history: list[dict]
                 if retry_provider:
                     pending.append(retry_provider)
             except Exception as exc:
+                if not sample_recorded:
+                    _record_provider_sample(provider["name"], (time.perf_counter() - provider_started) * 1000, first_token_ms, False)
+                    sample_recorded = True
                 logger.exception("%s stream parsing failed (%s)", provider["name"], type(exc).__name__)
                 failures.append(f"{provider['name']}: stream error")
                 if produced:
@@ -1460,11 +1490,38 @@ async def performance_metrics():
             "p50_ms": percentile(values, 0.50), "p95_ms": percentile(values, 0.95),
         })
     routes.sort(key=lambda item: item["count"], reverse=True)
+    provider_samples = list(PROVIDER_SAMPLES)
+    provider_totals = {}
+    for sample in provider_samples:
+        item = provider_totals.setdefault(sample["provider"], {
+            "provider": sample["provider"], "count": 0, "successes": 0,
+            "durations": [], "first_tokens": [],
+        })
+        item["count"] += 1
+        item["successes"] += int(sample["success"])
+        item["durations"].append(sample["duration_ms"])
+        if sample["first_token_ms"] is not None:
+            item["first_tokens"].append(sample["first_token_ms"])
+    provider_metrics = []
+    for item in provider_totals.values():
+        times = sorted(item.pop("durations"))
+        first_tokens = sorted(item.pop("first_tokens"))
+        provider_metrics.append({
+            "provider": item["provider"], "count": item["count"],
+            "success_rate": round(item["successes"] / item["count"], 4),
+            "p50_total_ms": percentile(times, 0.50),
+            "p95_total_ms": percentile(times, 0.95),
+            "p50_first_token_ms": percentile(first_tokens, 0.50) if first_tokens else None,
+            "p95_first_token_ms": percentile(first_tokens, 0.95) if first_tokens else None,
+        })
+    provider_metrics.sort(key=lambda item: item["count"], reverse=True)
     return {
         "sample_count": len(samples), "window_size": 500,
         "p50_ms": percentile(durations, 0.50), "p95_ms": percentile(durations, 0.95),
         "error_rate": round(sum(1 for _, status, _ in samples if status >= 500) / len(samples), 4),
         "routes": routes[:12],
+        "provider_sample_count": len(provider_samples),
+        "providers": provider_metrics,
     }
 
 
