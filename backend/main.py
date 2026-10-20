@@ -1483,6 +1483,15 @@ async def account_logout(request: Request, response: Response):
     return {"authenticated": False, "logged_out": True}
 
 
+@app.post("/api/account/logout-others")
+async def account_logout_others(request: Request):
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in to manage account sessions.")
+    revoked = _account_error(accounts.logout_other_sessions, token)
+    return {"authenticated": True, "sessions_revoked": revoked}
+
+
 @app.delete("/api/account")
 async def account_delete(payload: AccountDeleteRequest, request: Request, response: Response):
     token = request.cookies.get(ACCOUNT_COOKIE, "")
