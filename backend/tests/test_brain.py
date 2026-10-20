@@ -29,6 +29,13 @@ class BrainMemoryTests(unittest.TestCase):
         self.assertIn("pytest", results[0]["text"])
         self.assertEqual(brain.retrieve_memories("session-b", "pytest backend changes"), [])
 
+    def test_transfer_moves_memories_from_browser_session_to_account(self):
+        brain.remember("browser-session", content="Keep my NOX project memory", category="project")
+        result = brain.transfer_owner_data("browser-session", "account-123")
+        self.assertEqual(result["memories_moved"], 1)
+        self.assertEqual(brain.retrieve_memories("browser-session", "NOX project memory"), [])
+        self.assertEqual(len(brain.retrieve_memories("account-123", "NOX project memory")), 1)
+
     def test_stale_memory_is_not_retrieved_until_revalidated(self):
         saved = brain.remember("session-a", content="Use the legacy provider endpoint", category="operational")
         memory_id = saved["memory"]["id"]

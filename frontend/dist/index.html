@@ -13,7 +13,7 @@ body[data-nox-brain-state="retrieving"] #corePanel,body[data-nox-brain-state="pl
 <header class="topbar">
  <div class="brand"><div class="brandmark">N</div><div class="brandname">NOX <span style="color:var(--cyan)">AI</span><small>PERSONAL COMMAND SYSTEM</small></div></div>
  <div class="topstatus"><i id="topLed" class="led"></i><span id="topStatus">CONNECTING TO CORE</span><span style="color:#476071">/</span><span id="modelStatus">PROVIDER CHECK</span></div>
- <div class="topright"><span class="pill" id="clock">--:--:--</span><button class="iconbtn" id="layoutBtn" title="Reset panel layout">↻ Layout</button><button class="iconbtn" id="motionBtn" title="Toggle reduced motion">◌ Motion</button></div>
+ <div class="topright"><button class="iconbtn" id="accountOpen" type="button">Sign in</button><span class="pill" id="clock">--:--:--</span><button class="iconbtn" id="layoutBtn" title="Reset panel layout">↻ Layout</button><button class="iconbtn" id="motionBtn" title="Toggle reduced motion">◌ Motion</button></div>
 </header>
 <nav class="mobiletabs" aria-label="Mobile workspaces"><button class="pill active" data-scroll="corePanel">Core</button><button class="pill" data-scroll="chatPanel">Chat</button><button class="pill" data-scroll="taskPanel">Tasks</button><button class="pill" data-scroll="researchPanel">Research</button><button class="pill" data-scroll="knowledgePanel">Knowledge</button><button class="pill" data-scroll="codePanel">Code</button><button class="pill" data-scroll="visionPanel">Vision</button><button class="pill" data-scroll="systemPanel">System</button></nav>
 <main class="layout" id="dashboard">
@@ -321,6 +321,37 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
 (async()=>{await Promise.allSettled([refreshHealth(),loadChats(),refreshTasks()]);setInterval(refreshHealth,30000);setInterval(refreshTasks,7000)})();
 })();
 </script>
+
+<div id="accountModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="accountTitle" style="position:fixed;inset:0;z-index:100;background:#02060bdc;backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:16px">
+ <section class="panel" style="width:min(440px,100%);max-height:90vh;overflow:auto;border-color:#75eaff55;box-shadow:0 25px 90px #000b">
+  <div class="panelhead"><div><div class="ptitle" id="accountTitle">NOX ACCOUNT</div><div class="pmeta" id="accountSubtitle">Your memories, linked to your account</div></div><button class="iconbtn" id="accountClose" type="button" aria-label="Close account dialog">✕</button></div>
+  <div class="panelbody" style="display:grid;gap:10px">
+   <div id="accountAuthView">
+    <div style="display:flex;gap:7px"><button class="secondary" id="accountLoginMode" type="button">Sign in</button><button class="secondary" id="accountRegisterMode" type="button">Create account</button></div>
+    <form id="accountAuthForm" style="display:grid;gap:9px;margin-top:8px">
+     <label class="footnote" for="accountEmail">Email</label><input class="field" id="accountEmail" type="email" autocomplete="email" maxlength="320" required>
+     <label class="footnote" for="accountPassword">Password (minimum 10 characters for new accounts)</label><input class="field" id="accountPassword" type="password" autocomplete="current-password" minlength="10" maxlength="256" required>
+     <button class="primary" id="accountSubmit" type="submit">Sign in</button>
+    </form>
+   </div>
+   <div id="accountSignedView" class="hidden" style="display:grid;gap:10px">
+    <div class="metric"><div class="label">SIGNED IN AS</div><strong id="accountEmailLabel" style="font-size:13px;overflow-wrap:anywhere"></strong><small>Brain memories follow this account across browsers and devices.</small></div>
+    <button class="secondary" id="accountLogout" type="button">Sign out</button>
+    <div class="divider"></div>
+    <div class="ptitle" style="color:var(--red)">Delete account and memories</div>
+    <p class="footnote">This permanently deletes this account and its NOX Brain records. This cannot be undone.</p>
+    <form id="accountDeleteForm" style="display:grid;gap:8px">
+     <label class="footnote" for="accountDeletePassword">Confirm password</label><input class="field" id="accountDeletePassword" type="password" autocomplete="current-password" required>
+     <label class="footnote" for="accountDeleteConfirm">Type DELETE MY ACCOUNT</label><input class="field" id="accountDeleteConfirm" maxlength="40" required>
+     <button class="secondary" type="submit" style="border-color:#ff7f9b66;color:#ff9caf">Permanently delete account</button>
+    </form>
+   </div>
+   <div id="accountNotice" class="footnote" role="status" aria-live="polite"></div>
+   <p class="footnote">Account features require a persistent PostgreSQL connection configured on the server. Passwords are stored as salted hashes; session tokens are stored as hashes.</p>
+  </div>
+ </section>
+</div>
+
 <script src="/nox-agent-swarm.js"></script>
 <script src="/nox-project-workspace.js"></script>
 <script src="/nox-github-bridge.js" defer></script>
@@ -328,4 +359,5 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
 <script src="/nox-vision-research.js" defer></script>
 <script src="/nox-brain.js" defer></script>
 <script src="/nox-feature-drawer.js" defer></script>
+<script src="/nox-account.js" defer></script>
 </body></html>
