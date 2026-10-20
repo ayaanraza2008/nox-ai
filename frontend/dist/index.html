@@ -423,6 +423,7 @@ function drawCore(now){
  }else drawFallback(now,sample);
  Array.from(wave.children).forEach((b,i)=>{const v=3+Math.abs(Math.sin(i*.51+phase*4))*(4+energy*24);b.style.height=v+"px";b.style.opacity=String(.35+Math.min(.65,energy))});
  $("fpsLabel").textContent=sample.kind==="nox"?"TTS AUDIO · LIVE":sample.kind==="nox-unanalysable"?"TTS ACTIVE · AUDIO ANALYSIS UNAVAILABLE":sample.kind==="user"?"USER VOICE · WHITE MODE":state.voiceOn&&!state.muted&&state.micAnalyser?"MIC VAD · AMBIENT":"THREE.JS · GPU LIVE";
+ if(now%2<1)window.dispatchEvent(new CustomEvent("nox:core-frame",{detail:{energy,kind:sample.kind,mode:state.mode,phase}}));
  if(coreVisible&&!document.hidden){coreRaf=requestAnimationFrame(drawCore)}
 }
 function disposeCore(){
@@ -484,4 +485,5 @@ $("motionState").textContent=state.reduced?"REDUCED":"STANDARD";resizeCore();dra
 <script src="/nox-ops.js" defer></script>
 <script src="/nox-connectivity.js" defer></script>
 <script src="/nox-living-core.js" defer></script>
+<script src="/nox-particle-field.js" defer></script>
 </body></html>
