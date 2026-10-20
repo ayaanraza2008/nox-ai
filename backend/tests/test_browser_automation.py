@@ -64,5 +64,21 @@ class BrowserSafetyTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["active"])
         self.assertEqual(result["status"], "idle")
 
+
+
+class ResearchSynthesisPromptTests(unittest.TestCase):
+    def test_synthesis_prompt_requires_evidence_and_disagreement_reporting(self):
+        from backend.research_synthesis import build_synthesis_request
+        prompt = build_synthesis_request("quantum computing", [
+            {"title": "Source A", "url": "https://example.com/a", "text": "A source excerpt."},
+            {"title": "Source B", "url": "https://example.com/b", "text": "Another source excerpt."},
+        ])
+        self.assertIn("quantum computing", prompt)
+        self.assertIn("[E1]", prompt)
+        self.assertIn("[E2]", prompt)
+        self.assertIn("disagree", prompt.lower())
+        self.assertIn("Do not invent", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()
