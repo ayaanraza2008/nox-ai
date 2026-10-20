@@ -86,6 +86,22 @@ jobs:
         run: node --check frontend/dist/nox-gods-eye-view.js
       - name: Validate NOX operations diagnostics JavaScript syntax
         run: node --check frontend/dist/nox-ops.js
+      - name: Validate local connectivity JavaScript syntax
+        run: node --check frontend/dist/nox-connectivity.js
+      - name: Verify local connectivity DOM bindings
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          html = Path("frontend/dist/index.html").read_text(encoding="utf-8")
+          script = Path("frontend/dist/nox-connectivity.js").read_text(encoding="utf-8")
+          ids = set(re.findall(r'\bid="([^"]+)"', html))
+          refs = set(re.findall(r'\$\("([^"]+)"\)', script))
+          missing = sorted(refs - ids)
+          if missing:
+              raise SystemExit("Missing connectivity DOM IDs: " + ", ".join(missing))
+          print(f"Validated {len(refs)} connectivity DOM ID references")
+          PY
       - name: Verify Visual Intelligence DOM bindings
         run: |
           python - <<'PY'
