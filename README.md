@@ -15,6 +15,17 @@ A futuristic, multilingual personal AI assistant with a responsive holographic c
 - Render deployment configuration
 
 
+## Live Browser (remote Playwright Chromium)
+
+NOX now includes a session-scoped remote browser panel and API for public web navigation, web search, page text inspection, accessible button/link clicks, labelled text-field filling, scrolling, back/forward navigation, screenshot previews, and selected downloads. Multi-step commands can be joined with “then” (up to eight steps). The UI labels the browser as remote because Chromium runs on the server.
+
+- **Install locally:** `pip install -r backend/requirements.txt` then `playwright install chromium`.
+- **Render:** the build command installs the Playwright Chromium browser. If Chromium fails to launch because system libraries are missing, install the Playwright Linux dependencies in the service image or use a managed browser service.
+- **Open:** select **LIVE BROWSER** in the NOX top bar. Examples: `open https://example.com`, `search the web for Python tutorials`, `inspect this page`, `click the link About`, `type headphones into the search field`, `scroll down`, or `go back a page`.
+- **Safety:** localhost/private network destinations and embedded URL credentials are blocked. Field values are omitted from the browser task audit; password, OTP, payment-card and identity fields are not auto-filled. Detected consequential clicks wait for explicit approval. The browser can be stopped from the panel.
+- **Important limitations:** the remote panel is a screenshot preview, not direct mouse/keyboard access to a local browser. Authenticated login, CAPTCHA, MFA, passkeys and websites that block automation require a separately authorized interactive browser companion or a supported API; NOX will not bypass those controls. Browser sessions and task history are currently in process memory and do not survive a server restart; downloaded files on Render's temporary filesystem are not durable. The command interpreter supports a bounded set of common actions rather than guaranteed arbitrary website automation.
+- **Testing:** browser safety tests run with `python -m unittest backend.tests.test_browser_automation`. A live website workflow should be tested only after Chromium is installed and the deployed service is healthy.
+
 ## Knowledge Index (initial implementation)
 
 NOX includes a session-scoped knowledge index for user-provided documents and individual public URLs.
