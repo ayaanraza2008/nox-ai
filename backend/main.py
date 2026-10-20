@@ -789,6 +789,39 @@ async def get_task(task_id: str, request: Request):
     return {"task": task}
 
 
+@app.get("/api/tasks/{task_id}/events")
+async def task_event_stream(task_id: str, request: Request):
+    owner_id = session_owner(request)
+    if not task_manager.get(task_id, owner_id=owner_id):
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    async def stream():
+        last_updated = None
+        last_heartbeat = time.monotonic()
+        while True:
+            if await request.is_disconnected():
+                return
+            task = task_manager.get(task_id, owner_id=owner_id)
+            if not task:
+                return
+            updated_at = task.get("updated_at")
+            if updated_at != last_updated:
+                last_updated = updated_at
+                yield "event: task\\ndata: " + json.dumps({"task": task}, ensure_ascii=False) + "\\n\\n"
+            if task.get("status") in ("completed", "failed", "cancelled"):
+                return
+            if time.monotonic() - last_heartbeat >= 12:
+                yield ": keep-alive\\n\\n"
+                last_heartbeat = time.monotonic()
+            await asyncio.sleep(0.8)
+
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
+
+
 async def _task_action(task_id: str, action: str, owner_id: str):
     try:
         task = await getattr(task_manager, action)(task_id, owner_id=owner_id)
@@ -812,6 +845,13 @@ async def resume_task(task_id: str, request: Request):
 @app.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str, request: Request):
     return await _task_action(task_id, "cancel", session_owner(request))
+
+
+@app.post("/api/tasks/stop-all")
+async def stop_all_tasks(request: Request):
+    """Stop every unfinished task owned by this browser session."""
+    stopped = await task_manager.cancel_all(owner_id=session_owner(request))
+    return {"stopped_count": len(stopped), "tasks": stopped}
 
 
 @app.post("/api/swarm/jobs", status_code=202)
