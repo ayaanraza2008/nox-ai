@@ -96,7 +96,7 @@ class TaskManager:
                 status TEXT NOT NULL, progress INTEGER NOT NULL, result TEXT,
                 error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
                 events TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-                owner_id TEXT NOT NULL DEFAULT ''
+                owner_id TEXT NOT NULL DEFAULT '', idempotency_key TEXT
             )""")
             # Migrate databases created before per-browser task ownership existed.
             if db.postgres:
@@ -108,6 +108,11 @@ class TaskManager:
                 columns = {row["name"] for row in db.execute("PRAGMA table_info(tasks)").fetchall()}
             if "owner_id" not in columns:
                 db.execute("ALTER TABLE tasks ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''")
+            if "idempotency_key" not in columns:
+                db.execute("ALTER TABLE tasks ADD COLUMN idempotency_key TEXT")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_owner_idempotency "
+                       "ON tasks(owner_id,idempotency_key) "
+                       "WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''")
 
     def _row(self, row):
         if not row:
@@ -128,12 +133,12 @@ class TaskManager:
     def _save(self, item: dict[str, Any]):
         with self._connect() as db:
             db.execute("""INSERT INTO tasks
-              (id,goal,language,status,progress,result,error,created_at,updated_at,events,attempts,owner_id)
-              VALUES (:id,:goal,:language,:status,:progress,:result,:error,:created_at,:updated_at,:events,:attempts,:owner_id)
+              (id,goal,language,status,progress,result,error,created_at,updated_at,events,attempts,owner_id,idempotency_key)
+              VALUES (:id,:goal,:language,:status,:progress,:result,:error,:created_at,:updated_at,:events,:attempts,:owner_id,:idempotency_key)
               ON CONFLICT(id) DO UPDATE SET
               status=excluded.status,progress=excluded.progress,result=excluded.result,
               error=excluded.error,updated_at=excluded.updated_at,events=excluded.events,
-              attempts=excluded.attempts,owner_id=excluded.owner_id""", {**item, "events": json.dumps(item["events"])})
+              attempts=excluded.attempts,owner_id=excluded.owner_id,idempotency_key=excluded.idempotency_key""", {**item, "events": json.dumps(item["events"])})
 
     async def start(self):
         # A process restart cannot safely resume an in-flight network request.
@@ -179,13 +184,36 @@ class TaskManager:
             runner.cancel()
         self.runners.clear()
 
-    async def create(self, goal: str, language: str, owner_id: str = "") -> dict[str, Any]:
+    async def create(self, goal: str, language: str, owner_id: str = "",
+                     idempotency_key: str | None = None) -> dict[str, Any]:
+        key = (idempotency_key or "").strip()[:128] or None
+        if key:
+            with self._connect() as db:
+                existing = db.execute(
+                    "SELECT * FROM tasks WHERE owner_id=? AND idempotency_key=?",
+                    (owner_id, key),
+                ).fetchone()
+            if existing:
+                return self._row(existing)
         task_id = uuid.uuid4().hex
         item = {"id": task_id, "goal": goal, "language": language, "owner_id": owner_id,
+                "idempotency_key": key,
                 "status": "queued", "progress": 0, "result": None, "error": None,
                 "created_at": utcnow(), "updated_at": utcnow(), "events": [], "attempts": 0}
         self._event(item, "Task accepted and added to the queue.")
-        self._save(item)
+        try:
+            self._save(item)
+        except Exception:
+            # The unique index is the final guard against duplicate concurrent submissions.
+            if key:
+                with self._connect() as db:
+                    existing = db.execute(
+                        "SELECT * FROM tasks WHERE owner_id=? AND idempotency_key=?",
+                        (owner_id, key),
+                    ).fetchone()
+                if existing:
+                    return self._row(existing)
+            raise
         await self.queue.put(task_id)
         return item
 
