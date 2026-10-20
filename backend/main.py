@@ -2342,9 +2342,16 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
         produced = False
         try:
             if retrieved:
-                stream = stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved, payload.personality)
+                stream = (
+                    stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved, payload.personality)
+                    if payload.personality == "lumi"
+                    else stream_provider_reply(message, payload.language, payload.history, payload.images, retrieved)
+                )
+            elif payload.personality == "lumi":
+                stream = stream_provider_reply(message, payload.language, payload.history, payload.images, personality="lumi")
             else:
-                stream = stream_provider_reply(message, payload.language, payload.history, payload.images, personality=payload.personality)
+                # Preserve the existing NOX call signature for compatible integrations and test doubles.
+                stream = stream_provider_reply(message, payload.language, payload.history, payload.images)
             async for item in stream:
                 if item.get("type") == "delta" and isinstance(item.get("text"), str) and item["text"]:
                     produced = True
@@ -2356,6 +2363,9 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
                         fallback = await provider_reply(
                             message, payload.language, payload.history, payload.images,
                             retrieved if retrieved else None, payload.personality,
+                        ) if payload.personality == "lumi" else await provider_reply(
+                            message, payload.language, payload.history, payload.images,
+                            retrieved if retrieved else None,
                         )
                     except HTTPException as exc:
                         event = {"type": "error", "message": str(exc.detail)}
@@ -2381,6 +2391,9 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
                     fallback = await provider_reply(
                         message, payload.language, payload.history, payload.images,
                         retrieved if retrieved else None, payload.personality,
+                    ) if payload.personality == "lumi" else await provider_reply(
+                        message, payload.language, payload.history, payload.images,
+                        retrieved if retrieved else None,
                     )
                 except HTTPException as exc:
                     event = {"type": "error", "message": str(exc.detail)}
@@ -2407,6 +2420,9 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
                 # the ordinary chat endpoint's provider fallback before giving up.
                 try:
                     fallback = await provider_reply(
+                        message, payload.language, payload.history, payload.images,
+                        retrieved if retrieved else None, payload.personality,
+                    ) if payload.personality == "lumi" else await provider_reply(
                         message, payload.language, payload.history, payload.images,
                         retrieved if retrieved else None,
                     )
