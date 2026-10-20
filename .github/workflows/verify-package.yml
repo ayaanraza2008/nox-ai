@@ -84,8 +84,8 @@ jobs:
           html = Path("frontend/dist/index.html").read_text(encoding="utf-8")
           drawer = Path("frontend/dist/nox-feature-drawer.js").read_text(encoding="utf-8")
           home = Path("frontend/dist/nox-minimal-home.js").read_text(encoding="utf-8")
-          panel_ids = set(re.findall(r'<section\\b[^>]*\\bclass="[^"]*\\bpanel\\b[^"]*"[^>]*\\bid="([^"]+)"', html))
-          groups = re.findall(r'ids:\\s*\\[([^\\]]*)\\]', drawer)
+          panel_ids = set(re.findall(r'<section\b[^>]*\bclass="[^"]*\bpanel\b[^"]*"[^>]*\bid="([^"]+)"', html))
+          groups = re.findall(r'ids:\s*\[([^\]]*)\]', drawer)
           grouped_ids = set(re.findall(r'"([A-Za-z][A-Za-z0-9]+Panel)"', " ".join(groups)))
           required = panel_ids - {"corePanel", "chatPanel"}
           missing = sorted(required - grouped_ids)
