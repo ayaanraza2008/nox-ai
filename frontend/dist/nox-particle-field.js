@@ -66,6 +66,20 @@
       phase = Number(v.phase) || phase;
     };
     window.addEventListener("nox:core-frame", frameState);
+
+    // Synchronize the particle field with the actual UI voice state, not just pointer input.
+    let lastUiState = panel.dataset.noxState || "idle";
+    const stateObserver = new MutationObserver(() => {
+      const next = panel.dataset.noxState || "idle";
+      if (next === lastUiState) return;
+      lastUiState = next;
+      mode = next;
+      const now = performance.now();
+      const active = next === "listening" || next === "speaking";
+      ripple = { x: w * 0.5, y: h * 0.49, start: now };
+      targetEnergy = Math.max(targetEnergy, active ? 0.72 : next === "thinking" ? 0.48 : next === "error" ? 0.3 : 0.38);
+    });
+    stateObserver.observe(panel, { attributes: true, attributeFilter: ["data-nox-state"] });
     const pointerMove = (e) => {
       const r = canvas.getBoundingClientRect();
       pointer.x = e.clientX - r.left; pointer.y = e.clientY - r.top; pointer.active = true;
@@ -216,7 +230,7 @@
     reduce?.addEventListener?.("change",visibility);
     document.addEventListener("visibilitychange",visibility);
     window.addEventListener("resize",resize,{passive:true});
-    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);panel.removeEventListener("pointermove",pointerMove);panel.removeEventListener("pointerleave",pointerLeave);panel.removeEventListener("pointerdown",pointerDown);document.removeEventListener("visibilitychange",visibility);reduce?.removeEventListener?.("change",visibility);motionObserver.disconnect();},{once:true});
+    window.addEventListener("pagehide",()=>{disposed=true;if(raf)cancelAnimationFrame(raf);window.removeEventListener("nox:core-frame",frameState);panel.removeEventListener("pointermove",pointerMove);panel.removeEventListener("pointerleave",pointerLeave);panel.removeEventListener("pointerdown",pointerDown);document.removeEventListener("visibilitychange",visibility);reduce?.removeEventListener?.("change",visibility);motionObserver.disconnect();stateObserver.disconnect();},{once:true});
     resize();
     if(!reduce?.matches && !document.body.classList.contains("reduced")) raf=requestAnimationFrame(draw);
   };
