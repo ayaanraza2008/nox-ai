@@ -49,7 +49,8 @@
       card.className = "brain-memory-item";
       const title = safeText("strong", item.category + " · " + item.verification);
       const body = safeText("p", item.content);
-      const meta = safeText("div", "Confidence " + Math.round(item.confidence * 100) + "% · " +
+      const meta = safeText("div", "Source: " + item.source + " · confidence " + Math.round(item.confidence * 100) + "% · " +
+        (item.last_validated_at ? "validated " + new Date(item.last_validated_at).toLocaleDateString() + " · " : "") +
         (item.expires_at ? "expires " + new Date(item.expires_at).toLocaleDateString() : "no expiry") +
         (item.stale ? " · stale" : ""));
       meta.className = "brain-memory-meta";
@@ -78,6 +79,19 @@
       card.append(safeText("strong", item.label));
       card.append(safeText("p", Object.entries(item.capabilities || {}).map(([k,v]) => k.replaceAll("_"," ") + ": " + (typeof v === "object" ? JSON.stringify(v) : v)).join(" · ")));
       card.append(safeText("div", "Updated " + new Date(item.updated_at).toLocaleString(), "brain-memory-meta"));
+      root.append(card);
+    });
+  };
+  const renderAudit = (items) => {
+    const root = $("brainAuditList");
+    if (!root) return;
+    root.replaceChildren();
+    if (!items.length) { root.append(safeText("div", "No recorded brain changes yet.", "tiny")); return; }
+    items.slice(0, 20).forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "brain-memory-item";
+      card.append(safeText("strong", item.action.replaceAll("_", " ") + " · " + item.item_type));
+      card.append(safeText("div", new Date(item.created_at).toLocaleString(), "brain-memory-meta"));
       root.append(card);
     });
   };
@@ -122,18 +136,20 @@
   async function refresh() {
     setBrainActivity("retrieving");
     try {
-      const [overview, memories, devices, proposals, skills] = await Promise.all([
+      const [overview, memories, devices, proposals, skills, audit] = await Promise.all([
         api("/api/brain/overview"),
         api("/api/brain/memories?limit=100"),
         api("/api/brain/devices"),
         api("/api/brain/proposals"),
-        api("/api/brain/skills")
+        api("/api/brain/skills"),
+        api("/api/brain/audit?limit=20")
       ]);
       const counts = overview.counts || {};
       $("brainStatus").innerHTML = '<i class="led ' + (overview.status === "ready" ? "good" : "bad") + '"></i> ' + (overview.status || "UNKNOWN").toUpperCase();
       $("brainMemoryCount").textContent = counts.memories ?? 0;
       $("brainSkillCount").textContent = counts.skills ?? 0;
       $("brainOutcomeCount").textContent = counts.outcomes ?? 0;
+      $("brainStorageUsage").textContent = Number(counts.storage_bytes || 0).toLocaleString() + " bytes";
       $("brainEnabled").checked = !!overview.settings.enabled;
       $("brainSyncMode").value = overview.settings.sync_mode || "local_only";
       $("brainRetention").value = String(overview.settings.retention_days || 365);
@@ -146,6 +162,7 @@
       renderMemories(memories.results || []);
       renderDevices(devices.devices || []);
       renderProposals(proposals.proposals || []);
+      renderAudit(audit.events || []);
       setBrainActivity("idle");
       if (!skills.skills || !skills.skills.length) notice("Brain is online, but no skill definitions were returned.");
       else if (overview.capabilities && !overview.capabilities.semantic_vectors) {
