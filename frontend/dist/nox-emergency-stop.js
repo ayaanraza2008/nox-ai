@@ -34,7 +34,8 @@
     document.body.dataset.noxEmergencyState = state;
     phase.textContent = state.toUpperCase();
     const pending = Array.isArray(data.pending_operations) ? data.pending_operations : [];
-    detail.textContent = state === "stopped" ? "No tracked work pending" :
+    detail.textContent = state === "stopped" && data.state_persistent === false ? "Storage unavailable · fail-closed" :
+      state === "stopped" ? "No tracked work pending" :
       state === "stopping" ? pending.length + " operation(s) awaiting cleanup" :
       state === "unverified" ? "Safety state unavailable" : "New tasks permitted";
     resumeButton.hidden = !(data.stopped && state === "stopped");
