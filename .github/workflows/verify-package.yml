@@ -82,6 +82,8 @@ jobs:
         run: node --check frontend/dist/nox-visual-intelligence.js
       - name: Validate God's Eye View workspace JavaScript syntax
         run: node --check frontend/dist/nox-gods-eye-view.js
+      - name: Validate NOX operations diagnostics JavaScript syntax
+        run: node --check frontend/dist/nox-ops.js
       - name: Verify Visual Intelligence DOM bindings
         run: |
           python - <<'PY'
