@@ -26,6 +26,13 @@ TOOLS = {
 class CybersecurityError(ValueError):
     pass
 
+def _is_local_lab_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    ranges = (
+        ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16")
+        if address.version == 4 else ("fc00::/7", "::1/128", "fe80::/10")
+    )
+    return any(address in ipaddress.ip_network(network) for network in ranges)
+
 def discover_tools() -> list[dict[str, Any]]:
     """Detect executables without launching them."""
     return [{"name": name, "available": bool(shutil.which(spec["binary"])),
@@ -45,11 +52,11 @@ def validate_target(target: str, authorized: bool, scope_note: str) -> tuple[str
         raise CybersecurityError("Use a single host/IP, not a URL, path, or command.")
     try:
         address = ipaddress.ip_address(host)
-        if not (address.is_private or address.is_loopback or address.is_link_local):
+        if not _is_local_lab_ip(address)
             allowed = {v.strip().casefold().rstrip(".") for v in os.getenv("NOX_CYBER_ALLOWED_HOSTS", "").split(",") if v.strip()}
             if host not in allowed:
                 raise CybersecurityError("Public IP targets require an exact NOX_CYBER_ALLOWED_HOSTS entry.")
-        return host, "private_or_local_ip" if address.is_private or address.is_loopback or address.is_link_local else "explicit_allowlist"
+        return host, "private_or_local_ip" if _is_local_lab_ip(address) else "explicit_allowlist"
     except ValueError as exc:
         if isinstance(exc, CybersecurityError):
             raise
