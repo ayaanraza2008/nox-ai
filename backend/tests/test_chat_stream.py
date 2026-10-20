@@ -36,6 +36,26 @@ class StreamingEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen["language"], "hinglish")
         self.assertEqual(seen["history"][-1]["content"], "Hello")
 
+    async def test_lumi_personality_is_passed_to_stream_provider(self):
+        seen = {}
+
+        async def fake_stream(message, language, history, images=None, knowledge_context=None, personality="nox"):
+            seen["personality"] = personality
+            yield {"type": "delta", "text": "Lumi reply"}
+            yield {"type": "done", "mode": "ai"}
+
+        transport = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            with patch.object(main, "stream_provider_reply", fake_stream):
+                response = await client.post("/api/chat/stream", json={
+                    "message": "Hello Lumi", "personality": "lumi", "images": [],
+                })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(seen["personality"], "lumi")
+        packets = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
+        self.assertEqual(packets[0], {"type": "delta", "text": "Lumi reply"})
+
     async def test_stream_endpoint_emits_safe_error_event_for_unexpected_failure(self):
         async def broken_stream(message, language, history, images=None, knowledge_context=None):
             if False:
