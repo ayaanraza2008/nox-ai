@@ -458,6 +458,8 @@ def resend_verification(token: str, channel: str, client_key: str = "") -> str:
             (hashlib.sha256((token or "").encode()).hexdigest(), _iso(_now()))).fetchone()
         if not row:
             raise ValueError("Please sign in again.")
+        if row.get("status") == "suspended":
+            raise ValueError("This account is suspended. Contact NOX support.")
         if channel == "email" and row["email_verified"]:
             return "already_verified"
         if channel == "sms" and row["phone_verified"]:
@@ -549,6 +551,8 @@ def update_profile(token: str, full_name: str, username: str, country_code: str,
             (hashlib.sha256((token or "").encode()).hexdigest(), _iso(_now()))).fetchone()
         if not row or not _password_matches(row, password):
             raise ValueError("Password confirmation failed.")
+        if row.get("status") == "suspended":
+            raise ValueError("This account is suspended. Contact NOX support.")
         _rate_limit(conn, "profile_update", row["id"] + ":" + client_key, 5, 3600)
         if username != row.get("username") or country_code != row.get("country_code") or phone_number != row.get("phone_number"):
             collision = conn.execute("""SELECT id FROM nox_accounts WHERE id<>%s AND
@@ -589,6 +593,8 @@ def update_email(token: str, email: str, password: str, client_key: str = "") ->
             (hashlib.sha256((token or "").encode()).hexdigest(), _iso(_now()))).fetchone()
         if not row or not _password_matches(row, password):
             raise ValueError("Password confirmation failed.")
+        if row.get("status") == "suspended":
+            raise ValueError("This account is suspended. Contact NOX support.")
         if email == row["email"]:
             return {"account": _public_account(row), "email_delivery": "unchanged"}
         collision = conn.execute("SELECT id FROM nox_accounts WHERE email=%s AND id<>%s", (email, row["id"])).fetchone()
