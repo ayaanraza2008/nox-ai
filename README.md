@@ -380,7 +380,9 @@ the public internet or through a tunnel/reverse proxy.
   The package is MIT-licensed and requires Node.js 20 or newer.
 - The CLI diagnostics and device inventory are actual RuView commands. The capture
   operation invokes RuView's ESP32 CSI pipeline; NOX displays bounded CLI output and
-  does not invent measurement values or infer validated vital signs from text.
+  parses only structured per-node CSI frame counts, mean RSSI, frame rate, and packet-loss
+  estimates into the hologram's provenance panel. It does not invent measurements or
+  present device vitals/pose as validated outputs.
 - Live CSI requires a supported, provisioned sensor/source and local network access.
   The optional RuView kernel may be needed for additional analysis. Host Wi-Fi RSSI
   is not CSI and cannot substantiate pose, breathing, heart-rate, or precise location.
