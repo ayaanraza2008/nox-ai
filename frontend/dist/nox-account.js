@@ -32,6 +32,8 @@
     $("accountPassword").minLength = mode === "register" ? 10 : 1;
     $("accountRegisterFields").hidden = mode !== "register";
     $("accountIdentifierLabel").textContent = mode === "login" ? "Username, email, or mobile number" : "Create a username, then enter your email and mobile below";
+    $("accountIdentifierLabel").hidden = mode !== "login";
+    $("accountEmail").hidden = mode !== "login";
     $("accountRememberWrap").hidden = mode !== "login";
     $("accountEmail").required = mode === "login";
     $("accountFullName").required = mode === "register";
