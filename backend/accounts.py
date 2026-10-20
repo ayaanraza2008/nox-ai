@@ -88,6 +88,7 @@ def _connect():
             consumed_at TEXT
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_nox_challenges_account ON nox_account_challenges(account_id, purpose, created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_nox_challenges_created ON nox_account_challenges(created_at)")
         conn.execute("""CREATE TABLE IF NOT EXISTS nox_account_rate_limits (
             action TEXT NOT NULL,
             key_hash TEXT NOT NULL,
@@ -95,10 +96,15 @@ def _connect():
             count INTEGER NOT NULL,
             PRIMARY KEY(action, key_hash)
         )""")
-        # Legacy accounts are deliberately pending until their profile and both
-        # verification factors have been completed.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_nox_account_rate_limits_window ON nox_account_rate_limits(window_start)")
+        # Reconcile only inconsistent rows; do not take a full-table write lock
+        # on every authenticated request.
         conn.execute("""UPDATE nox_accounts SET status=CASE
-            WHEN status IN ('suspended','deleted') THEN status
+            WHEN email_verified AND phone_verified THEN 'active'
+            WHEN email_verified THEN 'email_verified'
+            WHEN phone_verified THEN 'phone_verified'
+            ELSE 'pending_verification' END
+            WHERE status NOT IN ('suspended','deleted') AND status<>CASE
             WHEN email_verified AND phone_verified THEN 'active'
             WHEN email_verified THEN 'email_verified'
             WHEN phone_verified THEN 'phone_verified'
