@@ -249,3 +249,33 @@ The **CI / TEST STATUS** panel uses the configured GitHub Bridge server-side tok
 The dashboard requires the same server-side `GITHUB_TOKEN` and `NOX_GITHUB_REPOSITORY` configuration as the GitHub Bridge. Grant **Actions: Read-only** on the configured repository in the fine-grained token for workflow run/job status access, in addition to the existing contents and pull-request permissions if those Bridge features are used. Missing permissions produce an error status rather than fabricated results.
 
 A green workflow means the reported GitHub Actions run passed; it does **not** establish that Render deployed the same commit or that the live site is healthy. Check Render deploy logs and the live health endpoint separately.
+
+
+## Vision Mode and Public Information Research
+
+### Browser-local object detection
+
+The existing **Vision & Media** panel now has an opt-in live detector using TensorFlow.js and the COCO-SSD Lite MobileNet V2 model. On the user's explicit camera-start click, the browser requests camera permission, loads the open-source model assets from jsDelivr, and performs object inference locally in the browser. Supported COCO categories depend on the model (for example, person, car, bus, bicycle, chair, couch, bottle, backpack, handbag, dog, and cat); it does not detect every object category such as doors. Bounding boxes include class, confidence, and short-term IoU-based visual track IDs. Track IDs are temporary visual associations, not person identities.
+
+The detector also runs on a selected still image in the browser. Pause/resume, front/rear camera switching where supported, explicit stop, clear, visibility handling, and unload cleanup are implemented. Camera permission and HTTPS/browser support are required. Model download needs internet access; low-power mobile devices may infer more slowly. The selected image is not uploaded for local object detection. Existing chat-based image analysis remains a separate user-submitted feature and sends the image to a configured AI provider.
+
+**Depth and safety limits:** NOX does not currently have calibrated camera intrinsics, stereo/depth sensor input, or a validated depth model. It intentionally does not report fabricated metres or exact object distances. Bounding-box size is only an image-space/relative cue. Do not use this feature for collision avoidance or other safety-critical decisions. The current implementation does not claim clothing/action recognition, gesture recognition, person identification, or emotion inference.
+
+**Model and licensing:** TensorFlow.js and COCO-SSD are loaded on demand from jsDelivr; review their Apache-2.0 project licenses and model documentation before redistributing or changing the model. First use requires downloading the JS libraries and model weights. No model weights are bundled in this repository.
+
+### Public Information Research
+
+The **Public Information Research** panel accepts one starting point per request: email, international phone number, public social username/profile URL, or OCR text from an image. Requests require the current browser session and only start after the user presses Research.
+
+- **Email:** syntax validation, public DNS-over-HTTPS MX/A metadata, and an exact public-web search. DNS does not prove a mailbox exists or identify its owner.
+- **Phone:** uses the `phonenumbers` numbering-plan library to normalize a possible international number and provide general region/type metadata; a number does not reveal a private address, subscriber identity, or live location.
+- **Social:** performs a public-web search for a supplied username/profile URL on an allowlist of public platforms. It does not log in, bypass restrictions, scrape private profiles, or assume same-name accounts belong to one person.
+- **Image:** Tesseract.js OCR runs locally in the browser; only extracted text or user-entered visible context is sent for public search. Optional Google Lens/Bing Visual Search links require the user to upload the image themselves. NOX does not identify private people from faces, face-match profiles, or extract hidden EXIF/GPS metadata.
+
+Results distinguish confirmed technical metadata, possible matches, warnings, and source links. Public search can be blocked or incomplete and results must be checked at their source. Research is not a breach-check service and never accesses inboxes, passwords, private breach dumps, account recovery flows, or restricted APIs. The Stop and Clear controls stop the active request and clear the displayed input/results from the page; already-opened third-party pages and provider/network logs are outside the app's control.
+
+### API and tests
+
+`POST /api/research/public` accepts `{"kind":"email|phone|social|image","value":"..."}` and requires the existing `nox_session` cookie. Public search uses the existing bounded DuckDuckGo HTML search helper. Phone metadata adds `phonenumbers` to `backend/requirements.txt`. Automated tests cover validation, allowed social hosts, source-link filtering, and separation of facts from possible matches.
+
+**Not implemented in this phase:** calibrated distance measurement, depth/stereo-camera support, person/action/gesture models, OCR for all languages (the local OCR worker currently uses English), reverse-image matching inside NOX, official platform OAuth/API connectors, a supported native Windows camera integration, and live end-to-end camera tests on physical mobile/desktop hardware. Browser camera APIs may work in a supported Windows browser, but that is not a native Windows companion integration.
