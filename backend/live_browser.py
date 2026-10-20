@@ -79,9 +79,9 @@ def plan_instruction(instruction: str) -> list[dict[str, str]]:
 
     # Common site aliases avoid asking for a URL when the destination is unambiguous.
     alias = re.fullmatch(
-        r"\\s*(?:nox[, ]*)?(?:open|visit|go to|navigate to)\\s+"
+        r"\s*(?:nox[, ]*)?(?:open|visit|go to|navigate to)\s+"
         r"(youtube|google|wikipedia|github|reddit|stackoverflow|amazon|instagram|facebook|tiktok)"
-        r"(?:\\s+(?:and\\s+)?(?:search|find)\\s+(?:for\\s+)?(.+?))?\\s*",
+        r"(?:\s+(?:and\s+)?(?:search|find)\s+(?:for\s+)?(.+?))?\s*",
         text, re.I,
     )
     if alias:
