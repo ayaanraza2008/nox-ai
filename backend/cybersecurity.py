@@ -72,7 +72,7 @@ def _tool_inventory() -> list[dict[str, Any]]:
         "ollama": "Local model runtime; reachable only from the machine running it.",
         "kaligpt": "Optional upstream CLI; never invoked by this hosted API.",
     }
-    return [{"id": name, "available_on_server": bool(shutil.which(binary)), "path": shutil.which(binary),
+    return [{"id": name, "available_on_server": bool(shutil.which(binary)), "path_configured": bool(shutil.which(binary)),
              "version": None, "version_probe": "not run", "description": descriptions[name]}
             for name, (binary, _version_arg) in ALLOWED_TOOLS.items()]
 
@@ -175,6 +175,13 @@ def explain_command(request: CommandExplainRequest) -> dict[str, Any]:
             "explanation": description, "execution": "not executed",
             "note": "This endpoint explains text only. It never runs the command."}
 
+def _is_local_lab_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    ranges = (
+        ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16")
+        if address.version == 4 else ("fc00::/7", "::1/128", "fe80::/10")
+    )
+    return any(address in ipaddress.ip_network(network) for network in ranges)
+
 def _allowed_hosts() -> set[str]:
     return {host.strip().casefold().rstrip(".") for host in os.getenv("NOX_CYBER_ALLOWED_HOSTS", "").split(",") if host.strip()}
 
@@ -189,7 +196,11 @@ def validate_scope(request: ScopeRequest) -> dict[str, Any]:
     candidate = raw
     if "://" in raw:
         parsed = urlsplit(raw)
-        if parsed.scheme != "https" or parsed.username or parsed.password or parsed.port not in (None, 443):
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Target URL contains an invalid port.") from exc
+        if parsed.scheme != "https" or parsed.username or parsed.password or port not in (None, 443):
             raise HTTPException(status_code=400, detail="Use HTTPS on port 443 or a host/IP; no embedded credentials or alternate ports.")
         candidate = parsed.hostname or ""
     candidate = candidate.casefold().rstrip(".")
@@ -198,7 +209,7 @@ def validate_scope(request: ScopeRequest) -> dict[str, Any]:
     local_lab = False
     try:
         address = ipaddress.ip_address(candidate)
-        local_lab = bool(address.is_private or address.is_loopback or address.is_link_local)
+        local_lab = _is_local_lab_ip(address)
         if not local_lab and candidate not in _allowed_hosts():
             raise HTTPException(status_code=403, detail="Public IP targets must be explicitly allowlisted in NOX_CYBER_ALLOWED_HOSTS; this hosted API does not scan public targets.")
     except ValueError:
