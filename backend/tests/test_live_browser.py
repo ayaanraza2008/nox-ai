@@ -5,7 +5,8 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from backend import live_browser
+from fastapi import HTTPException, Request
+from backend import live_browser, main
 
 
 class _BrowserTestHandler(BaseHTTPRequestHandler):
@@ -76,6 +77,43 @@ class BrowserPlannerTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             session = live_browser.BrowserSession("test-owner")
             self.assertFalse(session.snapshot()["enabled"])
+
+    def _request(self, client_host="127.0.0.1", host="127.0.0.1:8000", origin=None, method="GET"):
+        headers = [(b"host", host.encode())]
+        if origin is not None:
+            headers.append((b"origin", origin.encode()))
+        return Request({
+            "type": "http", "method": method, "scheme": "http",
+            "server": ("127.0.0.1", 8000), "client": (client_host, 43210),
+            "path": "/api/browser/status", "raw_path": b"/api/browser/status",
+            "query_string": b"", "headers": headers,
+        })
+
+    def test_browser_api_is_disabled_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(HTTPException) as caught:
+                main._require_local_browser_request(self._request())
+            self.assertEqual(caught.exception.status_code, 503)
+
+    def test_browser_api_rejects_remote_client(self):
+        with patch.dict(os.environ, {"NOX_BROWSER_ENABLED": "1"}):
+            with self.assertRaises(HTTPException) as caught:
+                main._require_local_browser_request(self._request(client_host="192.0.2.10"))
+            self.assertEqual(caught.exception.status_code, 403)
+
+    def test_browser_post_requires_same_origin(self):
+        with patch.dict(os.environ, {"NOX_BROWSER_ENABLED": "1"}):
+            with self.assertRaises(HTTPException) as caught:
+                main._require_local_browser_request(
+                    self._request(origin="https://attacker.example", method="POST")
+                )
+            self.assertEqual(caught.exception.status_code, 403)
+
+    def test_browser_loopback_same_origin_post_is_allowed(self):
+        with patch.dict(os.environ, {"NOX_BROWSER_ENABLED": "1"}):
+            main._require_local_browser_request(
+                self._request(origin="http://127.0.0.1:8000", method="POST")
+            )
 
 
 class LiveBrowserIntegrationTests(unittest.IsolatedAsyncioTestCase):
