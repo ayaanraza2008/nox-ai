@@ -289,6 +289,25 @@ def retrieve_memories(owner_id: str, query: str, limit: int = 4) -> list[dict]:
             for _, item in ranked[:min(max(limit, 1), 8)]]
 
 
+def review_memory(owner_id: str, memory_id: str, decision: str) -> dict | None:
+    if decision not in {"revalidate", "mark_stale"}:
+        raise ValueError("decision must be revalidate or mark_stale")
+    now = now_iso()
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM brain_memories WHERE owner_id=? AND id=?", (owner_id, memory_id)).fetchone()
+        if not row:
+            return None
+        if decision == "revalidate":
+            conn.execute("UPDATE brain_memories SET stale=0,verification='user_confirmed',last_validated_at=? WHERE owner_id=? AND id=?",
+                         (now, owner_id, memory_id))
+        else:
+            conn.execute("UPDATE brain_memories SET stale=1 WHERE owner_id=? AND id=?", (owner_id, memory_id))
+        _audit(conn, owner_id, "memory_" + decision, "memory", memory_id)
+        conn.commit()
+        updated = conn.execute("SELECT * FROM brain_memories WHERE owner_id=? AND id=?", (owner_id, memory_id)).fetchone()
+        return _memory_payload(updated)
+
+
 def delete_memory(owner_id: str, memory_id: str) -> bool:
     with _connect() as conn:
         cur = conn.execute("DELETE FROM brain_memories WHERE owner_id=? AND id=?", (owner_id, memory_id))
