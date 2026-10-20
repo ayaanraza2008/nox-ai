@@ -103,6 +103,10 @@ class BrainProposalRequest(BaseModel):
 
 
 
+class BrainBackupRestoreRequest(BaseModel):
+    backup: dict
+
+
 class AccountCredentials(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=256)
@@ -1486,6 +1490,21 @@ async def account_delete(payload: AccountDeleteRequest, request: Request, respon
     response.delete_cookie(ACCOUNT_COOKIE, path="/", httponly=True, samesite="lax",
                            secure=_request_is_secure(request))
     return {"deleted": True, "memories_deleted": True}
+
+
+@app.post("/api/brain/backup/restore")
+async def brain_backup_restore(payload: BrainBackupRestoreRequest, request: Request):
+    token = request.cookies.get(ACCOUNT_COOKIE, "")
+    account = _account_error(accounts.resolve_session, token) if token else None
+    if not account:
+        raise HTTPException(status_code=401, detail="Sign in to a NOX account before restoring a backup.")
+    try:
+        encoded_size = len(json.dumps(payload.backup, ensure_ascii=False).encode("utf-8"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Backup JSON is invalid.")
+    if encoded_size > 2_000_000:
+        raise HTTPException(status_code=413, detail="Backup file is too large (maximum 2 MB).")
+    return _brain_call(brain.restore_backup, account["id"], payload.backup)
 
 
 @app.get("/api/brain/overview")
