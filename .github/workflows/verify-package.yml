@@ -26,6 +26,13 @@ jobs:
         run: python -m unittest discover -s backend/tests -v
       - name: Test defensive security tools
         run: python -m unittest discover -s desktop-companion/tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install optional RuView CLI companion
+        run: npm install --prefix ruview-companion --ignore-scripts --no-package-lock --no-audit --no-fund
+      - name: Verify official RuView CLI entry point
+        run: node ruview-companion/node_modules/@ruvnet/ruview/bin/cli.js --help
       - name: Validate deployed frontend
         run: test -s frontend/dist/index.html
       - name: Validate inline frontend JavaScript syntax
