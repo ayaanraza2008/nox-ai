@@ -15,6 +15,12 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: NOX_PUBLIC_BASE_URL
+        value: https://nox-ai-vcqx.onrender.com
+      - key: NOX_MAP_STYLE_URL
+        sync: false
+      - key: NOX_LOCATION_RETENTION_DAYS
+        value: "7"
       - key: NOX_EMBEDDING_API_KEY
         sync: false
       - key: NOX_EMBEDDING_MODEL
