@@ -55,6 +55,20 @@ class MainActivity : Activity() {
         val session = prefs.getString("session_id", null)
         val token = prefs.getString("device_token", null)
         if (!session.isNullOrBlank() && !token.isNullOrBlank()) {
+            if (prefs.getBoolean("emergency_stopped", false)) {
+                AlertDialog.Builder(this)
+                    .setTitle("NOX Emergency Stop")
+                    .setMessage("Background command polling and location service are stopped on this phone. Resume only when you are ready to allow paired NOX commands again.")
+                    .setPositiveButton("Resume NOX") { _, _ ->
+                        prefs.edit().putBoolean("emergency_stopped", false).apply()
+                        startPairingService()
+                        Toast.makeText(this, "NOX resumed by explicit action.", Toast.LENGTH_LONG).show()
+                    }
+                    .setNegativeButton("Disconnect paired control") { _, _ -> disconnectPairing() }
+                    .setNeutralButton("Close") { _, _ -> finish() }
+                    .show()
+                return
+            }
             startPairingService()
             AlertDialog.Builder(this)
                 .setTitle("NOX Companion")

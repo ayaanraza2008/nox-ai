@@ -44,6 +44,7 @@ class TaskManager:
         self.processor = processor
         self.database_url = (os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or "").strip()
         self.use_postgres = self.database_url.startswith(("postgres://", "postgresql://"))
+        self.emergency_storage_degraded = False
         self.db_path = Path(os.getenv("NOX_TASK_DB", "/tmp/nox_tasks.sqlite3"))
         if not self.use_postgres:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +53,7 @@ class TaskManager:
         self.pause_events: dict[str, asyncio.Event] = {}
         self.cancel_events: dict[str, asyncio.Event] = {}
         self.worker: asyncio.Task | None = None
+        self.emergency_lock = asyncio.Lock()
         try:
             self._init_db()
         except Exception as exc:
@@ -66,6 +68,7 @@ class TaskManager:
                 type(exc).__name__,
             )
             self.use_postgres = False
+            self.emergency_storage_degraded = True
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._init_db()
 
@@ -119,6 +122,10 @@ class TaskManager:
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_owner_idempotency "
                 "ON tasks(owner_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
             )
+            db.execute("""CREATE TABLE IF NOT EXISTS emergency_state (
+                owner_id TEXT PRIMARY KEY, stopped INTEGER NOT NULL DEFAULT 0,
+                stopped_at TEXT, updated_at TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}'
+            )""")
 
     def _row(self, row):
         if not row:
@@ -154,7 +161,7 @@ class TaskManager:
         # entire web service offline: fall back to temporary SQLite storage.
         try:
             with self._connect() as db:
-                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused') AND owner_id <> ''").fetchall()
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused','cancelling') AND owner_id <> ''").fetchall()
         except Exception as exc:
             if not self.use_postgres:
                 raise
@@ -163,12 +170,19 @@ class TaskManager:
                 type(exc).__name__,
             )
             self.use_postgres = False
+            self.emergency_storage_degraded = True
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._init_db()
             with self._connect() as db:
-                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused') AND owner_id <> ''").fetchall()
+                rows = db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','paused','cancelling') AND owner_id <> ''").fetchall()
         for row in rows:
             item = self._row(row)
+            if self.is_stopped(str(item.get("owner_id") or "")):
+                item["status"] = "cancelled"
+                item["error"] = "Emergency Stop was latched; task was not resumed after restart."
+                self._event(item, "Recovery blocked by persisted Emergency Stop.", "warning")
+                self._save(item)
+                continue
             if item["status"] == "running":
                 item["status"] = "queued"
                 item["progress"] = min(item["progress"], 10)
@@ -195,6 +209,15 @@ class TaskManager:
         self.runners.clear()
 
     async def create(
+        self, goal: str, language: str, owner_id: str = "",
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        async with self.emergency_lock:
+            if self.is_stopped(owner_id):
+                raise RuntimeError("NOX Emergency Stop is latched. Explicitly resume before starting new tasks.")
+            return await self._create_unlocked(goal, language, owner_id, idempotency_key)
+
+    async def _create_unlocked(
         self, goal: str, language: str, owner_id: str = "",
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
@@ -238,6 +261,89 @@ class TaskManager:
         await self.queue.put(task_id)
         return item
 
+    def emergency_status(self, owner_id: str) -> dict[str, Any]:
+        if self.emergency_storage_degraded:
+            return {"stopped": True, "stopped_at": None, "updated_at": utcnow(),
+                    "details": {"reason": "emergency_storage_unavailable_fail_closed"},
+                    "state_persistent": False}
+        if not owner_id:
+            return {"stopped": False, "stopped_at": None, "details": {}, "state_persistent": True}
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM emergency_state WHERE owner_id=?", (owner_id,)).fetchone()
+        if not row:
+            return {"stopped": False, "stopped_at": None, "details": {}, "state_persistent": True}
+        item = dict(row)
+        try:
+            details = json.loads(item.get("details") or "{}")
+        except (TypeError, ValueError):
+            details = {}
+        return {"stopped": bool(item["stopped"]), "stopped_at": item["stopped_at"],
+                "updated_at": item["updated_at"], "details": details,
+                "state_persistent": True}
+
+    def is_stopped(self, owner_id: str) -> bool:
+        if self.emergency_storage_degraded:
+            return True
+        if not owner_id:
+            return False
+        with self._connect() as db:
+            row = db.execute("SELECT stopped FROM emergency_state WHERE owner_id=?", (owner_id,)).fetchone()
+        return bool(row and row["stopped"])
+
+    async def emergency_stop(self, owner_id: str) -> dict[str, Any]:
+        if not owner_id:
+            raise ValueError("A browser session is required to latch Emergency Stop.")
+        async with self.emergency_lock:
+            timestamp = utcnow()
+            with self._connect() as db:
+                db.execute("""INSERT INTO emergency_state(owner_id,stopped,stopped_at,updated_at,details)
+                    VALUES(?,1,?,?,?) ON CONFLICT(owner_id) DO UPDATE SET
+                    stopped=1,stopped_at=excluded.stopped_at,updated_at=excluded.updated_at,details=excluded.details""",
+                    (owner_id, timestamp, timestamp, json.dumps({"reason": "user_emergency_stop"})))
+            with self._connect() as db:
+                rows = db.execute("SELECT * FROM tasks WHERE owner_id=? AND status IN ('queued','running','paused','cancelling')",
+                                  (owner_id,)).fetchall()
+            runners = []
+            for row in rows:
+                item = self._row(row)
+                task_id = item["id"]
+                self.cancel_events.setdefault(task_id, asyncio.Event()).set()
+                self.pause_events.setdefault(task_id, asyncio.Event()).set()
+                runner = self.runners.get(task_id)
+                if runner and not runner.done():
+                    item["status"] = "cancelling" if item["status"] == "running" else "cancelled"
+                    runner.cancel()
+                    runners.append(runner)
+                else:
+                    item["status"] = "cancelled"
+                item["error"] = "Emergency Stop requested; no automatic retry will occur."
+                self._event(item, "Global Emergency Stop requested task cancellation.", "warning")
+                self._save(item)
+            # Return promptly after latching and signalling cancellation. Status polling
+            # keeps showing STOPPING while any worker's cleanup is still pending.
+            pending = [item["id"] for item in self.list(limit=50, owner_id=owner_id) if item["status"] == "cancelling"]
+            details = {"pending_task_cleanup": pending, "cancelled_task_count": len(rows)}
+            with self._connect() as db:
+                db.execute("UPDATE emergency_state SET updated_at=?,details=? WHERE owner_id=?",
+                           (utcnow(), json.dumps(details), owner_id))
+            return {**self.emergency_status(owner_id), "pending_task_cleanup": pending,
+                    "cancelled_task_count": len(rows)}
+
+    async def resume_emergency_stop(self, owner_id: str) -> dict[str, Any]:
+        if self.emergency_storage_degraded:
+            raise RuntimeError("Emergency Stop remains fail-closed because the configured task database is unavailable. Restore the durable database before resuming.")
+        if not owner_id:
+            raise ValueError("A browser session is required to resume NOX.")
+        async with self.emergency_lock:
+            status = self.emergency_status(owner_id)
+            if not status["stopped"]:
+                return status
+            with self._connect() as db:
+                db.execute("UPDATE emergency_state SET stopped=0,updated_at=?,details=? WHERE owner_id=?",
+                           (utcnow(), json.dumps({"resumed_by_explicit_user_action": True}), owner_id))
+            # Cancelled tasks are intentionally not re-enqueued.
+            return self.emergency_status(owner_id)
+
     def get(self, task_id: str, owner_id: str | None = None):
         item = self._get(task_id)
         if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
@@ -271,6 +377,12 @@ class TaskManager:
         return item
 
     async def resume(self, task_id: str, owner_id: str | None = None):
+        async with self.emergency_lock:
+            if owner_id is not None and self.is_stopped(owner_id):
+                raise ValueError("NOX Emergency Stop is latched. Resume the system first; cancelled tasks are not restarted.")
+            return await self._resume_unlocked(task_id, owner_id)
+
+    async def _resume_unlocked(self, task_id: str, owner_id: str | None = None):
         item = self._get(task_id)
         if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
             return None
@@ -312,7 +424,7 @@ class TaskManager:
         while True:
             task_id = await self.queue.get()
             item = self._get(task_id)
-            if not item or item["status"] != "queued":
+            if not item or item["status"] != "queued" or self.is_stopped(str(item.get("owner_id") or "")):
                 self.queue.task_done()
                 continue
             if task_id in self.runners and not self.runners[task_id].done():
@@ -331,6 +443,12 @@ class TaskManager:
     async def _run(self, task_id: str):
         item = self._get(task_id)
         if not item or item["status"] not in ("queued", "paused"):
+            return
+        if self.is_stopped(str(item.get("owner_id") or "")):
+            item["status"] = "cancelled"
+            item["error"] = "Emergency Stop is latched."
+            self._event(item, "Task blocked by Emergency Stop.", "warning")
+            self._save(item)
             return
         cancel_event = self.cancel_events.setdefault(task_id, asyncio.Event())
         pause_event = self.pause_events.setdefault(task_id, asyncio.Event())
@@ -451,6 +569,7 @@ class TaskManager:
                 self._save(item)
         finally:
             item = self._get(task_id)
-            if item and item["status"] == "cancelled":
-                self._event(item, "Task stopped; cancelled status preserved.")
+            if item and item["status"] in ("cancelled", "cancelling"):
+                item["status"] = "cancelled"
+                self._event(item, "Task worker cleanup finished; cancelled status preserved.")
                 self._save(item)

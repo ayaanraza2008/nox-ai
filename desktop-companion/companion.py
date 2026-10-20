@@ -14,11 +14,13 @@ import webbrowser
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from device_control import discover_adb_devices, launch_android_app
+from emergency_state import EmergencyStopActive, get_state as get_emergency_state, run_managed_process, set_stopped as set_emergency_stopped
 
 try:
     from home_assistant import execute_home_assistant_command
@@ -56,6 +58,53 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "X-NOX-Token"],
 )
+
+@app.middleware("http")
+async def enforce_local_emergency_stop(request: Request, call_next):
+    """Fail closed for every mutating companion endpoint while locally stopped."""
+    exempt = {"/v1/emergency/stop", "/v1/emergency/resume"}
+    if request.method == "POST" and request.url.path not in exempt:
+        supplied = request.headers.get("X-NOX-Token", "")
+        if not TOKEN or not hmac.compare_digest(supplied, TOKEN):
+            return JSONResponse(status_code=401, content={"detail": "Invalid companion token."})
+        if get_emergency_state()["stopped"]:
+            return JSONResponse(status_code=423, content={
+                "detail": "Local NOX Emergency Stop is latched. Explicitly resume the companion first."
+            })
+    return await call_next(request)
+
+
+@app.on_event("startup")
+async def start_optional_windows_tray():
+    try:
+        from tray_controller import start_tray
+        start_tray()
+    except Exception as exc:
+        # The API remains usable if the optional Windows tray dependencies are absent.
+        import logging
+        logging.getLogger("nox.companion").warning("Tray controller unavailable (%s)", type(exc).__name__)
+
+
+@app.get("/v1/emergency/status")
+def local_emergency_status(x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    return get_emergency_state()
+
+
+@app.post("/v1/emergency/stop")
+def local_emergency_stop(x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    return {"state": "stopped", **set_emergency_stopped(True, "local_emergency_stop")}
+
+
+@app.post("/v1/emergency/resume")
+def local_emergency_resume(x_nox_token: str | None = Header(default=None)):
+    authorize(x_nox_token)
+    try:
+        return {"state": "running", **set_emergency_stopped(False, "explicit_local_resume")}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
 
 DESTINATIONS = {
     "instagram": "https://www.instagram.com/",
@@ -301,6 +350,8 @@ def launch_android_device_app(payload: AndroidLaunchRequest, x_nox_token: str | 
     authorize(x_nox_token)
     try:
         return launch_android_app(payload.serial, payload.package_name, payload.confirmed)
+    except EmergencyStopActive as exc:
+        raise HTTPException(status_code=423, detail="Emergency Stop cancelled the managed ADB launch.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -458,10 +509,9 @@ def execute_safe_terminal_command(raw: str):
     if os.name != "nt":
         return {"status": "unsupported", "message": "Local terminal commands are supported only on Windows in this companion."}
     try:
-        completed = subprocess.run(
-            args, cwd=cwd, shell=False, capture_output=True, text=True,
-            timeout=180, check=False, stdin=subprocess.DEVNULL,
-        )
+        completed = run_managed_process(args, cwd=cwd, timeout=180)
+        if get_emergency_state()["stopped"]:
+            return {"status": "cancelled", "message": "Emergency Stop cancelled the managed terminal process."}
         output = (completed.stdout or "") + (completed.stderr or "")
         return {
             "status": "success" if completed.returncode == 0 else "error",
@@ -469,6 +519,8 @@ def execute_safe_terminal_command(raw: str):
             "returncode": completed.returncode,
             "output": output[-5000:] or "(no output)",
         }
+    except EmergencyStopActive:
+        return {"status": "cancelled", "message": "Emergency Stop cancelled the managed terminal process."}
     except FileNotFoundError:
         return {"status": "not_found", "message": "Required program is not installed or is not available on PATH: " + args[0]}
     except subprocess.TimeoutExpired:
@@ -501,18 +553,21 @@ def install_known_software(raw: str):
         return {"status": "unsupported", "message": "Automatic software installation is currently supported on Windows only."}
     package_id, display_name = package
     try:
-        completed = subprocess.run(
+        completed = run_managed_process(
             ["winget", "install", "--id", package_id, "--exact", "--source", "winget",
              "--accept-source-agreements", "--accept-package-agreements"],
-            shell=False, capture_output=True, text=True, timeout=900, check=False,
-            stdin=subprocess.DEVNULL,
+            timeout=900,
         )
+        if get_emergency_state()["stopped"]:
+            return {"status": "cancelled", "message": "Emergency Stop cancelled the managed installer process."}
         output = ((completed.stdout or "") + (completed.stderr or ""))[-5000:]
         return {
             "status": "success" if completed.returncode == 0 else "error",
             "software": display_name, "package_id": package_id,
             "returncode": completed.returncode, "output": output or "(no output)",
         }
+    except EmergencyStopActive:
+        return {"status": "cancelled", "message": "Emergency Stop cancelled the managed installer process."}
     except FileNotFoundError:
         return {"status": "setup_required", "message": "WinGet is not installed or unavailable. Install/update Microsoft's App Installer from Microsoft Store, then retry."}
     except subprocess.TimeoutExpired:
@@ -700,6 +755,9 @@ def pairing_worker():
         return {"status":"launch_requested","message":"Launch requested for " + shortcut.stem}
 
     while True:
+        if get_emergency_state()["stopped"]:
+            time.sleep(1)
+            continue
         try:
             active = join()
             if active:
@@ -708,6 +766,12 @@ def pairing_worker():
                 request("/api/pairing/status?session_id=" + sid, token=token)
                 item = request("/api/pairing/commands/next?session_id=" + sid, token=token).get("command")
                 if item:
+                    if get_emergency_state()["stopped"]:
+                        deliver_result(item["command_id"], {
+                            "status": "cancelled",
+                            "message": "Emergency Stop latched before command execution."
+                        }, token)
+                        continue
                     result = run_command(item.get("command", ""))
                     # The command has already run. Retry only reporting its result; never re-execute it
                     # if the network fails, since installs and other actions may have side effects.

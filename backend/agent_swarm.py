@@ -69,10 +69,11 @@ class SwarmError(RuntimeError):
 
 
 class SwarmManager:
-    def __init__(self, provider=None):
+    def __init__(self, provider=None, stop_check=None):
         self.db_path = Path(os.getenv("NOX_SWARM_DB", "/tmp/nox_swarm.sqlite3"))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.provider = provider or self._provider_call
+        self.stop_check = stop_check or (lambda owner_id: False)
         self.runners: dict[str, asyncio.Task] = {}
         # Shared across jobs so concurrent submissions cannot multiply the model-call budget.
         self._agent_semaphore = asyncio.Semaphore(MAX_AGENTS)
@@ -144,6 +145,8 @@ class SwarmManager:
         return [self._decode(row) for row in rows]
 
     async def create(self, goal: str, language: str, owner_id: str):
+        if self.stop_check(owner_id):
+            raise SwarmError("NOX Emergency Stop is latched. Explicitly resume before starting new jobs.")
         job_id = uuid.uuid4().hex
         memory_context = []
         try:
@@ -155,6 +158,8 @@ class SwarmManager:
                "status": "queued", "agents": [], "events": [], "result": None, "error": None,
                "created_at": now(), "updated_at": now()}
         self._event(job, "Swarm job accepted; planning is queued.")
+        if self.stop_check(owner_id):
+            raise SwarmError("NOX Emergency Stop is latched. This job was not queued.")
         self._save(job)
         self.runners[job_id] = asyncio.create_task(self._run(job_id))
         return self.get(job_id, owner_id)
@@ -168,15 +173,30 @@ class SwarmManager:
         runner = self.runners.get(job_id)
         if runner and not runner.done():
             runner.cancel()
-        job["status"] = "cancelled"
-        job["error"] = "Cancelled by user."
-        for agent in job["agents"]:
-            if agent["status"] not in ("completed", "failed", "cancelled"):
-                agent["status"] = "cancelled"
-                agent["updated_at"] = now()
-        self._event(job, "Cancellation requested; unfinished agents stopped.", "warning")
-        self._save(job)
+            try:
+                await asyncio.wait_for(asyncio.gather(runner, return_exceptions=True), timeout=3.0)
+            except asyncio.TimeoutError:
+                pass
+        job = self.get(job_id, owner_id) or job
+        if job["status"] not in ("completed", "failed", "cancelled"):
+            job["status"] = "cancelled"
+            job["error"] = "Cancelled by user."
+            for agent in job["agents"]:
+                if agent["status"] not in ("completed", "failed", "cancelled"):
+                    agent["status"] = "cancelled"
+                    agent["updated_at"] = now()
+            self._event(job, "Cancellation requested; unfinished agents stopped.", "warning")
+            self._save(job)
         return job
+
+    async def cancel_all(self, owner_id: str) -> list[dict]:
+        jobs = [job for job in self.list(owner_id, limit=50)
+                if job["status"] not in ("completed", "failed", "cancelled")]
+        outcomes = await asyncio.gather(
+            *(self.cancel(job["id"], owner_id) for job in jobs),
+            return_exceptions=True,
+        )
+        return [item for item in outcomes if isinstance(item, dict)]
 
     async def _provider_call(self, messages: list[dict], timeout: int = TASK_TIMEOUT) -> str:
         key = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -325,6 +345,12 @@ class SwarmManager:
         job = self.get(job_id)
         if not job:
             return
+        if self.stop_check(str(job.get("owner_id") or "")):
+            job["status"] = "cancelled"
+            job["error"] = "Emergency Stop is latched."
+            self._event(job, "Swarm worker blocked by Emergency Stop.", "warning")
+            self._save(job)
+            return
         try:
             job["status"] = "planning"
             self._event(job, "Master orchestrator is building a validated dependency graph.")
@@ -338,6 +364,11 @@ class SwarmManager:
             pending = set(by_id)
             finished = set()
             while pending and job["status"] != "cancelled":
+                if self.stop_check(str(job.get("owner_id") or "")):
+                    job["status"] = "cancelled"
+                    self._event(job, "Emergency Stop latched; no additional specialist work will start.", "warning")
+                    self._save(job)
+                    return
                 # Mark downstream tasks blocked once every dependency has finished and any dependency failed.
                 blocked = [by_id[key] for key in list(pending)
                            if all(dep in finished for dep in by_id[key]["depends_on"])

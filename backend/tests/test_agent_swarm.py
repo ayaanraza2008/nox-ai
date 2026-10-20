@@ -112,6 +112,12 @@ class SwarmTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.manager.get(created["id"], "owner-b"))
         self.assertEqual(self.manager.list("owner-b"), [])
 
+    async def test_create_rejected_while_emergency_stop_is_latched(self):
+        manager = SwarmManager(provider=self.provider, stop_check=lambda owner_id: True)
+        with self.assertRaisesRegex(SwarmError, "Emergency Stop is latched"):
+            await manager.create("Plan a secure login and dashboard feature", "en", "owner-a")
+        self.assertEqual(manager.list("owner-a"), [])
+
     async def test_provider_missing_key_fails_truthfully(self):
         manager = SwarmManager(provider=None)
         async def no_key(messages, timeout=90):
