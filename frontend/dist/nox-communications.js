@@ -105,7 +105,7 @@
   const unsupportedIntent = /\b(?:whatsapp|linkedin|outlook|sms|text message|phone call|call this contact|calendar invite)\b.{0,100}\b(?:send|message|call|invite|schedule|text|contact|reply|open)\b|\b(?:call|phone)\s+(?:this\s+)?(?:contact|person|customer|[a-z]+)/i;
   window.NOXCommunications = {
     shouldHandle(text) { return mailIntent.test(String(text||"")) || unsupportedIntent.test(String(text||"")); },
-    async handleCommand(text) {
+    async handleCommand(text, options = {}) {
       openPanel();
       const value=String(text||"").trim();
       const email=(value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)||[])[0];
@@ -117,6 +117,7 @@
       $("noxCommNotice").textContent = email && subject && body
         ? "Command details filled in. Review the recipient and content, then choose Save draft or Review & send."
         : "I opened the communication workspace. Please provide the exact recipient, subject, and message. NOX will not send an ambiguous command.";
+      if(options.voiceTurn && window.NOXSpeak) window.NOXSpeak($("noxCommNotice").textContent,"auto").catch(()=>{});
     },
     open: openPanel,
     refresh
