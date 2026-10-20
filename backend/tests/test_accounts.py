@@ -107,6 +107,18 @@ class AccountSecurityTests(unittest.TestCase):
         self.assertTrue(accounts._verify_password("correct horse battery staple", salt.hex(), encoded))
         self.assertFalse(accounts._verify_password("wrong password", salt.hex(), encoded))
 
+    def test_missing_email_or_sms_provider_never_claims_delivery(self):
+        row = account_row()
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(accounts._send_challenge(None, row, "email_verify", "email"), "setup_required")
+            self.assertEqual(accounts._send_challenge(None, row, "phone_verify", "sms"), "setup_required")
+
+    def test_account_becomes_active_only_after_both_factors(self):
+        self.assertEqual(accounts._status(False, False), "pending_verification")
+        self.assertEqual(accounts._status(True, False), "email_verified")
+        self.assertEqual(accounts._status(False, True), "phone_verified")
+        self.assertEqual(accounts._status(True, True), "active")
+
     def test_registration_rejects_invalid_email_before_database_access(self):
         with self.assertRaisesRegex(ValueError, "valid email"):
             accounts.register("Example Person", "example_person", "not-an-email", "+91", "9876543210",
