@@ -25,6 +25,7 @@ from xml.etree import ElementTree
 import httpx
 from fastapi import HTTPException, UploadFile
 from backend.knowledge_ranking import rank_knowledge_candidates
+from backend.knowledge_embeddings import cosine_similarity, embed_texts, embedding_is_configured
 
 logger = logging.getLogger("nox.knowledge")
 ROOT = Path(__file__).resolve().parent.parent
@@ -70,6 +71,7 @@ def _connect():
             owner_id TEXT NOT NULL,
             chunk_index INTEGER NOT NULL,
             content TEXT NOT NULL,
+            embedding TEXT,
             FOREIGN KEY(source_id) REFERENCES knowledge_sources(id) ON DELETE CASCADE,
             UNIQUE(source_id, chunk_index)
         );
@@ -80,6 +82,9 @@ def _connect():
             title, content, tokenize='unicode61'
         );
     """)
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(knowledge_chunks)").fetchall()}
+    if "embedding" not in columns:
+        conn.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding TEXT")
     return conn
 
 
@@ -275,10 +280,12 @@ def index_text(owner_id: str, *, title: str, text: str, source_type: str,
                 VALUES(?,?,?,?,?,?,?,?,?,'indexed',?,?)""",
                 (source_id, owner_id, source_type, title[:300], source_url, filename, digest, text,
                  byte_size or len(text.encode()), stamp, stamp))
+        embeddings = embed_texts(chunks)
         for i, chunk in enumerate(chunks):
             chunk_id = uuid.uuid4().hex
-            conn.execute("INSERT INTO knowledge_chunks(id,source_id,owner_id,chunk_index,content) VALUES(?,?,?,?,?)",
-                         (chunk_id, source_id, owner_id, i, chunk))
+            vector = embeddings[i] if i < len(embeddings) else None
+            conn.execute("INSERT INTO knowledge_chunks(id,source_id,owner_id,chunk_index,content,embedding) VALUES(?,?,?,?,?,?)",
+                         (chunk_id, source_id, owner_id, i, chunk, json.dumps(vector) if vector else None))
             conn.execute("INSERT INTO knowledge_fts(chunk_id,source_id,owner_id,title,content) VALUES(?,?,?,?,?)",
                          (chunk_id, source_id, owner_id, title[:300], chunk))
         conn.commit()
@@ -305,11 +312,7 @@ def list_sources(owner_id: str) -> dict:
 
 
 def search_knowledge(owner_id: str, query: str, limit: int = 6) -> dict:
-    """Owner-scoped hybrid lexical retrieval with relevance reranking.
-
-    Uses FTS5 plus a bounded owner-only candidate scan. It does not claim vector
-    semantics; semantic embeddings remain explicitly unconfigured.
-    """
+    """Owner-scoped lexical retrieval with optional embedding-backed semantic reranking."""
     query = query.strip()[:500]
     if not query:
         return {"results": [], "query": query, "retrieval": "hybrid_lexical", "count": 0}
@@ -323,7 +326,7 @@ def search_knowledge(owner_id: str, query: str, limit: int = 6) -> dict:
         rows = []
         if fts_query:
             try:
-                rows = conn.execute("""SELECT f.chunk_id,f.source_id,f.title,f.content,
+                rows = conn.execute("""SELECT f.chunk_id,f.source_id,f.title,f.content,c.embedding,
                     bm25(knowledge_fts,0,0,0,2.0,1.0) AS rank,
                     s.source_url,s.filename,s.updated_at,s.source_type,c.chunk_index
                     FROM knowledge_fts f
@@ -334,13 +337,22 @@ def search_knowledge(owner_id: str, query: str, limit: int = 6) -> dict:
             except sqlite3.OperationalError as exc:
                 logger.info("FTS query fallback (%s)", type(exc).__name__)
         candidates = {row["chunk_id"]: dict(row) for row in rows}
-        fallback = conn.execute("""SELECT c.id AS chunk_id,c.source_id,s.title,c.content,
+        fallback = conn.execute("""SELECT c.id AS chunk_id,c.source_id,s.title,c.content,c.embedding,
             s.source_url,s.filename,s.updated_at,s.source_type,c.chunk_index
             FROM knowledge_chunks c JOIN knowledge_sources s ON s.id=c.source_id AND s.owner_id=c.owner_id
             WHERE c.owner_id=? ORDER BY s.updated_at DESC LIMIT 1500""", (owner_id,)).fetchall()
         for row in fallback:
             candidates.setdefault(row["chunk_id"], dict(row))
+        vectors = embed_texts([query])
+        query_vector = vectors[0] if vectors else None
+        if query_vector:
+            for candidate in candidates.values():
+                try:
+                    candidate["semantic_similarity"] = cosine_similarity(query_vector, json.loads(candidate.get("embedding") or "null"))
+                except (TypeError, ValueError):
+                    candidate["semantic_similarity"] = 0.0
         ranked = rank_knowledge_candidates(query, list(candidates.values()))
+        semantic_used = bool(query_vector and any(row.get("semantic_similarity", 0) > 0 for row in ranked))
         results = []
         for row in ranked[:max(1, min(limit, 10))]:
             results.append({
@@ -348,9 +360,12 @@ def search_knowledge(owner_id: str, query: str, limit: int = 6) -> dict:
                 "text": row["content"], "url": row["source_url"], "filename": row["filename"],
                 "source_type": row["source_type"], "updated_at": row["updated_at"],
                 "chunk_index": row["chunk_index"], "relevance": row["relevance"],
+                **({"semantic_similarity": round(row.get("semantic_similarity", 0.0), 4)} if semantic_used else {}),
             })
-        return {"query": query, "results": results, "retrieval": "hybrid_lexical",
-                "semantic_embeddings": "not_configured", "count": len(results)}
+        return {"query": query, "results": results,
+                "retrieval": "hybrid_lexical_semantic" if semantic_used else "hybrid_lexical",
+                "semantic_embeddings": "enabled" if semantic_used else ("configured_no_vectors" if embedding_is_configured() else "not_configured"),
+                "count": len(results)}
     finally:
         conn.close()
 
