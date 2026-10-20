@@ -283,8 +283,10 @@ class TaskManager:
         item["status"] = "queued"
         self._event(item, "Task resumed.")
         self._save(item)
-        if task_id not in self.runners:
-            await self.queue.put(task_id)
+        # Always enqueue on resume. If an old runner is just exiting after a
+        # pause race, the queue entry lets the worker restart it; active runners
+        # are deduplicated by _work_loop.
+        await self.queue.put(task_id)
         return item
 
     async def cancel(self, task_id: str, owner_id: str | None = None):
@@ -441,8 +443,11 @@ class TaskManager:
             item = self._get(task_id)
             if item and item["status"] != "cancelled":
                 item["status"] = "failed"
-                item["error"] = str(exc)[:500]
-                self._event(item, "Task failed: " + str(exc), "error")
+                item["error"] = (
+                    f"AI provider timed out after {TASK_PROCESSOR_TIMEOUT_SECONDS} seconds."
+                    if isinstance(exc, asyncio.TimeoutError) else str(exc)[:500]
+                )
+                self._event(item, "Task failed: " + item["error"], "error")
                 self._save(item)
         finally:
             item = self._get(task_id)
