@@ -155,7 +155,7 @@ _COMMANDS = {
     "nc": "Network utility with potentially risky uses. NOX does not execute it.",
     "bash": "Shell interpreter capable of executing scripts. NOX does not execute model-generated shell commands.",
 }
-_BLOCKED_CONTROL = re.compile(r"[;&|$<>\\n\\r]")
+_BLOCKED_CONTROL = re.compile(r"[;&|$<>\n\r]")
 
 @router.post("/explain-command")
 def explain_command(request: CommandExplainRequest) -> dict[str, Any]:
