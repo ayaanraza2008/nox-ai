@@ -23,6 +23,7 @@ from backend.safe_tools import SafeToolError, run_tool
 from backend import project_workspace as workspace
 from backend import knowledge
 from backend import github_bridge
+from backend import public_research
 from backend.autonomous_agent import run_autonomous_task
 import edge_tts
 
@@ -113,6 +114,11 @@ class TaskCreateRequest(BaseModel):
 class SwarmCreateRequest(BaseModel):
     goal: str = Field(min_length=8, max_length=6000)
     language: Literal["auto", "en", "hi", "ur", "hinglish"] = "auto"
+
+
+class PublicResearchRequest(BaseModel):
+    kind: Literal["email", "phone", "social", "image"]
+    value: str = Field(min_length=1, max_length=1500)
 
 
 class SafeToolRequest(BaseModel):
@@ -1435,6 +1441,26 @@ async def chat_stream(payload: ChatRequest, request: Request = None):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/api/research/public")
+async def public_information_research(payload: PublicResearchRequest, request: Request):
+    """Search only permitted public sources for one user-supplied starting point."""
+    session_owner(request)
+    value = payload.value.strip()
+    try:
+        if payload.kind == "email":
+            result = await public_research.research_email(value)
+        elif payload.kind == "phone":
+            result = await public_research.research_phone(value)
+        elif payload.kind == "social":
+            result = await public_research.research_social(value)
+        else:
+            result = await public_research.research_image_context(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["disclosure"] = "Public-source research only. Results may be incomplete; review source links. No private accounts, inboxes, restricted APIs, or breach dumps were accessed."
+    return result
 
 
 @app.get("/api/capabilities")
