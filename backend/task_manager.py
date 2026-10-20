@@ -369,6 +369,8 @@ class TaskManager:
         return item
 
     async def resume(self, task_id: str, owner_id: str | None = None):
+        if owner_id is not None and self.is_stopped(owner_id):
+            raise ValueError("NOX Emergency Stop is latched. Resume the system first; cancelled tasks are not restarted.")
         item = self._get(task_id)
         if owner_id is not None and (not item or item.get("owner_id", "") != owner_id):
             return None
