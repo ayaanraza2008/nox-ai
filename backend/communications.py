@@ -299,6 +299,10 @@ async def gmail_callback(request: Request, code: str = "", state: str = "", erro
         raise HTTPException(502, "Google OAuth exchange failed. Check Google Cloud OAuth configuration.")
     if not user.get("email"):
         raise HTTPException(502, "Google did not return the authorized account identity.")
+    granted_scopes = set(str(tokens.get("scope", "")).split())
+    required_scopes = {"https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.send"}
+    if not required_scopes.issubset(granted_scopes):
+        raise HTTPException(403, "Google did not grant the required Gmail permissions. Reconnect and approve the requested scopes.")
     tokens["expires_at"] = time.time() + int(tokens.get("expires_in", 3600))
     scopes = ["openid", "email", "https://www.googleapis.com/auth/gmail.modify", "https://www.googleapis.com/auth/gmail.send"]
     with _db() as conn:
