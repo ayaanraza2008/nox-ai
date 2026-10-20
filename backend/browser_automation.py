@@ -312,6 +312,20 @@ class BrowserAgent:
         else:
             report.append("No recurring terms could be reliably extracted from multiple sources.")
             report.append("")
+
+        # Optional grounded synthesis uses the same configured provider as NOX chat.
+        # If no provider is configured or it fails, the report remains useful and truthful.
+        try:
+            from backend.research_synthesis import generate_research_synthesis
+            synthesis = await generate_research_synthesis(topic, sources)
+        except Exception:
+            synthesis = None
+        report.extend(["## AI-assisted source synthesis", ""])
+        if synthesis:
+            report.extend([synthesis.strip(), "",
+                "> AI-generated analysis grounded in the captured excerpts. Citations such as [E1] map to the source evidence listed below; verify important claims against the original pages.", ""])
+        else:
+            report.extend(["Not generated: no configured AI provider returned a usable synthesis. The extractive takeaways above and the original source text below are still available.", ""])
         for index, source in enumerate(sources, start=1):
             report.extend([f"## Source {index}: {source['title']}", "", f"Source: {source['url']}", "", source["text"], ""])
         payload = "\n".join(report).strip() + "\n"
@@ -517,5 +531,3 @@ class BrowserAgent:
         if self.playwright:
             await self.playwright.stop()
         self.browser = self.playwright = None
-
-browser_agent = BrowserAgent()
