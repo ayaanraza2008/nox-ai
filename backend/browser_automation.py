@@ -122,7 +122,7 @@ class BrowserAgent:
 
     def _safe_command_summary(self, command):
         # Never put literal field values into task state or the audit log.
-        typed = re.match(r"(?is)^\\s*type\\s+(.+?)\\s+into\\s+(?:the\\s+)?(?:field|box|search|input)\\s*[\"']?(.+?)[\"']?\\s*$", command)
+        typed = re.search(r"(?is)\btype\s+(.+?)\s+into\s+(?:the\s+)?(.+?)\s+(?:field|box|input)\s*$", command)
         if typed:
             return "Type [value redacted] into " + typed.group(2).strip().strip("\"' .")[:100]
         return command[:180]
@@ -199,7 +199,7 @@ class BrowserAgent:
             await loc.first.click()
             await page.wait_for_timeout(250)
             return f"Clicked '{label}'. Current page: {await page.title()} — {page.url}"
-        type_match = re.search(r"\btype\s+(.+?)\s+into\s+(?:the\s+)?(?:field|box|search|input)\s*[\"']?(.+?)[\"']?$", command, re.I)
+        type_match = re.search(r"\btype\s+(.+?)\s+into\s+(?:the\s+)?(.+?)\s+(?:field|box|input)\s*$", command, re.I)
         if type_match:
             value, label = type_match.group(1).strip().strip("\"'"), type_match.group(2).strip().strip("\"' .")
             if re.search(r"password|passcode|one.?time|\\botp\\b|verification code|security code|cvv|card number|social security|identity number|access token|secret", label, re.I):
