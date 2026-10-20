@@ -7,6 +7,8 @@
     '.nox-emergency-resume{border:1px solid #68e8bd;background:#103b35;color:#c9ffed}\n' +
     '.nox-emergency-status{min-width:76px;font:9px/1.5 ui-monospace,monospace;color:#a9c0d4}\n' +
     '.nox-emergency-status strong{display:block;color:#78f0c2;letter-spacing:.08em}\n' +
+    '.nox-emergency-pending{position:absolute;right:0;bottom:100%;margin-bottom:7px;width:min(340px,calc(100vw - 20px));max-height:120px;overflow:auto;padding:8px 10px;border:1px solid #ff718655;border-radius:9px;background:#090f1cf5;color:#ffc1cb;font:9px/1.5 ui-monospace,monospace;overflow-wrap:anywhere}\n' +
+    '.nox-emergency-pending[hidden]{display:none}\n' +
     'body[data-nox-emergency-state="stopping"] .nox-emergency-status strong,body[data-nox-emergency-state="stopped"] .nox-emergency-status strong{color:#ff7186}\n' +
     'body[data-nox-emergency-state="stopping"] #taskForm button[type="submit"],body[data-nox-emergency-state="stopped"] #taskForm button[type="submit"],body[data-nox-emergency-state="stopping"] #nsCreate,body[data-nox-emergency-state="stopped"] #nsCreate,body[data-nox-emergency-state="stopping"] #nbRun,body[data-nox-emergency-state="stopped"] #nbRun{pointer-events:none;opacity:.35}\n' +
     '@media(max-width:520px){.nox-emergency-control{right:8px;bottom:8px;gap:5px;padding:6px}.nox-emergency-control button{padding:10px 9px;font-size:9px}.nox-emergency-status{min-width:64px}}';
@@ -14,12 +16,13 @@
   const dock = document.createElement("aside");
   dock.className = "nox-emergency-control";
   dock.setAttribute("aria-label", "NOX emergency execution controls");
-  dock.innerHTML = '<div class="nox-emergency-status" aria-live="polite"><strong id="noxEmergencyPhase">CHECKING</strong><span id="noxEmergencyDetail">Task safety status</span></div><button type="button" class="nox-emergency-stop" id="noxEmergencyStop">EMERGENCY STOP</button><button type="button" class="nox-emergency-resume" id="noxEmergencyResume" hidden>RESUME</button>';
+  dock.innerHTML = '<div class="nox-emergency-pending" id="noxEmergencyPending" hidden></div><div class="nox-emergency-status" aria-live="polite"><strong id="noxEmergencyPhase">CHECKING</strong><span id="noxEmergencyDetail">Task safety status</span></div><button type="button" class="nox-emergency-stop" id="noxEmergencyStop">EMERGENCY STOP</button><button type="button" class="nox-emergency-resume" id="noxEmergencyResume" hidden>RESUME</button>';
   document.body.appendChild(dock);
   const phase = document.getElementById("noxEmergencyPhase");
   const detail = document.getElementById("noxEmergencyDetail");
   const stopButton = document.getElementById("noxEmergencyStop");
   const resumeButton = document.getElementById("noxEmergencyResume");
+  const pendingBox = document.getElementById("noxEmergencyPending");
   let state = "checking", busy = false, pollTimer = null;
   const launchSelectors = ['#taskForm button[type="submit"]', "#nsCreate", "#nbRun", "#nsToolRun", "#cognitiveRun", "#researchRun"];
   function setLaunchesBlocked(blocked) {
@@ -42,6 +45,13 @@
     stopButton.disabled = busy;
     stopButton.textContent = state === "stopped" ? "STOPPED" : "EMERGENCY STOP";
     setLaunchesBlocked(state === "stopping" || state === "stopped" || state === "unverified");
+    pendingBox.replaceChildren();
+    pending.slice(0, 8).forEach(item => {
+      const line = document.createElement("div");
+      line.textContent = String(item.type || "operation") + " " + String(item.id || "") + " — " + String(item.status || "pending");
+      pendingBox.appendChild(line);
+    });
+    pendingBox.hidden = pending.length === 0;
     if (pending.length) detail.title = pending.map(item => item.type + ": " + item.id + " (" + item.status + ")").join("\n");
     else detail.removeAttribute("title");
   }
