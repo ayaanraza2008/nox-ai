@@ -31,12 +31,14 @@ from backend import github_bridge
 from backend import public_research
 from backend import cognitive
 from backend import location_sharing
+from backend.cybersecurity import router as cybersecurity_router
 from backend.autonomous_agent import run_autonomous_task
 from backend.browser_automation import BrowserAgentError, browser_agent
 import edge_tts
 
 logger = logging.getLogger("nox.provider")
 app = FastAPI(title="NOX AI API", version="0.1.0")
+app.include_router(cybersecurity_router)
 ROOT = Path(__file__).resolve().parent.parent
 
 # Reuse outbound connections across chat requests to avoid repeated TLS handshakes.
