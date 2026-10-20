@@ -109,7 +109,7 @@ class BrowserAgent:
             pass
         return {"available": self.available, "active": True, "session_id": s["id"], "status": s["status"], "task": s["task"],
                 "title": title, "url": url, "events": list(s["events"]), "pending_confirmation": bool(s["pending"]),
-                "downloads": list(s["downloads"][-10:]), "updated_at": s["updated_at"], "remote": True}
+                "downloads": [{**item, "index": i} for i, item in enumerate(s["downloads"])][-10:], "updated_at": s["updated_at"], "remote": True}
 
     async def screenshot(self, owner):
         s = self.sessions.get(owner)
@@ -137,7 +137,16 @@ class BrowserAgent:
             s["task"], s["status"] = summary[:300], "running"
             self._event(s, "Task started: " + summary)
             try:
-                result = await self._execute(s, command)
+                steps = [part.strip() for part in re.split(r"\\s+(?:and then|then|after that)\\s+", command, flags=re.I) if part.strip()]
+                if len(steps) > 8:
+                    raise BrowserAgentError("Please split this into at most eight browser steps at a time.")
+                results = []
+                for index, step in enumerate(steps, start=1):
+                    result = await self._execute(s, step)
+                    results.append(f"Step {index}: {result}")
+                    if s["status"] in {"awaiting_confirmation", "auth_required", "stopped"}:
+                        break
+                result = "\\n\\n".join(results)
                 if s["status"] == "running":
                     s["status"] = "completed"
                 self._event(s, result, "success" if s["status"] == "completed" else "attention")
