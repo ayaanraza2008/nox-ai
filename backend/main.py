@@ -2564,6 +2564,9 @@ async def browser_command(payload: BrowserCommandRequest, request: Request):
     async with task_manager.emergency_lock:
         if task_manager.is_stopped(session_owner(request)):
             raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before browser automation.")
+        active = ACTIVE_BROWSER_OPERATIONS.get(owner_id)
+        if active is not None and not active.done():
+            raise HTTPException(status_code=409, detail="A browser operation is already running for this session.")
         operation = asyncio.create_task(browser_agent.run(owner_id, payload.command, payload.language))
         ACTIVE_BROWSER_OPERATIONS[owner_id] = operation
     try:
@@ -2582,6 +2585,9 @@ async def browser_confirm(payload: BrowserConfirmRequest, request: Request):
     async with task_manager.emergency_lock:
         if task_manager.is_stopped(session_owner(request)):
             raise HTTPException(status_code=423, detail="NOX Emergency Stop is latched. Explicitly resume before approving browser actions.")
+        active = ACTIVE_BROWSER_OPERATIONS.get(owner_id)
+        if active is not None and not active.done():
+            raise HTTPException(status_code=409, detail="A browser operation is already running for this session.")
         operation = asyncio.create_task(browser_agent.confirm(owner_id, payload.approved))
         ACTIVE_BROWSER_OPERATIONS[owner_id] = operation
     try:
