@@ -28,7 +28,7 @@ _ALLOWED_DIRS = {
     "Pictures": "/sdcard/Pictures",
     "Documents": "/sdcard/Documents",
 }
-_ALLOWED_PATH_RE = re.compile(r"^/sdcard/(?:Download|DCIM|Pictures|Documents)/[A-Za-z0-9][A-Za-z0-9._ -]{0,179$")
+_ALLOWED_PATH_RE = re.compile(r"^/sdcard/(?:Download|DCIM|Pictures|Documents)/[A-Za-z0-9][A-Za-z0-9._ -]{0,179}$")
 
 
 class PullRequest(BaseModel):
