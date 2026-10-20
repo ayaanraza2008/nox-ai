@@ -37,12 +37,16 @@ def get_state() -> dict:
             value = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(value, dict):
                 raise ValueError("state must be an object")
+            cleanup = value.get("process_cleanup", [])
+            if not isinstance(cleanup, list):
+                cleanup = []
+            cleanup = [item for item in cleanup if isinstance(item, dict)]
             return {
                 "stopped": bool(value.get("stopped", False)),
                 "stopped_at": value.get("stopped_at"),
                 "updated_at": value.get("updated_at"),
                 "reason": str(value.get("reason", ""))[:120],
-                "process_cleanup": value.get("process_cleanup", []),
+                "process_cleanup": cleanup,
                 "state_file": str(path),
             }
         except FileNotFoundError:
