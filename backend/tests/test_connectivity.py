@@ -1,6 +1,8 @@
 """Tests for evidence-based browser connectivity analysis."""
 import unittest
 
+import httpx
+from backend import main
 from backend.connectivity import analyze_browser_observations
 
 
@@ -35,6 +37,44 @@ class ConnectivityAnalysisTests(unittest.TestCase):
         self.assertEqual(result["source"], "browser_network_information_api")
         self.assertTrue(any("SSID" in item for item in result["limitations"]))
         self.assertEqual(result["findings"], [])
+
+
+class ConnectivityEndpointTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=main.app),
+            base_url="http://testserver",
+        )
+
+    async def asyncTearDown(self):
+        await self.client.aclose()
+
+    async def test_endpoint_requires_valid_browser_session(self):
+        response = await self.client.post(
+            "/api/connectivity/analyze",
+            json={"observations": {"online": True}},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    async def test_endpoint_returns_bounded_evidence_report(self):
+        self.client.cookies.set(main.SESSION_COOKIE, "a" * 40)
+        response = await self.client.post(
+            "/api/connectivity/analyze",
+            json={"observations": {"online": True, "effective_type": "4g"}},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["scope"], "user_requested_browser_observations")
+        self.assertFalse(payload["control_available"])
+        self.assertTrue(payload["findings"])
+
+    async def test_endpoint_rejects_oversized_observation_payload(self):
+        self.client.cookies.set(main.SESSION_COOKIE, "a" * 40)
+        response = await self.client.post(
+            "/api/connectivity/analyze",
+            json={"observations": {"extra": "x" * 9000}},
+        )
+        self.assertEqual(response.status_code, 413)
 
 
 if __name__ == "__main__":
