@@ -151,10 +151,18 @@ def run_managed_process(args: list[str], *, cwd: str | None = None, timeout: int
 
 def set_stopped(stopped: bool, reason: str = "user_action") -> dict:
     current = get_state()
-    if not stopped and current["stopped"] and any(
-        item.get("status") == "cleanup_pending" for item in current.get("process_cleanup", [])
-    ):
-        raise RuntimeError("Cannot resume while a NOX-managed process still requires cleanup.")
+    if not stopped and current["stopped"]:
+        pending_pids = {
+            item.get("pid") for item in current.get("process_cleanup", [])
+            if isinstance(item, dict) and item.get("status") == "cleanup_pending"
+        }
+        with _LOCK:
+            still_running = any(
+                pid in _ACTIVE_PROCESSES and _ACTIVE_PROCESSES[pid].poll() is None
+                for pid in pending_pids
+            )
+        if still_running:
+            raise RuntimeError("Cannot resume while a NOX-managed process still requires cleanup.")
     path = state_path()
     timestamp = _now()
     state = {
