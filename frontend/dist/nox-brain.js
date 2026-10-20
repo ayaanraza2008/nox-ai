@@ -207,6 +207,53 @@
         renderDevices(data.devices || []);
       } catch (error) { notice(error.message, false); }
     });
+    $("brainRecordOutcome")?.addEventListener("click", async () => {
+      const task_type = $("brainOutcomeType").value.trim();
+      const requested_outcome = $("brainOutcomeGoal").value.trim();
+      const result_summary = $("brainOutcomeResult").value.trim();
+      if (!task_type || !requested_outcome || !result_summary) {
+        notice("Enter task type, requested outcome, and actual result.", false); return;
+      }
+      try {
+        const outcome = await api("/api/brain/outcomes", {
+          method: "POST",
+          body: JSON.stringify({
+            task_type, requested_outcome, result_summary,
+            status: $("brainOutcomeStatus").value,
+            evidence: $("brainOutcomeEvidence").value.trim() || null
+          })
+        });
+        notice("Outcome recorded. " + (outcome.requires_validation_before_memory
+          ? "Evidence is attached, but a lesson still needs validation before becoming durable memory."
+          : "No verified lesson was automatically stored."));
+        $("brainOutcomeResult").value = "";
+        $("brainOutcomeEvidence").value = "";
+        await refresh();
+      } catch (error) { notice(error.message, false); }
+    });
+    $("brainCreateProposal")?.addEventListener("click", async () => {
+      const title = $("brainProposalTitle").value.trim();
+      const summary = $("brainProposalSummary").value.trim();
+      if (!title || !summary) { notice("Enter a proposal title and validation/rollback summary.", false); return; }
+      try {
+        await api("/api/brain/proposals", {
+          method: "POST",
+          body: JSON.stringify({
+            title, summary,
+            proposal: {
+              kind: "workflow_or_skill",
+              rationale: summary,
+              validation_plan: "Run the stated checks and regression tests before adopting.",
+              rollback_plan: "Keep the current version and revert the proposal if checks fail."
+            }
+          })
+        });
+        $("brainProposalTitle").value = "";
+        $("brainProposalSummary").value = "";
+        notice("Improvement proposal created for review; nothing was executed automatically.");
+        await refresh();
+      } catch (error) { notice(error.message, false); }
+    });
     $("brainRefresh")?.addEventListener("click", refresh);
     refresh();
   });
