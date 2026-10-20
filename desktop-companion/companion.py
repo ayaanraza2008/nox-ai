@@ -280,9 +280,9 @@ def device_control_capabilities(x_nox_token: str | None = Header(default=None)):
                 "id": "android_adb",
                 "status": "implemented_with_setup" if discovered.get("status") == "ok" else discovered.get("status", "setup_required"),
                 "transports": ["USB", "ADB-over-network-if-the-owner-configured-it"],
-                "actions": ["discover_devices", "inspect_authorization_state", "launch_installed_app"],
-                "requires": ["Android Platform Tools", "USB debugging enabled by the owner", "owner approval of this computer's debugging key"],
-                "limitations": ["App launch is reported as requested, not verified", "File transfer, screen capture, and general UI automation are not exposed by this prototype"],
+                "actions": ["discover_devices", "inspect_authorization_state", "launch_installed_app", "list_shared_storage_files", "pull_shared_storage_file"],
+                "requires": ["Android Platform Tools", "USB debugging enabled by the owner", "owner approval of this computer's debugging key", "explicit confirmation before each file pull"],
+                "limitations": ["File access is limited to top-level files in Download, DCIM, Pictures, and Documents", "App launch is reported as requested, not verified", "Screen capture and general UI automation are not exposed by this prototype"],
             },
             {
                 "id": "windows_wifi_status",
