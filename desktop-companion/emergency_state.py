@@ -26,7 +26,7 @@ def state_path() -> Path:
     if configured:
         return Path(configured).expanduser()
     base = os.getenv("LOCALAPPDATA", "").strip()
-    root = Path(base) / "NOX AI" if base else Path.home() / ".nox-ai"
+    root = Path(base) / "NOX AI" if base else Path(os.getenv("HOME") or os.getcwd()) / ".nox-ai"
     return root / "emergency-state.json"
 
 
