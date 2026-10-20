@@ -100,7 +100,10 @@ def local_emergency_stop(x_nox_token: str | None = Header(default=None)):
 @app.post("/v1/emergency/resume")
 def local_emergency_resume(x_nox_token: str | None = Header(default=None)):
     authorize(x_nox_token)
-    return {"state": "running", **set_emergency_stopped(False, "explicit_local_resume")}
+    try:
+        return {"state": "running", **set_emergency_stopped(False, "explicit_local_resume")}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 DESTINATIONS = {
