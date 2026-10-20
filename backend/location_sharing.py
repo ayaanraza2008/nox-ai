@@ -7,6 +7,7 @@ used to infer coordinates.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import time
@@ -19,6 +20,8 @@ from psycopg.rows import dict_row
 from fastapi import HTTPException
 
 _RETENTION_DAYS = max(1, min(int(os.getenv("NOX_LOCATION_RETENTION_DAYS", "7")), 90))
+logger = logging.getLogger("nox.location")
+_SCHEMA_WARNING_LOGGED = False
 _RATE_BUCKETS: dict[str, list[float]] = {}
 
 
@@ -312,14 +315,26 @@ def update_location(token: str, latitude: float, longitude: float, accuracy_m: f
 
 
 def cleanup_history() -> int:
-    """Delete expired history in a privileged, server-only transaction."""
-    with _connect() as conn:
-        _context(conn, ingest=True)
-        result = conn.execute(
-            "DELETE FROM nox_location_history WHERE captured_at < now() - (%s * interval '1 day')",
-            (_RETENTION_DAYS,),
-        )
-        return result.rowcount
+    """Delete expired history; skip safely until the optional location schema is installed."""
+    global _SCHEMA_WARNING_LOGGED
+    try:
+        with _connect() as conn:
+            _context(conn, ingest=True)
+            result = conn.execute(
+                "DELETE FROM nox_location_history WHERE captured_at < now() - (%s * interval '1 day')",
+                (_RETENTION_DAYS,),
+            )
+            return result.rowcount
+    except psycopg.errors.UndefinedTable:
+        # Location sharing is optional. A missing migration must not create recurring
+        # startup noise or affect core chat/health endpoints.
+        if not _SCHEMA_WARNING_LOGGED:
+            logger.warning(
+                "Location history cleanup skipped: apply supabase/migrations/202610200001_location_sharing.sql "
+                "to enable location-history retention."
+            )
+            _SCHEMA_WARNING_LOGGED = True
+        return 0
 
 
 def get_history(owner_id: str, device_id: str, limit: int = 100) -> dict:
